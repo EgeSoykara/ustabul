@@ -64,7 +64,7 @@ class Command(BaseCommand):
                 run_count += 1
                 started_at = self._mark_started()
                 try:
-                    refresh_marketplace_lifecycle()
+                    refresh_marketplace_lifecycle(force=True)
                 except Exception as exc:
                     self._mark_error(exc)
                     raise

@@ -199,7 +199,7 @@ class ServiceRequestForm(forms.ModelForm):
         details = (self.cleaned_data.get("details") or "").strip()
         if len(details) > SERVICE_REQUEST_DETAILS_MAX_LENGTH:
             raise ValidationError(
-                f"Detay alani en fazla {SERVICE_REQUEST_DETAILS_MAX_LENGTH} karakter olabilir."
+                f"Detay alanı en fazla {SERVICE_REQUEST_DETAILS_MAX_LENGTH} karakter olabilir."
             )
         return details
 

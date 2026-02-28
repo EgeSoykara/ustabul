@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
@@ -84,6 +85,12 @@ def get_total_unread_notifications_count(user):
     if not user or not getattr(user, "is_authenticated", False):
         return 0
 
+    cache_seconds = max(1, int(getattr(settings, "NOTIFICATION_UNREAD_CACHE_SECONDS", 6)))
+    cache_key = f"notif:unread:{user.id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return int(cached)
+
     now = timezone.now()
     provider = get_provider_for_user(user)
     cursor = get_notification_cursor(user, create=False)
@@ -94,7 +101,9 @@ def get_total_unread_notifications_count(user):
     if workflow_seen_at:
         workflow_qs = workflow_qs.filter(created_at__gt=workflow_seen_at)
     unread_workflow_count = workflow_qs.count()
-    return unread_messages_count + unread_workflow_count
+    total_unread = unread_messages_count + unread_workflow_count
+    cache.set(cache_key, total_unread, timeout=cache_seconds)
+    return total_unread
 
 
 def mark_all_notifications_read(user):
@@ -108,6 +117,7 @@ def mark_all_notifications_read(user):
     cursor = get_notification_cursor(user, create=True)
     cursor.workflow_seen_at = now
     cursor.save(update_fields=["workflow_seen_at", "updated_at"])
+    cache.set(f"notif:unread:{user.id}", 0, timeout=max(1, int(getattr(settings, "NOTIFICATION_UNREAD_CACHE_SECONDS", 6))))
 
 
 def _event_status_label(event, raw_status):

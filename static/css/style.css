@@ -2537,6 +2537,12 @@ body {
   box-shadow: none !important;
 }
 
+[data-theme="dark"] .nav-link.active {
+  background: #e2e8f0;
+  color: #0f172a !important;
+  border-color: #cbd5e1;
+}
+
 [data-theme="dark"] .hero-copy h1,
 [data-theme="dark"] .hero-copy p,
 [data-theme="dark"] .hero-badge {
@@ -3789,4 +3795,3 @@ body {
     min-width: 0;
   }
 }
-

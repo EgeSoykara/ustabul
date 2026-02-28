@@ -56,7 +56,6 @@ from .models import (
     ServiceType,
     WorkflowEvent,
 )
-from .sms import send_sms
 
 PROVIDER_PENDING_APPROVAL_MESSAGE = "Usta hesabınız admin onayı bekliyor."
 PROVIDER_PENDING_APPROVAL_FLASH_FLAG = "_provider_pending_approval_warned"
@@ -283,6 +282,38 @@ def get_lifecycle_heartbeat_stale_seconds():
     return max(10, int(getattr(settings, "LIFECYCLE_HEARTBEAT_STALE_SECONDS", 180)))
 
 
+def get_nav_stream_reopen_min_seconds():
+    return max(1, int(getattr(settings, "NAV_STREAM_REOPEN_MIN_SECONDS", 2)))
+
+
+def get_lifecycle_web_refresh_interval_seconds():
+    return max(5, int(getattr(settings, "MARKETPLACE_LIFECYCLE_WEB_REFRESH_INTERVAL_SECONDS", 20)))
+
+
+def get_housekeeping_interval_seconds():
+    return max(60, int(getattr(settings, "HOUSEKEEPING_INTERVAL_SECONDS", 3600)))
+
+
+def get_idempotency_retention_days():
+    return max(1, int(getattr(settings, "IDEMPOTENCY_RETENTION_DAYS", 2)))
+
+
+def get_workflow_event_retention_days():
+    return max(7, int(getattr(settings, "WORKFLOW_EVENT_RETENTION_DAYS", 90)))
+
+
+def get_activity_log_retention_days():
+    return max(7, int(getattr(settings, "ACTIVITY_LOG_RETENTION_DAYS", 90)))
+
+
+def get_error_log_retention_days():
+    return max(7, int(getattr(settings, "ERROR_LOG_RETENTION_DAYS", 30)))
+
+
+def get_lifecycle_health_token():
+    return str(getattr(settings, "LIFECYCLE_HEALTH_TOKEN", "") or "").strip()
+
+
 def infer_actor_role(user):
     if not user or not getattr(user, "is_authenticated", False):
         return "system"
@@ -449,7 +480,7 @@ def reject_rate_limited_request(request, scope, redirect_name, *, max_attempts, 
     if hit_count > max_attempts:
         messages.warning(
             request,
-            f"Çok kısa sürede çok fazla istek gönderdiniz. Lütfen {window_seconds} saniye sonra tekrar deneyin.",
+            f"Çok kısa sürede Çok fazla istek gönderdiniz. Lütfen {window_seconds} saniye sonra tekrar deneyin.",
         )
         return redirect(redirect_name)
     return None
@@ -538,6 +569,46 @@ def create_activity_log(
     )
 
 
+def maybe_run_housekeeping(*, now=None, force=False):
+    reference = now or timezone.now()
+    run_interval_seconds = get_housekeeping_interval_seconds()
+    cache_key = "housekeeping:last-run"
+    lock_key = "housekeeping:lock"
+
+    if not force:
+        last_run_ts = cache.get(cache_key)
+        now_ts = int(reference.timestamp())
+        if isinstance(last_run_ts, int) and now_ts - last_run_ts < run_interval_seconds:
+            return False
+
+    if not cache.add(lock_key, str(uuid4()), timeout=120):
+        return False
+
+    try:
+        now_ts = int(reference.timestamp())
+        if not force:
+            last_run_ts = cache.get(cache_key)
+            if isinstance(last_run_ts, int) and now_ts - last_run_ts < run_interval_seconds:
+                return False
+
+        IdempotencyRecord.objects.filter(
+            created_at__lt=reference - timedelta(days=get_idempotency_retention_days())
+        ).delete()
+        WorkflowEvent.objects.filter(
+            created_at__lt=reference - timedelta(days=get_workflow_event_retention_days())
+        ).delete()
+        ActivityLog.objects.filter(
+            created_at__lt=reference - timedelta(days=get_activity_log_retention_days())
+        ).delete()
+        ErrorLog.objects.filter(
+            created_at__lt=reference - timedelta(days=get_error_log_retention_days())
+        ).delete()
+        cache.set(cache_key, now_ts, timeout=run_interval_seconds)
+        return True
+    finally:
+        cache.delete(lock_key)
+
+
 def reject_duplicate_submission(request, scope, redirect_name):
     if request.method != "POST":
         return None
@@ -583,8 +654,7 @@ def reject_duplicate_submission(request, scope, redirect_name):
         messages.info(request, "Aynı işlem kısa aralıkta tekrar gönderildiği için tek sefer işlendi.")
         return redirect(redirect_name)
 
-    if now.second < 2:
-        IdempotencyRecord.objects.filter(created_at__lt=now - timedelta(days=2)).delete()
+    maybe_run_housekeeping(now=now)
     return None
 
 
@@ -742,13 +812,6 @@ def refresh_offer_lifecycle():
         ).select_related("provider", "service_request", "service_request__service_type")
     )
     for offer in reminder_qs:
-        send_sms(
-            offer.provider.phone,
-            (
-                f"UstaBul hatirlatma: Talep #{offer.service_request_id} icin teklif bekleniyor. "
-                f"Sure sonu: {timezone.localtime(offer.expires_at).strftime('%d.%m %H:%M')}"
-            ),
-        )
         offer.reminder_sent_at = now
         offer.save(update_fields=["reminder_sent_at"])
 
@@ -856,10 +919,6 @@ def refresh_appointment_lifecycle():
             note="Usta onay süresi doldu",
         ):
             continue
-        send_sms(
-            appointment.service_request.customer_phone,
-            f"UstaBul: Talep #{appointment.service_request_id} randevusu, usta onay suresi asildigi icin iptal edildi.",
-        )
 
     stale_customer_appointments = list(
         ServiceAppointment.objects.filter(status="pending_customer", updated_at__lte=customer_deadline).select_related(
@@ -877,15 +936,39 @@ def refresh_appointment_lifecycle():
             note="Müşteri onay süresi doldu",
         ):
             continue
-        send_sms(
-            appointment.provider.phone,
-            f"UstaBul: Talep #{appointment.service_request_id} randevusu, musteri onay suresi asildigi icin iptal edildi.",
-        )
 
 
-def refresh_marketplace_lifecycle():
-    refresh_offer_lifecycle()
-    refresh_appointment_lifecycle()
+def refresh_marketplace_lifecycle(*, force=False):
+    reference = timezone.now()
+    maybe_run_housekeeping(now=reference)
+
+    if force:
+        refresh_offer_lifecycle()
+        refresh_appointment_lifecycle()
+        return True
+
+    min_interval_seconds = get_lifecycle_web_refresh_interval_seconds()
+    cache_key = "lifecycle:web:last-run"
+    lock_key = "lifecycle:web:lock"
+    now_ts = int(reference.timestamp())
+    last_run_ts = cache.get(cache_key)
+    if isinstance(last_run_ts, int) and now_ts - last_run_ts < min_interval_seconds:
+        return False
+
+    if not cache.add(lock_key, str(uuid4()), timeout=max(5, min_interval_seconds)):
+        return False
+
+    try:
+        last_run_ts = cache.get(cache_key)
+        if isinstance(last_run_ts, int) and now_ts - last_run_ts < min_interval_seconds:
+            return False
+
+        refresh_offer_lifecycle()
+        refresh_appointment_lifecycle()
+        cache.set(cache_key, now_ts, timeout=min_interval_seconds)
+        return True
+    finally:
+        cache.delete(lock_key)
 
 
 def build_unread_message_map(service_request_ids, viewer_role):
@@ -1121,7 +1204,7 @@ def build_customer_flow_state(service_request, appointment, *, has_accepted_offe
         has_completed_appointment = bool(appointment and appointment.status == "completed")
         return {
             "step": "Adım 4/4",
-            "title": "İş tamamlandı",
+            "title": "İ tamamlandı",
             "hint": "Talep başarıyla tamamlandı.",
             "next_action": (
                 "Ustayı puanlayarak süreci bitirebilirsiniz."
@@ -1519,7 +1602,7 @@ def create_request(request):
     elif dispatch_result["result"] == "no-candidates":
         messages.info(
             request,
-            "Talebiniz alındı ancak şu an şehir/ilçe kriterlerinde müsait usta bulunamadı.",
+            "Talebiniz alındı ancak şu an Şehir/ilçe kriterlerinde müsait usta bulunamadı.",
         )
     else:
         messages.warning(
@@ -1556,7 +1639,7 @@ def rate_request(request, request_id):
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
     if service_request.status != "completed" or service_request.matched_provider is None:
-        messages.error(request, "Puanlama sadece tamamlanmış ve eşleşmiş talepler için yapılabilir.")
+        messages.error(request, "Puanlama sadece tamamlanmİ ve eşleşmiş talepler için yapılabilir.")
         return redirect("my_requests")
     appointment = ServiceAppointment.objects.filter(service_request=service_request).only("id", "status").first()
     has_confirmed_appointment = WorkflowEvent.objects.filter(
@@ -2203,7 +2286,7 @@ def my_requests(request):
             elif item.id not in confirmed_appointment_request_ids:
                 item.rate_block_reason = "Randevu müşteri onayı olmadan kapatıldığı için puanlama kapalıdır."
             elif item.appointment_entry.status != "completed":
-                item.rate_block_reason = "Puanlama için randevunun tamamlanmış olması gerekir."
+                item.rate_block_reason = "Puanlama için randevunun tamamlanmİ olması gerekir."
         verified_offers = [
             offer for offer in item.provider_offers.all() if offer.provider_id and getattr(offer.provider, "is_verified", False)
         ]
@@ -2458,6 +2541,18 @@ def nav_live_stream(request):
 
     interval_seconds = max(3, int(getattr(settings, "NAV_STREAM_INTERVAL_SECONDS", 8)))
     max_duration_seconds = max(15, int(getattr(settings, "NAV_STREAM_MAX_DURATION_SECONDS", 55)))
+    min_reopen_seconds = get_nav_stream_reopen_min_seconds()
+    stream_identity = f"provider:{provider.id}" if is_provider and provider else f"customer:{request.user.id}"
+    active_key = f"nav-stream:active:{stream_identity}"
+    reopen_key = f"nav-stream:last:{stream_identity}"
+    lock_token = uuid4().hex
+    now_ts = int(time.time())
+    last_open_ts = cache.get(reopen_key)
+    if isinstance(last_open_ts, int) and now_ts - last_open_ts < min_reopen_seconds:
+        return JsonResponse({"detail": "stream-reopen-rate-limited"}, status=429)
+    if not cache.add(active_key, lock_token, timeout=max_duration_seconds + 10):
+        return JsonResponse({"detail": "stream-already-open"}, status=429)
+    cache.set(reopen_key, now_ts, timeout=max(max_duration_seconds + 10, min_reopen_seconds))
 
     def build_payload():
         if is_provider:
@@ -2468,23 +2563,27 @@ def nav_live_stream(request):
         started_at = timezone.now()
         yield "retry: 5000\n\n"
         try:
-            refresh_marketplace_lifecycle()
-        except Exception:
-            # Snapshot delivery should keep working even if lifecycle refresh fails.
-            pass
+            try:
+                refresh_marketplace_lifecycle()
+            except Exception:
+                # Snapshot delivery should keep working even if lifecycle refresh fails.
+                pass
 
-        while True:
-            payload = build_payload()
-            payload["stream_role"] = "provider" if is_provider else "customer"
-            payload["stream_ts"] = timezone.now().isoformat()
-            yield f"event: snapshot\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            while True:
+                payload = build_payload()
+                payload["stream_role"] = "provider" if is_provider else "customer"
+                payload["stream_ts"] = timezone.now().isoformat()
+                yield f"event: snapshot\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
-            elapsed_seconds = (timezone.now() - started_at).total_seconds()
-            if elapsed_seconds >= max_duration_seconds:
-                break
-            time.sleep(interval_seconds)
+                elapsed_seconds = (timezone.now() - started_at).total_seconds()
+                if elapsed_seconds >= max_duration_seconds:
+                    break
+                time.sleep(interval_seconds)
 
-        yield "event: end\ndata: {}\n\n"
+            yield "event: end\ndata: {}\n\n"
+        finally:
+            if cache.get(active_key) == lock_token:
+                cache.delete(active_key)
 
     response = StreamingHttpResponse(stream_events(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -2494,6 +2593,12 @@ def nav_live_stream(request):
 
 @never_cache
 def lifecycle_health(request):
+    expected_token = get_lifecycle_health_token()
+    if expected_token:
+        provided_token = (request.headers.get("X-Health-Token") or request.GET.get("token") or "").strip()
+        if provided_token != expected_token:
+            return JsonResponse({"ok": False, "detail": "forbidden"}, status=403)
+
     worker_name = (request.GET.get("worker") or "marketplace_lifecycle").strip()[:80] or "marketplace_lifecycle"
     stale_after_seconds = get_lifecycle_heartbeat_stale_seconds()
     now = timezone.now()
@@ -2668,13 +2773,6 @@ def create_appointment(request, request_id):
         ):
             messages.warning(request, "Bu randevu durumu yeniden planlama için uygun değil.")
             return redirect("my_requests")
-        send_sms(
-            service_request.matched_provider.phone,
-            (
-                f"UstaBul randevu: Talep #{service_request.id} icin yeni randevu talebi var. "
-                f"Tarih: {timezone.localtime(scheduled_for).strftime('%d.%m %H:%M')}"
-            ),
-        )
         messages.success(request, "Randevu talebiniz güncellendi ve ustaya iletildi.")
         return redirect("my_requests")
 
@@ -2694,13 +2792,6 @@ def create_appointment(request, request_id):
         actor_role=actor_role,
         source="user",
         note="Müşteri yeni randevu talebi oluşturdu",
-    )
-    send_sms(
-        service_request.matched_provider.phone,
-        (
-            f"UstaBul randevu: Talep #{service_request.id} icin randevu talebi var. "
-            f"Tarih: {timezone.localtime(scheduled_for).strftime('%d.%m %H:%M')}"
-        ),
     )
     messages.success(request, "Randevu talebiniz ustaya iletildi.")
     return redirect("my_requests")
@@ -2757,13 +2848,6 @@ def cancel_appointment(request, request_id):
         source="user",
         note=workflow_note,
     )
-    if appointment.provider_id:
-        sms_text = (
-            f"UstaBul: Talep #{service_request.id} randevusu musteri tarafindan iptal edildi. "
-            f"{cancel_policy['result_message']}"
-        )
-        send_sms(appointment.provider.phone, sms_text)
-
     if cancel_policy["category"] in {"last_minute", "no_show"}:
         messages.warning(request, cancel_policy["result_message"])
     else:
@@ -2810,14 +2894,7 @@ def customer_confirm_appointment(request, request_id):
         actor_user=request.user,
         actor_role=actor_role,
         source="user",
-        note="Müşteri randevuyu onayladı",
-    )
-    send_sms(
-        appointment.provider.phone,
-        (
-            f"UstaBul randevu: Müşteri Talep #{service_request.id} randevusunu onayladı. "
-            f"Tarih: {timezone.localtime(appointment.scheduled_for).strftime('%d.%m %H:%M')}"
-        ),
+        note="Müşteri randevuyu onayladİ",
     )
     messages.success(request, "Randevuyu onayladınız.")
     return redirect("my_requests")
@@ -3088,7 +3165,7 @@ def provider_requests(request):
         if appointment_status in {"rejected", "cancelled"}:
             thread.appointment_feedback_tone = "warning"
             thread.appointment_feedback_label = "Yeni randevu saati bekleniyor"
-            thread.appointment_feedback_note = "Müşterinin yeni bir randevu oluşturması gerekiyor."
+            thread.appointment_feedback_note = "Müşterinin yeni bir randevu oluşturmasİ gerekiyor."
         elif appointment_status == "pending":
             thread.appointment_feedback_tone = "action"
             thread.appointment_feedback_label = "Randevu onayınız bekleniyor"
@@ -3240,13 +3317,6 @@ def provider_confirm_appointment(request, appointment_id):
     ):
         messages.warning(request, "Randevu durumu usta onayı için uygun değil.")
         return redirect("provider_requests")
-    send_sms(
-        appointment.service_request.customer_phone,
-        (
-            f"UstaBul randevu: Talep #{appointment.service_request_id} için usta onayı verildi. "
-            f"Randevu onaylandı. Tarih: {timezone.localtime(appointment.scheduled_for).strftime('%d.%m %H:%M')}"
-        ),
-    )
     messages.success(request, f"Talep #{appointment.service_request_id} için randevu onaylandı.")
     return redirect("provider_requests")
 
@@ -3491,7 +3561,7 @@ def provider_reject_offer(request, offer_id):
             )
         messages.info(
             request,
-            f"Talep #{service_request.id} reddedildi. Diğer ustalardan gelecek onay bekleniyor.",
+            f"Talep #{service_request.id} reddedildi. Dişer ustalardan gelecek onay bekleniyor.",
         )
         return redirect("provider_requests")
 
