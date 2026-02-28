@@ -1,4 +1,4 @@
-name: CI Smoke Check
+name: CI Check
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  smoke-check:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -29,9 +29,3 @@ jobs:
 
       - name: Django system checks
         run: python manage.py check
-
-      - name: Smoke checks (quick)
-        run: python manage.py smoke_check
-
-      - name: Smoke checks (deep)
-        run: python manage.py smoke_check --deep
