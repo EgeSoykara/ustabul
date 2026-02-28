@@ -1,0 +1,805 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <h1 class="h4 mb-0"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneli</h1>
+      <div class="d-flex align-items-center gap-2 flex-wrap provider-panel-toolbar">
+        <span class="small text-muted">
+          {{ provider.full_name }} - {{ provider.city }}/{{ provider.district }}
+          {% if provider.is_verified %}
+            <span class="provider-verify-badge ms-1"><i class="bi bi-patch-check-fill me-1"></i>Doğrulanmış</span>
+          {% endif %}
+        </span>
+        <a href="{% url 'agreement_history' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
+        <a href="{% url 'provider_profile' %}" class="btn btn-sm nav-ghost-btn"><i class="bi bi-person-vcard me-1"></i>Profili Düzenle</a>
+      </div>
+    </div>
+    <p class="mb-2 text-muted">Yeni talepler burada sıralı gelir.</p>
+    <div class="provider-simple-guide" role="note" aria-label="Hızlı kullanım adımları">
+      <strong><i class="bi bi-info-circle-fill me-1"></i>Hızlı kullanım:</strong>
+      <ol class="simple-guide-list mb-2">
+        <li>Bekleyen talepleri kontrol edin.</li>
+        <li>Uygun olan talebi kabul edin.</li>
+        <li>Müşteri mesajlarına ve randevu adımlarına sırayla dönüş yapın.</li>
+      </ol>
+      <p class="small mb-1">Müşteri panelinde bu aşamalar sırasıyla "Usta yanıtı bekleniyor", "Usta seçimi" ve "Randevu onayı" olarak görünür.</p>
+      <p class="small mb-0">Randevu saati beklenen işler "Aktif Mesajlaşmalar" bölümünde ayrıca belirtilir.</p>
+    </div>
+  </div>
+</section>
+
+<div
+  id="provider-live-sync"
+  data-snapshot-url="{% url 'provider_panel_snapshot' %}"
+  data-pending-offers-count="{{ pending_offers_count }}"
+  data-latest-pending-offer-id="{{ latest_pending_offer_id }}"
+  data-waiting-customer-selection-count="{{ waiting_customer_selection_count }}"
+  data-pending-appointments-count="{{ pending_appointments_count }}"
+  data-unread-messages-count="{{ total_unread_messages }}"
+></div>
+
+<section class="provider-requests-section provider-kpi-grid mb-4">
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Bekleyen Talep</div>
+    <div class="provider-kpi-value">{{ pending_offers_count }}</div>
+    <div class="provider-kpi-note">Öncelikli olarak burayı kontrol edin.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Bekleyen Randevu</div>
+    <div class="provider-kpi-value">{{ pending_appointments_count }}</div>
+    <div class="provider-kpi-note">Randevu onayı bekleyen müşteri sayısı.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Okunmamış Mesaj</div>
+    <div class="provider-kpi-value">{{ total_unread_messages }}</div>
+    <div class="provider-kpi-note">Mesajlara dönüş yapmak güveni artırır.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Müşteri Seçimi Bekleyen</div>
+    <div class="provider-kpi-value">{{ waiting_customer_selection_count }}</div>
+    <div class="provider-kpi-note">Müşterinin usta seçmesini bekleyen teklifler.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Saat Bekleyen Eşleşme</div>
+    <div class="provider-kpi-value">{{ waiting_schedule_count }}</div>
+    <div class="provider-kpi-note">Müşteri randevu saati belirlemedi.</div>
+  </article>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-hourglass-split me-2"></i>Müşteri Seçimi Bekleyen Teklifler</h2>
+    <p class="small text-muted mb-3">
+      Teklifinizi kabul listesine gönderdiniz. Müşteri bir usta seçecek. Başka bir usta seçilirse bu liste otomatik güncellenir.
+    </p>
+    {% if waiting_customer_selection_offers %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Teklif Zamanı</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in waiting_customer_selection_offers %}
+              <tr>
+                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
+                <td data-label="Müşteri">
+                  {{ offer.service_request.customer_name }}
+                  <br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span>
+                </td>
+                <td data-label="Teklif Zamanı">{{ offer.responded_at|default:offer.sent_at|date:"d.m.Y H:i" }}</td>
+                <td data-label="Durum">
+                  <span class="provider-flow-badge provider-flow-warning">Müşteri seçimi bekleniyor</span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if waiting_customer_selection_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ waiting_customer_selection_page_obj.number }} / {{ waiting_customer_selection_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Müşteri seçimi bekleyen teklif sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not waiting_customer_selection_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?waiting_selection_page={% if waiting_customer_selection_page_obj.has_previous %}{{ waiting_customer_selection_page_obj.previous_page_number }}{% else %}1{% endif %}{{ waiting_selection_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ waiting_customer_selection_page_obj.number }}</span></li>
+              <li class="page-item {% if not waiting_customer_selection_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?waiting_selection_page={% if waiting_customer_selection_page_obj.has_next %}{{ waiting_customer_selection_page_obj.next_page_number }}{% else %}{{ waiting_customer_selection_page_obj.paginator.num_pages }}{% endif %}{{ waiting_selection_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Şu anda müşteri seçimi bekleyen teklifiniz yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-inbox-fill me-2"></i>Bekleyen Talepler</h2>
+    <p class="small text-muted mb-3">Yeni gelen işler burada görünür. Uygunsanız kabul edin, uygun değilseniz reddedin.</p>
+    {% if pending_offers %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Tarih</th>
+              <th>Süre Sonu</th>
+              <th>Hizmet</th>
+              <th>Konum</th>
+              <th>Müşteri</th>
+              <th>Detay</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in pending_offers %}
+              <tr>
+                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Tarih">{{ offer.sent_at|date:"d.m.Y H:i" }}</td>
+                <td data-label="Süre Sonu">
+                  {% if offer.expires_at %}
+                    {{ offer.expires_at|date:"d.m.Y H:i" }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
+                <td data-label="Konum">{{ offer.service_request.city }} / {{ offer.service_request.district }}</td>
+                <td data-label="Müşteri">{{ offer.service_request.customer_name }}<br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span></td>
+                <td data-label="Detay">
+                  <div class="request-detail-preview">{{ offer.service_request.details|truncatechars:120 }}</div>
+                  {% if offer.service_request.details|length > 120 %}
+                    <details class="request-detail-disclosure mt-1">
+                      <summary>Detayın Tamamını Gör</summary>
+                      <div class="request-detail-full">{{ offer.service_request.details|linebreaksbr }}</div>
+                    </details>
+                  {% endif %}
+                </td>
+                <td data-label="İşlem">
+                  <div class="request-actions-stack">
+                    <form method="post" action="{% url 'provider_accept_offer' offer.id %}">
+                      {% csrf_token %}
+                      <input type="text" name="quote_note" class="appointment-note-input" placeholder="Müşteriye kısa not (isteğe bağlı)">
+                      <button type="submit" class="btn btn-sm request-complete-btn mt-2"><i class="bi bi-send-check me-1"></i>Kabul Et ve Gönder</button>
+                    </form>
+                    <form method="post" action="{% url 'provider_reject_offer' offer.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Uygun Değil</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if pending_offers_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ pending_offers_page_obj.number }} / {{ pending_offers_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Bekleyen talepler sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not pending_offers_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?pending_offer_page={% if pending_offers_page_obj.has_previous %}{{ pending_offers_page_obj.previous_page_number }}{% else %}1{% endif %}{{ pending_offer_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ pending_offers_page_obj.number }}</span></li>
+              <li class="page-item {% if not pending_offers_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?pending_offer_page={% if pending_offers_page_obj.has_next %}{{ pending_offers_page_obj.next_page_number }}{% else %}{{ pending_offers_page_obj.paginator.num_pages }}{% endif %}{{ pending_offer_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Şu anda bekleyen talep yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-chat-dots-fill me-2"></i>Aktif Mesajlaşmalar</h2>
+    <p class="small text-muted mb-3">Müşterinin seçtiği işlerde mesajlaşma burada açılır. Mesajlara buradan hızlıca cevap verebilirsiniz.</p>
+    {% if active_threads %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Durum</th>
+              <th>Randevu Akışı</th>
+              <th>Mesaj</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for thread in active_threads %}
+              <tr>
+                <td data-label="Talep No">#{{ thread.id }}</td>
+                <td data-label="Hizmet">{{ thread.service_type.name }}</td>
+                <td data-label="Müşteri">
+                  {{ thread.customer_name }}
+                  <br><span class="small text-muted">{{ thread.customer_phone }}</span>
+                </td>
+                <td data-label="Durum"><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
+                <td data-label="Randevu Akışı">
+                  <div class="provider-flow-badge provider-flow-{{ thread.appointment_feedback_tone }}">
+                    {{ thread.appointment_feedback_label }}
+                  </div>
+                  <div class="small text-muted mt-1">{{ thread.appointment_feedback_note }}</div>
+                </td>
+                <td data-label="Mesaj">
+                  <a href="{% url 'request_messages' thread.id %}" class="btn btn-sm nav-ghost-btn">
+                    <i class="bi bi-chat-dots me-1"></i>Mesajları Gör
+                    {% if thread.unread_messages %}
+                      <span class="chat-unread-badge">{{ thread.unread_messages }}</span>
+                    {% endif %}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if active_threads_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ active_threads_page_obj.number }} / {{ active_threads_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Aktif mesajlaşmalar sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not active_threads_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?active_thread_page={% if active_threads_page_obj.has_previous %}{{ active_threads_page_obj.previous_page_number }}{% else %}1{% endif %}{{ active_thread_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ active_threads_page_obj.number }}</span></li>
+              <li class="page-item {% if not active_threads_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?active_thread_page={% if active_threads_page_obj.has_next %}{{ active_threads_page_obj.next_page_number }}{% else %}{{ active_threads_page_obj.paginator.num_pages }}{% endif %}{{ active_thread_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Aktif mesajlaşma bulunmuyor.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-calendar-week-fill me-2"></i>Bekleyen Randevu Talepleri</h2>
+    <p class="small text-muted mb-3">Müşterinin talep ettiği randevu saatleri. Uygunsa onaylayın, değilse reddedin.</p>
+    {% if pending_appointments %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Randevu Saati</th>
+              <th>Not</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in pending_appointments %}
+              <tr>
+                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
+                <td data-label="Müşteri">{{ appointment.service_request.customer_name }}<br><span class="small text-muted">{{ appointment.service_request.customer_phone }}</span></td>
+                <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td data-label="Not">{{ appointment.customer_note|default:"-"|truncatechars:70 }}</td>
+                <td data-label="İşlem">
+                  <div class="request-actions-stack">
+                    <form method="post" action="{% url 'provider_confirm_appointment' appointment.id %}">
+                      {% csrf_token %}
+                      <input type="text" name="provider_note" class="appointment-note-input" placeholder="Müşteriye not (isteğe bağlı)">
+                      <button type="submit" class="btn btn-sm request-complete-btn mt-2">
+                        <i class="bi bi-check2-circle me-1"></i>Randevuyu Onayla
+                      </button>
+                    </form>
+                    <form method="post" action="{% url 'provider_reject_appointment' appointment.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-x-circle me-1"></i>Uygun Değil
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if pending_appointments_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ pending_appointments_page_obj.number }} / {{ pending_appointments_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Bekleyen randevu talepleri sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not pending_appointments_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?pending_appointment_page={% if pending_appointments_page_obj.has_previous %}{{ pending_appointments_page_obj.previous_page_number }}{% else %}1{% endif %}{{ pending_appointment_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ pending_appointments_page_obj.number }}</span></li>
+              <li class="page-item {% if not pending_appointments_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?pending_appointment_page={% if pending_appointments_page_obj.has_next %}{{ pending_appointments_page_obj.next_page_number }}{% else %}{{ pending_appointments_page_obj.paginator.num_pages }}{% endif %}{{ pending_appointment_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Bekleyen randevu talebi yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-calendar-check-fill me-2"></i>Onaylı Randevular</h2>
+    <p class="small text-muted mb-3">Onaylanan randevular burada görünür. İş bittiyse “İş Tamamlandı” butonunu kullanın.</p>
+    {% if confirmed_appointments %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Randevu Saati</th>
+              <th>Durum</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in confirmed_appointments %}
+              <tr>
+                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
+                <td data-label="Müşteri">
+                  {{ appointment.service_request.customer_name }}
+                  <br><span class="small text-muted">{{ appointment.service_request.customer_phone }}</span>
+                </td>
+                <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td data-label="Durum">
+                  <span class="status-pill appointment-status appointment-{{ appointment.status }}">
+                    {{ appointment.get_status_display }}
+                  </span>
+                </td>
+                <td data-label="İşlem">
+                  <form
+                    method="post"
+                    action="{% url 'provider_complete_appointment' appointment.id %}"
+                    data-complete-confirm-form
+                  >
+                    {% csrf_token %}
+                    <button type="button" class="btn btn-sm request-complete-btn" data-complete-open>
+                      <i class="bi bi-clipboard2-check me-1"></i>İş Tamamlandı
+                    </button>
+                    <div class="request-complete-inline-confirm d-none" data-complete-confirm-box>
+                      <div class="request-complete-inline-text">Bu randevuyu tamamlandı olarak işaretlemek istediğinize emin misiniz</div>
+                      <div class="request-complete-inline-actions">
+                        <button type="submit" class="btn btn-sm request-complete-confirm-btn">
+                          <i class="bi bi-check2-circle me-1"></i>Evet, Onayla
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-complete-cancel>
+                          Vazgeç
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if confirmed_appointments_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ confirmed_appointments_page_obj.number }} / {{ confirmed_appointments_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Onaylı randevular sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not confirmed_appointments_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?confirmed_appointment_page={% if confirmed_appointments_page_obj.has_previous %}{{ confirmed_appointments_page_obj.previous_page_number }}{% else %}1{% endif %}{{ confirmed_appointment_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ confirmed_appointments_page_obj.number }}</span></li>
+              <li class="page-item {% if not confirmed_appointments_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?confirmed_appointment_page={% if confirmed_appointments_page_obj.has_next %}{{ confirmed_appointments_page_obj.next_page_number }}{% else %}{{ confirmed_appointments_page_obj.paginator.num_pages }}{% endif %}{{ confirmed_appointment_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Onaylı randevu bulunmuyor.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-clock-history me-2"></i>Son Yanıtlarım</h2>
+    <p class="small text-muted mb-3">Bilgi amaçlı geçmiş cevaplarınız.</p>
+    {% if recent_offers %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Not</th>
+              <th>Durum</th>
+              <th>Yanıt Zamanı</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in recent_offers %}
+              <tr>
+                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
+                <td data-label="Not">{{ offer.quote_note|default:"-" }}</td>
+                <td data-label="Durum"><span class="status-pill status-{{ offer.status }}">{{ offer.get_status_display }}</span></td>
+                <td data-label="Yanıt Zamanı">{{ offer.responded_at|date:"d.m.Y H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if recent_offers_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ recent_offers_page_obj.number }} / {{ recent_offers_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Son yanıtlarım sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not recent_offers_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?recent_offer_page={% if recent_offers_page_obj.has_previous %}{{ recent_offers_page_obj.previous_page_number }}{% else %}1{% endif %}{{ recent_offer_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ recent_offers_page_obj.number }}</span></li>
+              <li class="page-item {% if not recent_offers_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?recent_offer_page={% if recent_offers_page_obj.has_next %}{{ recent_offers_page_obj.next_page_number }}{% else %}{{ recent_offers_page_obj.paginator.num_pages }}{% endif %}{{ recent_offer_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Henüz cevaplanan teklif yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mt-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-calendar2-minus-fill me-2"></i>Randevu Geçmişi</h2>
+    <p class="small text-muted mb-3">Önceki randevularınızın özeti.</p>
+    {% if recent_appointments %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Randevu Saati</th>
+              <th>Durum</th>
+              <th>Not</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for appointment in recent_appointments %}
+              <tr>
+                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
+                <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
+                <td data-label="Durum">
+                  <span class="status-pill appointment-status appointment-{{ appointment.status }}">
+                    {{ appointment.get_status_display }}
+                  </span>
+                </td>
+                <td data-label="Not">{{ appointment.provider_note|default:appointment.customer_note|default:"-"|truncatechars:80 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if recent_appointments_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">
+            Sayfa {{ recent_appointments_page_obj.number }} / {{ recent_appointments_page_obj.paginator.num_pages }}
+          </span>
+          <nav aria-label="Randevu geçmişi sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not recent_appointments_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?recent_appointment_page={% if recent_appointments_page_obj.has_previous %}{{ recent_appointments_page_obj.previous_page_number }}{% else %}1{% endif %}{{ recent_appointment_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ recent_appointments_page_obj.number }}</span></li>
+              <li class="page-item {% if not recent_appointments_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?recent_appointment_page={% if recent_appointments_page_obj.has_next %}{{ recent_appointments_page_obj.next_page_number }}{% else %}{{ recent_appointments_page_obj.paginator.num_pages }}{% endif %}{{ recent_appointment_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Randevu geçmişi henüz oluşmadı.</p>
+    {% endif %}
+  </div>
+</section>
+<script>
+  (function () {
+    const confirmForms = document.querySelectorAll("form[data-complete-confirm-form]");
+    if (!confirmForms.length) return;
+
+    function closeFormConfirmation(form) {
+      const openButton = form.querySelector("[data-complete-open]");
+      const confirmBox = form.querySelector("[data-complete-confirm-box]");
+      if (!openButton || !confirmBox) return;
+      confirmBox.classList.add("d-none");
+      openButton.classList.remove("d-none");
+    }
+
+    function closeAllExcept(excludedForm) {
+      confirmForms.forEach(function (form) {
+        if (form === excludedForm) return;
+        closeFormConfirmation(form);
+      });
+    }
+
+    confirmForms.forEach(function (form) {
+      const openButton = form.querySelector("[data-complete-open]");
+      const confirmBox = form.querySelector("[data-complete-confirm-box]");
+      const cancelButton = form.querySelector("[data-complete-cancel]");
+      if (!openButton || !confirmBox) return;
+
+      openButton.addEventListener("click", function () {
+        closeAllExcept(form);
+        confirmBox.classList.remove("d-none");
+        openButton.classList.add("d-none");
+      });
+
+      if (cancelButton) {
+        cancelButton.addEventListener("click", function () {
+          closeFormConfirmation(form);
+        });
+      }
+    });
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-complete-confirm-form]")) return;
+      closeAllExcept(null);
+    });
+  })();
+</script>
+<script>
+  (function () {
+    const syncRoot = document.getElementById("provider-live-sync");
+    if (!syncRoot) return;
+
+    const snapshotUrl = syncRoot.dataset.snapshotUrl;
+    if (!snapshotUrl) return;
+
+    const defaultTitle = document.title;
+    let titleFlashTimer = null;
+    let titleFlashOn = false;
+    let reloadTimer = null;
+    const badgeCountKey = "ustabul_provider_unseen_count";
+    const snapshotKey = "ustabul_provider_last_snapshot";
+
+    let baseline = {
+      pendingOffersCount: Number(syncRoot.dataset.pendingOffersCount || 0),
+      latestPendingOfferId: Number(syncRoot.dataset.latestPendingOfferId || 0),
+      waitingCustomerSelectionCount: Number(syncRoot.dataset.waitingCustomerSelectionCount || 0),
+      pendingAppointmentsCount: Number(syncRoot.dataset.pendingAppointmentsCount || 0),
+      unreadMessagesCount: Number(syncRoot.dataset.unreadMessagesCount || 0),
+    };
+
+    function renderNavBadge(selector, count) {
+      const targets = document.querySelectorAll(selector);
+      if (!targets.length) return;
+      targets.forEach(function (target) {
+        let badge = target.querySelector(".nav-live-badge");
+        if (!count) {
+          if (badge) badge.remove();
+          return;
+        }
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "nav-live-badge";
+          target.appendChild(badge);
+        }
+        badge.textContent = count > 99 ? "99+" : String(count);
+      });
+    }
+
+    function buildProviderSnapshot(state) {
+      return {
+        pendingOffersCount: Number(state.pendingOffersCount || 0),
+        latestPendingOfferId: Number(state.latestPendingOfferId || 0),
+        waitingCustomerSelectionCount: Number(state.waitingCustomerSelectionCount || 0),
+        pendingAppointmentsCount: Number(state.pendingAppointmentsCount || 0),
+        unreadMessagesCount: Number(state.unreadMessagesCount || 0),
+      };
+    }
+
+    function markProviderNotificationsSeen(state) {
+      const snapshot = buildProviderSnapshot(state);
+      try {
+        localStorage.setItem(badgeCountKey, "0");
+        localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
+      } catch (error) {
+        void error;
+      }
+      renderNavBadge("[data-live-provider-nav]", 0);
+    }
+
+    function stopTitleFlash() {
+      if (!titleFlashTimer) return;
+      window.clearInterval(titleFlashTimer);
+      titleFlashTimer = null;
+      titleFlashOn = false;
+      document.title = defaultTitle;
+    }
+
+    function flashTitle(message) {
+      if (!document.hidden) return;
+      stopTitleFlash();
+      titleFlashTimer = window.setInterval(function () {
+        titleFlashOn = !titleFlashOn;
+        document.title = titleFlashOn ? "* " + message : defaultTitle;
+      }, 900);
+      window.setTimeout(stopTitleFlash, 10000);
+    }
+
+    function showInlineNotice(message) {
+      let toast = document.getElementById("provider-live-notice");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "provider-live-notice";
+        toast.className = "live-sync-toast";
+        document.body.appendChild(toast);
+      }
+      toast.innerHTML = '<i class="bi bi-bell-fill"></i><span>' + message + "</span>";
+      toast.classList.add("show");
+      window.setTimeout(function () {
+        toast.classList.remove("show");
+      }, 2600);
+    }
+
+    function triggerLiveAlert(message) {
+      if (!message) return;
+      showInlineNotice(message);
+      document.body.classList.add("live-sync-attention");
+      window.setTimeout(function () {
+        document.body.classList.remove("live-sync-attention");
+      }, 1500);
+      flashTitle(message);
+    }
+
+    function scheduleReload(delayMs) {
+      if (reloadTimer) return;
+      reloadTimer = window.setTimeout(function () {
+        window.location.reload();
+      }, delayMs);
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        stopTitleFlash();
+      }
+    });
+
+    markProviderNotificationsSeen(baseline);
+
+    async function pollProviderPanel() {
+      try {
+        const response = await fetch(snapshotUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const nextState = {
+          pendingOffersCount: Number(payload.pending_offers_count || 0),
+          latestPendingOfferId: Number(payload.latest_pending_offer_id || 0),
+          waitingCustomerSelectionCount: Number(payload.waiting_customer_selection_count || 0),
+          pendingAppointmentsCount: Number(payload.pending_appointments_count || 0),
+          unreadMessagesCount: Number(payload.unread_messages_count || 0),
+        };
+        const hasChanges =
+          nextState.pendingOffersCount !== baseline.pendingOffersCount ||
+          nextState.latestPendingOfferId !== baseline.latestPendingOfferId ||
+          nextState.waitingCustomerSelectionCount !== baseline.waitingCustomerSelectionCount ||
+          nextState.pendingAppointmentsCount !== baseline.pendingAppointmentsCount ||
+          nextState.unreadMessagesCount !== baseline.unreadMessagesCount;
+
+        if (hasChanges) {
+          let message = "Usta panelinde yeni bildirim var.";
+          if (
+            nextState.pendingOffersCount > baseline.pendingOffersCount ||
+            (nextState.latestPendingOfferId > baseline.latestPendingOfferId && nextState.pendingOffersCount > 0)
+          ) {
+            message = "Yeni bir iş talebi geldi.";
+          } else if (nextState.waitingCustomerSelectionCount > baseline.waitingCustomerSelectionCount) {
+            message = "Müşteri seçimi bekleyen yeni bir teklifiniz var.";
+          } else if (nextState.waitingCustomerSelectionCount < baseline.waitingCustomerSelectionCount) {
+            message = "Bir talepte müşteri usta seçimini yaptı.";
+          } else if (nextState.pendingAppointmentsCount > baseline.pendingAppointmentsCount) {
+            message = "Yeni bir randevu talebi geldi.";
+          } else if (nextState.unreadMessagesCount > baseline.unreadMessagesCount) {
+            message = "Yeni bir mesajınız var.";
+          }
+
+          baseline = nextState;
+          markProviderNotificationsSeen(nextState);
+          triggerLiveAlert(message);
+          scheduleReload(1500);
+        }
+      } catch (error) {
+        void error;
+      }
+    }
+
+    window.setInterval(pollProviderPanel, 8000);
+  })();
+</script>
+{% endblock %}
+
+
+
+
+
+
+
+
+

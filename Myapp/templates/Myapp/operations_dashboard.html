@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="h4 mb-1"><i class="bi bi-speedometer2 me-2"></i>Operasyon Paneli</h1>
+      <p class="mb-0 text-muted">G&uuml;nl&uuml;k ak&#305;&#351;, a&ccedil;&#305;k i&#351; y&uuml;kleri ve son hareketler tek ekranda.</p>
+    </div>
+    <div class="d-flex flex-column align-items-md-end gap-2">
+      <div class="small text-muted">
+        Se&ccedil;ili Tarih: {{ selected_date|date:"d.m.Y" }}
+        {% if is_today_selected %}
+          <span class="badge text-bg-success ms-1">Bug&uuml;n</span>
+        {% endif %}
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="?day={{ previous_date_input }}" class="btn btn-sm btn-outline-secondary">&Ouml;nceki G&uuml;n</a>
+        <a
+          href="{% if can_go_next_date %}?day={{ next_date_input }}{% else %}#{% endif %}"
+          class="btn btn-sm btn-outline-secondary {% if not can_go_next_date %}disabled{% endif %}"
+          {% if not can_go_next_date %}aria-disabled="true" tabindex="-1"{% endif %}
+        >
+          Sonraki G&uuml;n
+        </a>
+      </div>
+      <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+        <label for="operations-day" class="small text-muted mb-0">Tarih Se&ccedil;</label>
+        <input
+          type="date"
+          id="operations-day"
+          name="day"
+          value="{{ selected_date_input }}"
+          class="form-control form-control-sm"
+          style="max-width: 190px;"
+        >
+        <button type="submit" class="btn btn-sm btn-primary">Getir</button>
+        {% if not is_today_selected %}
+          <a href="?day={{ today_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">Bug&uuml;n</a>
+        {% endif %}
+        <a href="/admin/" class="btn btn-sm btn-outline-secondary"><i class="bi bi-gear me-1"></i>Admin</a>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section class="provider-kpi-grid mb-4" aria-label="G&uuml;nl&uuml;k metrikler">
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n A&ccedil;&#305;lan Talep</div>
+    <div class="provider-kpi-value">{{ daily_metrics.new_requests }}</div>
+    <div class="provider-kpi-note">Yeni form kay&#305;tlar&#305;.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n E&#351;le&#351;en</div>
+    <div class="provider-kpi-value">{{ daily_metrics.matched_requests }}</div>
+    <div class="provider-kpi-note">M&uuml;&#351;teri-usta se&ccedil;imi tamamlananlar.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n Tamamlanan</div>
+    <div class="provider-kpi-value">{{ daily_metrics.completed_requests }}</div>
+    <div class="provider-kpi-note">Kapanan i&#351; say&#305;s&#305;.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n &#304;ptal</div>
+    <div class="provider-kpi-value">{{ daily_metrics.cancelled_requests }}</div>
+    <div class="provider-kpi-note">&#304;ptal/no-show dahil.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n Mesaj</div>
+    <div class="provider-kpi-value">{{ daily_metrics.new_messages }}</div>
+    <div class="provider-kpi-note">Sohbet trafi&#287;i.</div>
+  </article>
+  <article class="provider-kpi-card">
+    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n Hata</div>
+    <div class="provider-kpi-value">{{ daily_metrics.new_errors }}</div>
+    <div class="provider-kpi-note">500 tipi hata kay&#305;tlar&#305;.</div>
+  </article>
+</section>
+
+<section class="row g-3 mb-4">
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">A&ccedil;&#305;k Talep</div>
+        <div class="h4 mb-1">{{ open_request_count }}</div>
+        <div class="small text-muted">Yeni + onay bekleyen + e&#351;le&#351;en.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">A&ccedil;&#305;k Randevu</div>
+        <div class="h4 mb-1">{{ open_appointment_count }}</div>
+        <div class="small text-muted">Onay s&uuml;recindeki randevular.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">Onays&#305;z Usta</div>
+        <div class="h4 mb-1">{{ pending_provider_approval_count }}</div>
+        <div class="small text-muted">Admin onay&#305; bekleyen hesaplar.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">Okunmam&#305;&#351; Mesaj</div>
+        <div class="h4 mb-1">{{ unread_message_count }}</div>
+        <div class="small text-muted">T&uuml;m a&ccedil;&#305;k threadlerde.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <h2 class="h5 mb-0"><i class="bi bi-cpu me-2"></i>Scheduler ve Hata Durumu</h2>
+      {% if scheduler_healthy %}
+        <span class="status-pill status-completed">Scheduler: Sa&#287;l&#305;kl&#305;</span>
+      {% else %}
+        <span class="status-pill status-cancelled">Scheduler: Kontrol Gerekli</span>
+      {% endif %}
+    </div>
+    <div class="row g-3 mt-1">
+      <div class="col-12 col-lg-7">
+        <div class="small text-muted">Marketplace worker heartbeat</div>
+        {% if scheduler_heartbeat %}
+          <div class="small mt-1">&Ccedil;al&#305;&#351;ma say&#305;s&#305;: <strong>{{ scheduler_heartbeat.run_count }}</strong></div>
+          <div class="small">Son ba&#351;ar&#305;: {% if scheduler_heartbeat.last_success_at %}{{ scheduler_heartbeat.last_success_at|date:"d.m.Y H:i:s" }}{% else %}-{% endif %}</div>
+          <div class="small">Ya&#351;: {% if scheduler_age_seconds != None %}{{ scheduler_age_seconds }} sn{% else %}-{% endif %} (limit {{ scheduler_stale_after_seconds }} sn)</div>
+          {% if scheduler_heartbeat.last_error %}
+            <div class="small text-danger mt-1">Son hata: {{ scheduler_heartbeat.last_error }}</div>
+          {% endif %}
+        {% else %}
+          <div class="small text-danger mt-1">Heartbeat kayd&#305; bulunamad&#305;.</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-lg-5">
+        <div class="small text-muted">Hata kay&#305;tlar&#305;</div>
+        <div class="small mt-1">&Ccedil;&ouml;z&uuml;lmemi&#351;: <strong>{{ unresolved_error_count }}</strong></div>
+        <div class="small">Se&ccedil;ili G&uuml;n: <strong>{{ daily_metrics.new_errors }}</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="row g-3 mb-4">
+  <div class="col-12 col-lg-6">
+    <section class="card panel-card shadow-sm reveal-up h-100">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3"><i class="bi bi-kanban me-2"></i>Talep Durum Da&#287;&#305;l&#305;m&#305;</h2>
+        <div class="table-responsive">
+          <table class="table request-table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Durum</th>
+                <th>Adet</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in request_status_breakdown %}
+                <tr>
+                  <td>{{ row.label }}</td>
+                  <td>{{ row.count }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="col-12 col-lg-6">
+    <section class="card panel-card shadow-sm reveal-up h-100">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3"><i class="bi bi-calendar-check me-2"></i>Randevu Durum Da&#287;&#305;l&#305;m&#305;</h2>
+        <div class="table-responsive">
+          <table class="table request-table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Durum</th>
+                <th>Adet</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in appointment_status_breakdown %}
+                <tr>
+                  <td>{{ row.label }}</td>
+                  <td>{{ row.count }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-clock-history me-2"></i>Se&ccedil;ili G&uuml;n Sistem Hareketleri</h2>
+    {% if activity_rows %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Zaman</th>
+              <th>Aksiyon</th>
+              <th>Talep</th>
+              <th>Akt&ouml;r</th>
+              <th>Kaynak</th>
+              <th>&Ouml;zet</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in activity_rows %}
+              <tr>
+                <td data-label="Zaman">{{ row.created_at|date:"d.m.Y H:i:s" }}</td>
+                <td data-label="Aksiyon">{{ row.get_action_type_display }}</td>
+                <td data-label="Talep">{% if row.service_request_id %}#{{ row.service_request_id }}{% else %}-{% endif %}</td>
+                <td data-label="Akt&ouml;r">{% if row.actor_user %}{{ row.actor_user.username }}{% else %}-{% endif %}</td>
+                <td data-label="Kaynak">{{ row.get_source_display }}</td>
+                <td data-label="&Ouml;zet">{{ row.summary }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if activity_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ activity_page_obj.number }} / {{ activity_page_obj.paginator.num_pages }}</span>
+          <nav aria-label="Aktivite sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not activity_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?activity_page={% if activity_page_obj.has_previous %}{{ activity_page_obj.previous_page_number }}{% else %}1{% endif %}{{ activity_page_query }}" aria-label="&Ouml;nceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ activity_page_obj.number }}</span></li>
+              <li class="page-item {% if not activity_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?activity_page={% if activity_page_obj.has_next %}{{ activity_page_obj.next_page_number }}{% else %}{{ activity_page_obj.paginator.num_pages }}{% endif %}{{ activity_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Hen&uuml;z hareket kayd&#305; yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-bug me-2"></i>Se&ccedil;ili G&uuml;n Hata Kay&#305;tlar&#305;</h2>
+    {% if recent_errors %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Zaman</th>
+              <th>Kod</th>
+              <th>Yol</th>
+              <th>Kullan&#305;c&#305;</th>
+              <th>Mesaj</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in recent_errors %}
+              <tr>
+                <td data-label="Zaman">{{ item.created_at|date:"d.m.Y H:i:s" }}</td>
+                <td data-label="Kod">{{ item.status_code }}</td>
+                <td data-label="Yol">{{ item.method }} {{ item.path }}</td>
+                <td data-label="Kullan&#305;c&#305;">{% if item.user %}{{ item.user.username }}{% else %}-{% endif %}</td>
+                <td data-label="Mesaj">{{ item.message }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">Hata kayd&#305; yok.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
