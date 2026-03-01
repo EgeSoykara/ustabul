@@ -547,12 +547,13 @@
   (function () {
     const forms = document.querySelectorAll(".appointment-create-form");
     if (!forms.length) return;
+    const minLeadMinutes = Number("{{ appointment_min_lead_minutes|default:5 }}") || 5;
 
     const presetMap = {
-      now: { minutes: 1, label: "hemen" },
-      "30m": { minutes: 30, label: "30 dakika sonra" },
-      "1h": { minutes: 60, label: "1 saat sonra" },
-      "2h": { minutes: 120, label: "2 saat sonra" },
+      now: { minutes: minLeadMinutes, label: "en erken saat" },
+      "30m": { minutes: Math.max(30, minLeadMinutes), label: "30 dakika sonra" },
+      "1h": { minutes: Math.max(60, minLeadMinutes), label: "1 saat sonra" },
+      "2h": { minutes: Math.max(120, minLeadMinutes), label: "2 saat sonra" },
     };
 
     function toDateTimeLocal(date) {
@@ -592,7 +593,7 @@
       if (!presetInput || !dateInput || !summary || !quickButtons.length) return;
 
       function updateMinDate() {
-        dateInput.min = toDateTimeLocal(nextDateByMinutes(1));
+        dateInput.min = toDateTimeLocal(nextDateByMinutes(minLeadMinutes));
       }
 
       function setSummary(text, isError) {

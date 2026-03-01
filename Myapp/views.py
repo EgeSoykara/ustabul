@@ -248,6 +248,10 @@ def get_appointment_customer_confirm_minutes():
     return max(1, int(getattr(settings, "APPOINTMENT_CUSTOMER_CONFIRM_MINUTES", 720)))
 
 
+def get_appointment_min_lead_minutes():
+    return max(1, int(getattr(settings, "APPOINTMENT_MIN_LEAD_MINUTES", 5)))
+
+
 def get_last_minute_cancel_hours():
     return max(1, int(getattr(settings, "APPOINTMENT_LAST_MINUTE_CANCEL_HOURS", 6)))
 
@@ -405,6 +409,12 @@ def get_activity_log_retention_days():
 
 def get_error_log_retention_days():
     return max(7, int(getattr(settings, "ERROR_LOG_RETENTION_DAYS", 30)))
+
+
+def get_message_retention_days():
+    configured = int(getattr(settings, "MESSAGE_RETENTION_DAYS", 120))
+    minimum = max(get_notification_retention_days(), 30)
+    return max(minimum, configured)
 
 
 def get_lifecycle_health_token():
@@ -699,6 +709,10 @@ def maybe_run_housekeeping(*, now=None, force=False):
         ).delete()
         ErrorLog.objects.filter(
             created_at__lt=reference - timedelta(days=get_error_log_retention_days())
+        ).delete()
+        ServiceMessage.objects.filter(
+            read_at__isnull=False,
+            created_at__lt=reference - timedelta(days=get_message_retention_days()),
         ).delete()
         cache.set(cache_key, now_ts, timeout=run_interval_seconds)
         return True
@@ -2519,6 +2533,7 @@ def my_requests(request):
             "customer_requests_signature": customer_snapshot["signature"],
             "customer_snapshot": customer_snapshot,
             "customer_flow_summary": customer_flow_summary,
+            "appointment_min_lead_minutes": get_appointment_min_lead_minutes(),
         },
     )
 
@@ -3354,7 +3369,6 @@ def provider_requests(request):
         service_request__matched_offer__provider=provider,
         read_at__isnull=True,
     ).exclude(sender_role="provider").count()
-
     waiting_selection_page_query = build_page_query_suffix(request, "waiting_selection_page")
     pending_offer_page_query = build_page_query_suffix(request, "pending_offer_page")
     active_thread_page_query = build_page_query_suffix(request, "active_thread_page")

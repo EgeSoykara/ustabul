@@ -25,6 +25,7 @@ from .models import (
 )
 from .notifications import build_notification_entries, get_total_unread_notifications_count
 from .views import (
+    maybe_run_housekeeping,
     refresh_offer_lifecycle,
     transition_appointment_status,
     transition_service_request_status,
@@ -203,6 +204,54 @@ class MarketplaceTests(TestCase):
 
         entries = build_notification_entries(self.provider_user_ali, limit=50)
         self.assertTrue(any(item["kind"] == "workflow" for item in entries))
+
+    def test_provider_notification_deduplicates_same_status_events(self):
+        customer = User.objects.create_user(username="dedupemusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Dedupe Musteri",
+            customer_phone="05000000012",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Ayni durum event dedupe testi",
+            customer=customer,
+            status="pending_provider",
+        )
+        ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="DEDUPE001",
+            sequence=1,
+            status="pending",
+        )
+        WorkflowEvent.objects.create(
+            target_type="request",
+            service_request=service_request,
+            from_status="new",
+            to_status="pending_provider",
+            actor_user=customer,
+            actor_role="customer",
+            source="user",
+            note="Ilk event",
+        )
+        WorkflowEvent.objects.create(
+            target_type="request",
+            service_request=service_request,
+            from_status="new",
+            to_status="pending_provider",
+            actor_user=customer,
+            actor_role="customer",
+            source="user",
+            note="Ikinci event",
+        )
+
+        unread_count = get_total_unread_notifications_count(self.provider_user_ali)
+        self.assertGreaterEqual(unread_count, 1)
+        self.assertLessEqual(unread_count, 2)
+
+        entries = build_notification_entries(self.provider_user_ali, limit=50)
+        workflow_entries = [item for item in entries if item["kind"] == "workflow"]
+        self.assertEqual(len(workflow_entries), 1)
 
     def test_service_request_normalizes_phone_input(self):
         User.objects.create_user(username="formatmusteri", password="GucluSifre123!")
@@ -647,6 +696,35 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, "Randevu zamani secmelisiniz.")
         self.assertFalse(ServiceAppointment.objects.filter(service_request=service_request).exists())
 
+    @override_settings(TIME_ZONE="Europe/Nicosia", APPOINTMENT_MIN_LEAD_MINUTES=5)
+    def test_customer_cannot_create_appointment_too_close_in_cyprus_timezone(self):
+        user = User.objects.create_user(username="yakinsaatmusteri", password="GucluSifre123!")
+        self.client.login(username="yakinsaatmusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Yakin Saat Musteri",
+            customer_phone="05005550333",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Yakin randevu zamani testi",
+            matched_provider=self.provider_ali,
+            customer=user,
+            status="matched",
+        )
+        near_local_time = timezone.localtime(timezone.now() + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M")
+
+        response = self.client.post(
+            reverse("create_appointment", args=[service_request.id]),
+            data={
+                "scheduled_for": near_local_time,
+                "customer_note": "Yakin saat denemesi",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Randevu zamani en az 5 dakika sonrasinda olmali.")
+        self.assertFalse(ServiceAppointment.objects.filter(service_request=service_request).exists())
+
     def test_provider_can_confirm_appointment_without_customer_reconfirm(self):
         customer = User.objects.create_user(username="randevumusteri", password="GucluSifre123!")
         appointment_request = ServiceRequest.objects.create(
@@ -875,6 +953,43 @@ class MarketplaceTests(TestCase):
         self.assertNotEqual(lock.lock_owner, "old-worker")
         self.assertIsNotNone(lock.locked_until)
         self.assertGreater(lock.locked_until, timezone.now())
+
+    @override_settings(MESSAGE_RETENTION_DAYS=30, NOTIFICATION_RETENTION_DAYS=7)
+    def test_housekeeping_deletes_old_read_messages_only(self):
+        customer = User.objects.create_user(username="readcleanup", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Cleanup Musteri",
+            customer_phone="05005556666",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Mesaj temizleme testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        old_time = timezone.now() - timedelta(days=45)
+        old_read = ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=customer,
+            sender_role="customer",
+            body="eski okundu mesaj",
+            read_at=timezone.now(),
+        )
+        old_unread = ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=customer,
+            sender_role="customer",
+            body="eski okunmamis mesaj",
+            read_at=None,
+        )
+        ServiceMessage.objects.filter(id=old_read.id).update(created_at=old_time, read_at=old_time)
+        ServiceMessage.objects.filter(id=old_unread.id).update(created_at=old_time)
+
+        maybe_run_housekeeping(force=True)
+
+        self.assertFalse(ServiceMessage.objects.filter(id=old_read.id).exists())
+        self.assertTrue(ServiceMessage.objects.filter(id=old_unread.id).exists())
 
     def test_transition_creates_workflow_event_with_actor_metadata(self):
         customer = User.objects.create_user(username="eventcustomer", password="GucluSifre123!")

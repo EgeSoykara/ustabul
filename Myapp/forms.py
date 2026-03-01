@@ -703,7 +703,8 @@ class AppointmentCreateForm(forms.ModelForm):
         self.provider = kwargs.pop("provider", None)
         self.current_appointment_id = kwargs.pop("current_appointment_id", None)
         super().__init__(*args, **kwargs)
-        min_dt = timezone.localtime(timezone.now() + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M")
+        self.min_lead_minutes = max(1, int(getattr(settings, "APPOINTMENT_MIN_LEAD_MINUTES", 5)))
+        min_dt = timezone.localtime(timezone.now() + timedelta(minutes=self.min_lead_minutes)).strftime("%Y-%m-%dT%H:%M")
         self.fields["scheduled_for"].widget.attrs["min"] = min_dt
 
     def _validate_provider_availability(self, scheduled_for):
@@ -744,13 +745,15 @@ class AppointmentCreateForm(forms.ModelForm):
             minutes = self.QUICK_TIME_MINUTES.get(preset)
             if minutes is None:
                 raise ValidationError("Gecersiz hizli tarih secimi.")
-            scheduled_for = timezone.now() + timedelta(minutes=minutes)
+            scheduled_for = timezone.now() + timedelta(minutes=max(minutes, self.min_lead_minutes))
             self.cleaned_data["scheduled_for"] = scheduled_for
 
         if not scheduled_for:
             raise ValidationError("Randevu zamani secmelisiniz.")
-        if scheduled_for <= timezone.now():
-            raise ValidationError("Randevu zamani simdiki zamandan ileri olmali.")
+        min_lead_minutes = getattr(self, "min_lead_minutes", max(1, int(getattr(settings, "APPOINTMENT_MIN_LEAD_MINUTES", 5))))
+        minimum_allowed = timezone.now() + timedelta(minutes=min_lead_minutes)
+        if scheduled_for < minimum_allowed:
+            raise ValidationError(f"Randevu zamani en az {min_lead_minutes} dakika sonrasinda olmali.")
         self._validate_provider_availability(scheduled_for)
         return scheduled_for
 
@@ -773,5 +776,3 @@ class ServiceMessageForm(forms.ModelForm):
         if len(body) < 2:
             raise ValidationError("Mesaj en az 2 karakter olmalı.")
         return body
-
-

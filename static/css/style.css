@@ -3266,6 +3266,93 @@ body {
   color: #64748b;
 }
 
+.provider-easy-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.provider-step-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-strong) 96%, transparent);
+  padding: 12px;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.05);
+}
+
+.provider-step-no {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f766e;
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.provider-step-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.provider-step-title {
+  font-weight: 800;
+  font-size: 0.98rem;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.provider-step-meta {
+  margin-top: 2px;
+  font-size: 0.84rem;
+  color: #64748b;
+}
+
+.provider-step-link {
+  min-width: 74px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.provider-history-collapse {
+  border: 1px solid #dbe5ef;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.provider-history-collapse summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 800;
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+}
+
+.provider-history-collapse summary::-webkit-details-marker {
+  display: none;
+}
+
+.provider-history-collapse summary::after {
+  content: "Aç";
+  margin-left: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.provider-history-collapse[open] summary::after {
+  content: "Kapat";
+}
+
 .provider-flow-badge {
   display: inline-flex;
   align-items: center;
@@ -3410,6 +3497,38 @@ body {
   color: #94a3b8;
 }
 
+[data-theme="dark"] .provider-step-card {
+  border-color: rgba(148, 163, 184, 0.34);
+  background: rgba(15, 23, 42, 0.86);
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.35);
+}
+
+[data-theme="dark"] .provider-step-no {
+  background: rgba(56, 189, 248, 0.24);
+  color: #bae6fd;
+}
+
+[data-theme="dark"] .provider-step-title {
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .provider-step-meta {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .provider-history-collapse {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.78);
+}
+
+[data-theme="dark"] .provider-history-collapse summary {
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .provider-history-collapse summary::after {
+  color: #5eead4;
+}
+
 [data-theme="dark"] .provider-flow-warning {
   color: #fde68a;
   background: rgba(180, 83, 9, 0.3);
@@ -3523,11 +3642,28 @@ body {
   .provider-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .provider-easy-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 767px) {
   .provider-kpi-grid {
     grid-template-columns: 1fr;
+  }
+
+  .provider-easy-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-step-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .provider-step-link {
+    width: 100%;
   }
 
   .agreement-history-section .card-body {

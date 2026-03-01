@@ -102,7 +102,9 @@ def get_total_unread_notifications_count(user):
     workflow_seen_at = cursor.workflow_seen_at if cursor else None
     if workflow_seen_at:
         workflow_qs = workflow_qs.filter(created_at__gt=workflow_seen_at)
-    unread_workflow_count = workflow_qs.count()
+    unread_workflow_count = (
+        workflow_qs.values("target_type", "service_request_id", "appointment_id", "to_status").distinct().count()
+    )
     total_unread = unread_messages_count + unread_workflow_count
     cache.set(cache_key, total_unread, timeout=cache_seconds)
     return total_unread
@@ -164,7 +166,20 @@ def build_notification_entries(user, *, limit=180):
         .select_related("service_request", "appointment", "actor_user")
         .order_by("-created_at")[:limit]
     )
+    deduped_events = []
+    seen_event_keys = set()
     for event in events:
+        event_key = (
+            event.target_type,
+            event.service_request_id,
+            event.appointment_id,
+            event.to_status,
+        )
+        if event_key in seen_event_keys:
+            continue
+        seen_event_keys.add(event_key)
+        deduped_events.append(event)
+    for event in deduped_events:
         to_label = _event_status_label(event, event.to_status)
         from_label = _event_status_label(event, event.from_status)
         target_label = "Randevu" if event.target_type == "appointment" else "Talep"
