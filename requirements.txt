@@ -1,5 +1,8 @@
 Django==5.2.4
 dj-database-url==2.2.0
+channels==4.1.0
+channels-redis==4.2.0
 gunicorn==23.0.0
+uvicorn==0.35.0
 psycopg[binary]==3.2.13
 whitenoise==6.9.0

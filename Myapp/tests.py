@@ -23,6 +23,7 @@ from .models import (
     ServiceType,
     WorkflowEvent,
 )
+from .notifications import build_notification_entries, get_total_unread_notifications_count
 from .views import (
     refresh_offer_lifecycle,
     transition_appointment_status,
@@ -174,6 +175,34 @@ class MarketplaceTests(TestCase):
         self.assertEqual(latest.customer, customer)
         self.assertEqual(latest.status, "pending_provider")
         self.assertEqual(ProviderOffer.objects.filter(service_request=latest, status="pending").count(), 2)
+
+    def test_provider_gets_unread_notification_for_pending_offer(self):
+        customer = User.objects.create_user(username="bildirimmusteri", password="GucluSifre123!")
+        self.client.login(username="bildirimmusteri", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Bildirim Musteri",
+                "customer_phone": "05000000011",
+                "service_type": self.service.id,
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "details": "Yeni teklif bildirimi testi",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        service_request = ServiceRequest.objects.latest("created_at")
+        self.assertEqual(service_request.status, "pending_provider")
+        self.assertTrue(
+            ProviderOffer.objects.filter(service_request=service_request, provider=self.provider_ali, status="pending").exists()
+        )
+
+        unread_count = get_total_unread_notifications_count(self.provider_user_ali)
+        self.assertGreaterEqual(unread_count, 1)
+
+        entries = build_notification_entries(self.provider_user_ali, limit=50)
+        self.assertTrue(any(item["kind"] == "workflow" for item in entries))
 
     def test_service_request_normalizes_phone_input(self):
         User.objects.create_user(username="formatmusteri", password="GucluSifre123!")

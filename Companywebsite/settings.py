@@ -110,6 +110,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'Myapp',
 ]
 
@@ -146,6 +147,25 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'Companywebsite.wsgi.application'
+ASGI_APPLICATION = 'Companywebsite.asgi.application'
+
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+if REDIS_URL and len(REDIS_URL) >= 2 and REDIS_URL[0] == REDIS_URL[-1] and REDIS_URL[0] in {"'", '"'}:
+    REDIS_URL = REDIS_URL[1:-1].strip()
+HAS_CHANNELS_REDIS = importlib.util.find_spec("channels_redis") is not None
+if REDIS_URL and HAS_CHANNELS_REDIS:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [REDIS_URL]},
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 
 # Database

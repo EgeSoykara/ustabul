@@ -4,6 +4,8 @@ import time
 import unicodedata
 from datetime import datetime, timedelta
 from uuid import uuid4
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from django.contrib import messages
 from django.conf import settings
@@ -2008,6 +2010,25 @@ def serialize_service_message(message_item, viewer_role):
     }
 
 
+def get_request_messages_group_name(request_id):
+    return f"request_messages_{int(request_id)}"
+
+
+def publish_service_message_event(message_item):
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    payload = serialize_service_message(message_item, message_item.sender_role)
+    payload.pop("mine", None)
+    try:
+        async_to_sync(channel_layer.group_send)(
+            get_request_messages_group_name(message_item.service_request_id),
+            {"type": "service_message_created", "message": payload},
+        )
+    except Exception:
+        return
+
+
 def resolve_request_message_access(request, request_id, *, api=False):
     service_request = get_object_or_404(
         ServiceRequest.objects.select_related(
@@ -2108,6 +2129,7 @@ def request_messages(request, request_id):
                 summary=f"Talep #{service_request.id} icin yeni mesaj",
                 note=message_item.body,
             )
+            publish_service_message_event(message_item)
             if is_ajax:
                 return JsonResponse(
                     {

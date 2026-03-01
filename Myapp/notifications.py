@@ -75,9 +75,11 @@ def get_workflow_event_queryset(user, provider=None, now=None):
     cutoff = get_notification_cutoff(now)
     if provider:
         return WorkflowEvent.objects.filter(
-            Q(service_request__matched_provider=provider) | Q(appointment__provider=provider),
+            Q(service_request__matched_provider=provider)
+            | Q(appointment__provider=provider)
+            | Q(service_request__provider_offers__provider=provider),
             created_at__gte=cutoff,
-        )
+        ).distinct()
     return WorkflowEvent.objects.filter(service_request__customer=user, created_at__gte=cutoff)
 
 

@@ -3,10 +3,10 @@
 <section class="card panel-card request-messages-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-2 request-messages-toolbar">
     <div>
-      <h1 class="h4 mb-1"><i class="bi bi-chat-dots-fill me-2"></i>Talep #{{ service_request.id }} Mesajları</h1>
+      <h1 class="h4 mb-1"><i class="bi bi-chat-dots-fill me-2"></i>Talep #{{ service_request.id }} Mesajlar&#305;</h1>
       <p class="mb-0 text-muted">{{ service_request.service_type.name }} | {{ service_request.city }} / {{ service_request.district }}</p>
     </div>
-    <a href="{% url back_url %}" class="btn nav-ghost-btn"><i class="bi bi-arrow-left me-1"></i>Panele Dön</a>
+    <a href="{% url back_url %}" class="btn nav-ghost-btn"><i class="bi bi-arrow-left me-1"></i>Panele D&#246;n</a>
   </div>
 </section>
 
@@ -17,6 +17,8 @@
         <div
           class="chat-thread"
           id="chat-thread"
+          data-request-id="{{ service_request.id }}"
+          data-viewer-role="{{ viewer_role }}"
           data-snapshot-url="{% url 'request_messages_snapshot' service_request.id %}"
           data-latest-id="{{ latest_message_id }}"
         >
@@ -31,7 +33,7 @@
           {% endfor %}
         </div>
         <p id="chat-empty-state" class="mb-0 text-muted mt-2" {% if messages_list %}hidden{% endif %}>
-          Henüz mesaj yok. İlk mesajı gönderebilirsin.
+          Hen&#252;z mesaj yok. &#304;lk mesaj&#305; g&#246;nderebilirsin.
         </p>
       </div>
     </div>
@@ -56,13 +58,13 @@
             </div>
           {% endif %}
           <div class="col-12">
-            <button type="submit" class="btn btn-main w-100"><i class="bi bi-send-fill me-1"></i>Gönder</button>
+            <button type="submit" class="btn btn-main w-100"><i class="bi bi-send-fill me-1"></i>G&#246;nder</button>
           </div>
         </form>
 
         {% if quick_reply_options %}
           <div class="message-quick-replies mt-3">
-            <div class="small text-muted mb-2">Hazır yanıtlar</div>
+            <div class="small text-muted mb-2">Haz&#305;r yan&#305;tlar</div>
             <div class="message-quick-grid">
               {% for quick_reply in quick_reply_options %}
                 <button type="button" class="btn btn-sm btn-outline-secondary message-quick-btn" data-quick-reply="{{ quick_reply|escapejs }}">
@@ -84,29 +86,54 @@
     const form = document.getElementById("chat-message-form");
     if (!thread || !form) return;
 
+    const requestId = Number(thread.dataset.requestId || 0);
+    const viewerRole = thread.dataset.viewerRole || "";
     const snapshotUrl = thread.dataset.snapshotUrl || "";
     const emptyState = document.getElementById("chat-empty-state");
     const statusBox = document.getElementById("chat-form-status");
     const textarea = form.querySelector("textarea[name='body']");
     const submitButton = form.querySelector("button[type='submit']");
     const quickReplyButtons = document.querySelectorAll("[data-quick-reply]");
+    const wsSupported = typeof window.WebSocket !== "undefined";
+
     let latestId = Number(thread.dataset.latestId || 0);
     let sending = false;
     let pollingStopped = false;
+    let socket = null;
+    let reconnectTimer = null;
+
     const pollIntervalMs = 5000;
+    const reconnectDelayMs = 3000;
+
+    function buildSnapshotUrl(afterId) {
+      if (!snapshotUrl) return "";
+      const joiner = snapshotUrl.indexOf("?") >= 0 ? "&" : "?";
+      return snapshotUrl + joiner + "after_id=" + encodeURIComponent(afterId || 0);
+    }
+
+    function buildWebSocketUrl() {
+      if (!requestId) return "";
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      return wsProtocol + "//" + window.location.host + "/ws/talep/" + requestId + "/mesajlar/";
+    }
 
     function setStatus(text, isError) {
       if (!statusBox) return;
       if (!text) {
         statusBox.classList.add("d-none");
         statusBox.textContent = "";
-        statusBox.classList.remove("text-danger", "text-success");
+        statusBox.classList.remove("text-danger", "text-success", "text-muted");
         return;
       }
       statusBox.textContent = text;
-      statusBox.classList.remove("d-none");
-      statusBox.classList.toggle("text-danger", Boolean(isError));
-      statusBox.classList.toggle("text-success", !isError);
+      statusBox.classList.remove("d-none", "text-danger", "text-success", "text-muted");
+      if (isError === true) {
+        statusBox.classList.add("text-danger");
+      } else if (isError === false) {
+        statusBox.classList.add("text-success");
+      } else {
+        statusBox.classList.add("text-muted");
+      }
     }
 
     function escapeHtml(value) {
@@ -151,7 +178,11 @@
         const messageId = Number(message.id || 0);
         if (!messageId) return;
         if (thread.querySelector('[data-message-id="' + messageId + '"]')) return;
-        thread.appendChild(renderMessageItem(message));
+        const normalizedMessage = Object.assign({}, message);
+        if (normalizedMessage.mine === undefined) {
+          normalizedMessage.mine = normalizedMessage.sender_role === viewerRole;
+        }
+        thread.appendChild(renderMessageItem(normalizedMessage));
         if (messageId > latestId) latestId = messageId;
       });
 
@@ -165,25 +196,36 @@
 
     function disableComposer(reasonText) {
       pollingStopped = true;
+      if (socket) {
+        try {
+          socket.close();
+        } catch (error) {
+          void error;
+        }
+      }
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       if (textarea) textarea.disabled = true;
       if (submitButton) submitButton.disabled = true;
       quickReplyButtons.forEach(function (button) {
         button.disabled = true;
       });
-      setStatus(reasonText || "Mesajlaşma şu anda kapalı.", true);
+      setStatus(reasonText || "Mesajla\u015fma \u015fu anda kapal\u0131.", true);
     }
 
     async function pollMessages() {
       if (pollingStopped || document.hidden || !snapshotUrl) return;
       try {
-        const response = await fetch(snapshotUrl + "after_id=" + encodeURIComponent(latestId), {
+        const response = await fetch(buildSnapshotUrl(latestId), {
           method: "GET",
           credentials: "same-origin",
           cache: "no-store",
           headers: { "X-Requested-With": "XMLHttpRequest" },
         });
         if (response.status === 409) {
-          disableComposer("Bu talepte mesajlaşma kapatıldı.");
+          disableComposer("Bu talepte mesajla\u015fma kapat\u0131ld\u0131.");
           return;
         }
         if (!response.ok) return;
@@ -198,6 +240,47 @@
       }
     }
 
+    function connectWebSocket() {
+      if (!wsSupported || pollingStopped) return;
+      const wsUrl = buildWebSocketUrl();
+      if (!wsUrl) return;
+
+      try {
+        socket = new window.WebSocket(wsUrl);
+      } catch (error) {
+        void error;
+        return;
+      }
+
+      socket.addEventListener("open", function () {
+        setStatus("", null);
+      });
+
+      socket.addEventListener("message", function (event) {
+        try {
+          const payload = JSON.parse(event.data || "{}");
+          if (payload.type === "message.created" && payload.message) {
+            appendMessages([payload.message], false);
+          }
+        } catch (error) {
+          void error;
+        }
+      });
+
+      socket.addEventListener("close", function (event) {
+        socket = null;
+        if (pollingStopped) return;
+        if ([4401, 4403, 4404, 4409].indexOf(event.code) >= 0) {
+          disableComposer("Bu konu\u015fma art\u0131k eri\u015filebilir de\u011fil.");
+          return;
+        }
+        if (!document.hidden) {
+          setStatus("Ba\u011flant\u0131 kesildi, yeniden ba\u011flan\u0131l\u0131yor...", null);
+        }
+        reconnectTimer = window.setTimeout(connectWebSocket, reconnectDelayMs);
+      });
+    }
+
     form.addEventListener("submit", async function (event) {
       if (pollingStopped) return;
       event.preventDefault();
@@ -205,13 +288,13 @@
 
       const bodyText = String(textarea.value || "").trim();
       if (bodyText.length < 2) {
-        setStatus("Mesaj en az 2 karakter olmalı.", true);
+        setStatus("Mesaj en az 2 karakter olmal\u0131.", true);
         return;
       }
 
       sending = true;
       submitButton.disabled = true;
-      setStatus("Gönderiliyor...", false);
+      setStatus("G\u00f6nderiliyor...", null);
 
       try {
         const response = await fetch(form.action || window.location.href, {
@@ -222,14 +305,14 @@
         });
         const payload = await response.json();
         if (!response.ok || !payload.ok || !payload.message) {
-          setStatus(payload.error || "Mesaj gönderilemedi.", true);
+          setStatus(payload.error || "Mesaj g\u00f6nderilemedi.", true);
           return;
         }
         appendMessages([payload.message], true);
         textarea.value = "";
-        setStatus("Mesaj gönderildi.", false);
+        setStatus("Mesaj g\u00f6nderildi.", false);
       } catch (error) {
-        setStatus("", false);
+        setStatus("", null);
         form.submit();
         return;
       } finally {
@@ -249,6 +332,7 @@
     });
 
     scrollToBottom();
+    connectWebSocket();
     window.setInterval(pollMessages, pollIntervalMs);
     pollMessages();
   })();
