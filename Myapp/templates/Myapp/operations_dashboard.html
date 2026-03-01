@@ -16,20 +16,22 @@
       </div>
 
       <div class="operations-toolbar-controls">
-        <div class="operations-day-nav" role="group" aria-label="Tarih gezintisi">
-          <a href="?day={{ previous_date_input }}" class="btn btn-outline-secondary">
+        <form method="get" action="{% url 'operations_dashboard' %}" class="operations-day-nav" aria-label="Tarih gezintisi">
+          <button type="submit" class="btn btn-outline-secondary" name="day" value="{{ previous_date_input }}">
             <i class="bi bi-chevron-left me-1"></i>&Ouml;nceki G&uuml;n
-          </a>
-          <a
-            href="{% if can_go_next_date %}?day={{ next_date_input }}{% else %}#{% endif %}"
-            class="btn btn-outline-secondary {% if not can_go_next_date %}disabled{% endif %}"
-            {% if not can_go_next_date %}aria-disabled="true" tabindex="-1"{% endif %}
+          </button>
+          <button
+            type="submit"
+            class="btn btn-outline-secondary"
+            name="day"
+            value="{{ next_date_input }}"
+            {% if not can_go_next_date %}disabled aria-disabled="true"{% endif %}
           >
             Sonraki G&uuml;n<i class="bi bi-chevron-right ms-1"></i>
-          </a>
-        </div>
+          </button>
+        </form>
 
-        <form method="get" class="operations-day-form">
+        <form method="get" action="{% url 'operations_dashboard' %}" class="operations-day-form">
           <label for="operations-day" class="operations-day-label">Tarih Se&ccedil;</label>
           <div class="operations-day-input-row">
             <input
@@ -37,13 +39,14 @@
               id="operations-day"
               name="day"
               value="{{ selected_date_input }}"
+              max="{{ today_date|date:'Y-m-d' }}"
               class="form-control operations-day-input"
             >
             <button type="submit" class="btn btn-primary operations-day-submit">Getir</button>
           </div>
           <div class="operations-day-actions">
             {% if not is_today_selected %}
-              <a href="?day={{ today_date|date:'Y-m-d' }}" class="btn btn-outline-secondary">Bug&uuml;n</a>
+              <a href="{% url 'operations_dashboard' %}?day={{ today_date|date:'Y-m-d' }}" class="btn btn-outline-secondary">Bug&uuml;n</a>
             {% endif %}
             <a href="/admin/" class="btn btn-outline-secondary"><i class="bi bi-gear me-1"></i>Admin</a>
           </div>

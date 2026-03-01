@@ -1,4 +1,4 @@
-const CACHE_NAME = "ustabul-pwa-v8";
+const CACHE_NAME = "ustabul-pwa-v9";
 const PRECACHE_URLS = [
   "/",
   "/offline/",
@@ -37,12 +37,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-          return response;
-        })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match("/offline/")))
+        .catch(() => caches.match("/offline/"))
     );
     return;
   }
@@ -71,22 +66,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // For app pages and non-static same-origin requests always hit network.
+  // This prevents stale HTML from being served after deployments.
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) {
-          return cached;
-        }
-        return fetch(request)
-          .then((response) => {
-            if (response && response.status === 200 && response.type === "basic") {
-              const responseClone = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-            }
-            return response;
-          })
-          .catch(() => caches.match("/offline/"));
-      })
+      fetch(request).catch(() => caches.match("/offline/"))
     );
   }
 });
