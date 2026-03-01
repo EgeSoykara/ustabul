@@ -93,6 +93,23 @@ def resolve_city_value(raw_city):
     return ""
 
 
+def resolve_district_value(raw_city, raw_district, *, include_any=False):
+    district_value = str(raw_district or "").strip()
+    if not district_value:
+        return ""
+    normalized_district = normalize_choice_value(district_value)
+    if include_any and normalized_district == normalize_choice_value(ANY_DISTRICT_VALUE):
+        return ANY_DISTRICT_VALUE
+
+    city_key = resolve_city_value(raw_city)
+    if not city_key:
+        return ""
+    for district in NC_CITY_DISTRICT_MAP.get(city_key, []):
+        if normalize_choice_value(district) == normalized_district:
+            return district
+    return ""
+
+
 def build_district_choices_for_city(raw_city, *, include_any=False):
     choices = [("", "\u0130l\u00e7e se\u00e7in")]
     if include_any:
@@ -203,6 +220,27 @@ class ServiceRequestForm(forms.ModelForm):
             )
         return details
 
+    def clean(self):
+        cleaned_data = super().clean()
+        city = cleaned_data.get("city")
+        district = cleaned_data.get("district")
+        if not city or not district:
+            return cleaned_data
+
+        city_key = resolve_city_value(city)
+        if not city_key:
+            self.add_error("city", "Geçerli bir şehir seçin.")
+            return cleaned_data
+
+        resolved_district = resolve_district_value(city_key, district, include_any=True)
+        if not resolved_district:
+            self.add_error("district", "Seçilen ilçe, şehir ile eşleşmiyor.")
+            return cleaned_data
+
+        cleaned_data["city"] = city_key
+        cleaned_data["district"] = resolved_district
+        return cleaned_data
+
 
 class CustomerSignupForm(UserCreationForm):
     first_name = forms.CharField(max_length=150, required=True, label="Ad")
@@ -266,12 +304,12 @@ class CustomerSignupForm(UserCreationForm):
             self.add_error("city", "Geçerli bir şehir seçin.")
             return cleaned_data
 
-        if district == ANY_DISTRICT_VALUE:
-            return cleaned_data
-
-        allowed_districts = set(NC_CITY_DISTRICT_MAP.get(city_key, []))
-        if district not in allowed_districts:
+        resolved_district = resolve_district_value(city_key, district, include_any=True)
+        if not resolved_district:
             self.add_error("district", "Seçilen ilçe, şehir ile eşleşmiyor.")
+            return cleaned_data
+        cleaned_data["city"] = city_key
+        cleaned_data["district"] = resolved_district
         return cleaned_data
 
 
@@ -390,9 +428,12 @@ class ProviderSignupForm(UserCreationForm):
             self.add_error("city", "Geçerli bir şehir seçin.")
             return cleaned_data
 
-        allowed_districts = set(NC_CITY_DISTRICT_MAP.get(city_key, []))
-        if district not in allowed_districts:
+        resolved_district = resolve_district_value(city_key, district, include_any=False)
+        if not resolved_district:
             self.add_error("district", "Seçilen ilçe, şehir ile eşleşmiyor.")
+            return cleaned_data
+        cleaned_data["city"] = city_key
+        cleaned_data["district"] = resolved_district
         return cleaned_data
 
 
@@ -439,6 +480,27 @@ class ProviderProfileForm(forms.ModelForm):
 
     def clean_phone(self):
         return normalize_phone_value(self.cleaned_data.get("phone"))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        city = cleaned_data.get("city")
+        district = cleaned_data.get("district")
+        if not city or not district:
+            return cleaned_data
+
+        city_key = resolve_city_value(city)
+        if not city_key:
+            self.add_error("city", "Geçerli bir şehir seçin.")
+            return cleaned_data
+
+        resolved_district = resolve_district_value(city_key, district, include_any=False)
+        if not resolved_district:
+            self.add_error("district", "Seçilen ilçe, şehir ile eşleşmiyor.")
+            return cleaned_data
+
+        cleaned_data["city"] = city_key
+        cleaned_data["district"] = resolved_district
+        return cleaned_data
 
 
 class ProviderAvailabilitySlotForm(forms.ModelForm):
@@ -517,6 +579,27 @@ class CustomerContactSettingsForm(forms.ModelForm):
     def clean_phone(self):
         return normalize_phone_value(self.cleaned_data.get("phone"))
 
+    def clean(self):
+        cleaned_data = super().clean()
+        city = cleaned_data.get("city")
+        district = cleaned_data.get("district")
+        if not city or not district:
+            return cleaned_data
+
+        city_key = resolve_city_value(city)
+        if not city_key:
+            self.add_error("city", "Geçerli bir şehir seçin.")
+            return cleaned_data
+
+        resolved_district = resolve_district_value(city_key, district, include_any=True)
+        if not resolved_district:
+            self.add_error("district", "Seçilen ilçe, şehir ile eşleşmiyor.")
+            return cleaned_data
+
+        cleaned_data["city"] = city_key
+        cleaned_data["district"] = resolved_district
+        return cleaned_data
+
 
 class ProviderContactSettingsForm(forms.ModelForm):
     city = FlexibleChoiceField(choices=NC_CITY_CHOICES, required=True, label="Şehir")
@@ -538,6 +621,27 @@ class ProviderContactSettingsForm(forms.ModelForm):
 
     def clean_phone(self):
         return normalize_phone_value(self.cleaned_data.get("phone"))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        city = cleaned_data.get("city")
+        district = cleaned_data.get("district")
+        if not city or not district:
+            return cleaned_data
+
+        city_key = resolve_city_value(city)
+        if not city_key:
+            self.add_error("city", "Geçerli bir şehir seçin.")
+            return cleaned_data
+
+        resolved_district = resolve_district_value(city_key, district, include_any=False)
+        if not resolved_district:
+            self.add_error("district", "Seçilen ilçe, şehir ile eşleşmiyor.")
+            return cleaned_data
+
+        cleaned_data["city"] = city_key
+        cleaned_data["district"] = resolved_district
+        return cleaned_data
 
 
 class AccountPasswordChangeForm(PasswordChangeForm):
@@ -669,4 +773,5 @@ class ServiceMessageForm(forms.ModelForm):
         if len(body) < 2:
             raise ValidationError("Mesaj en az 2 karakter olmalı.")
         return body
+
 

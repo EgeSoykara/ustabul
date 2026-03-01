@@ -1,44 +1,54 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card panel-card shadow-sm reveal-up mb-4">
-  <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
-    <div>
-      <h1 class="h4 mb-1"><i class="bi bi-speedometer2 me-2"></i>Operasyon Paneli</h1>
-      <p class="mb-0 text-muted">G&uuml;nl&uuml;k ak&#305;&#351;, a&ccedil;&#305;k i&#351; y&uuml;kleri ve son hareketler tek ekranda.</p>
-    </div>
-    <div class="d-flex flex-column align-items-md-end gap-2">
-      <div class="small text-muted">
-        Se&ccedil;ili Tarih: {{ selected_date|date:"d.m.Y" }}
-        {% if is_today_selected %}
-          <span class="badge text-bg-success ms-1">Bug&uuml;n</span>
-        {% endif %}
+<section class="card panel-card shadow-sm reveal-up mb-4 operations-toolbar-section">
+  <div class="card-body p-4">
+    <div class="operations-toolbar">
+      <div class="operations-toolbar-main">
+        <h1 class="h4 mb-1"><i class="bi bi-speedometer2 me-2"></i>Operasyon Paneli</h1>
+        <p class="mb-0 text-muted">G&uuml;nl&uuml;k ak&#305;&#351;, a&ccedil;&#305;k i&#351; y&uuml;kleri ve son hareketler tek ekranda.</p>
+        <div class="operations-selected-date">
+          <span class="operations-selected-date-label">Se&ccedil;ili Tarih</span>
+          <strong>{{ selected_date|date:"d.m.Y" }}</strong>
+          {% if is_today_selected %}
+            <span class="badge text-bg-success">Bug&uuml;n</span>
+          {% endif %}
+        </div>
       </div>
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        <a href="?day={{ previous_date_input }}" class="btn btn-sm btn-outline-secondary">&Ouml;nceki G&uuml;n</a>
-        <a
-          href="{% if can_go_next_date %}?day={{ next_date_input }}{% else %}#{% endif %}"
-          class="btn btn-sm btn-outline-secondary {% if not can_go_next_date %}disabled{% endif %}"
-          {% if not can_go_next_date %}aria-disabled="true" tabindex="-1"{% endif %}
-        >
-          Sonraki G&uuml;n
-        </a>
+
+      <div class="operations-toolbar-controls">
+        <div class="operations-day-nav" role="group" aria-label="Tarih gezintisi">
+          <a href="?day={{ previous_date_input }}" class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-left me-1"></i>&Ouml;nceki G&uuml;n
+          </a>
+          <a
+            href="{% if can_go_next_date %}?day={{ next_date_input }}{% else %}#{% endif %}"
+            class="btn btn-outline-secondary {% if not can_go_next_date %}disabled{% endif %}"
+            {% if not can_go_next_date %}aria-disabled="true" tabindex="-1"{% endif %}
+          >
+            Sonraki G&uuml;n<i class="bi bi-chevron-right ms-1"></i>
+          </a>
+        </div>
+
+        <form method="get" class="operations-day-form">
+          <label for="operations-day" class="operations-day-label">Tarih Se&ccedil;</label>
+          <div class="operations-day-input-row">
+            <input
+              type="date"
+              id="operations-day"
+              name="day"
+              value="{{ selected_date_input }}"
+              class="form-control operations-day-input"
+            >
+            <button type="submit" class="btn btn-primary operations-day-submit">Getir</button>
+          </div>
+          <div class="operations-day-actions">
+            {% if not is_today_selected %}
+              <a href="?day={{ today_date|date:'Y-m-d' }}" class="btn btn-outline-secondary">Bug&uuml;n</a>
+            {% endif %}
+            <a href="/admin/" class="btn btn-outline-secondary"><i class="bi bi-gear me-1"></i>Admin</a>
+          </div>
+        </form>
       </div>
-      <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
-        <label for="operations-day" class="small text-muted mb-0">Tarih Se&ccedil;</label>
-        <input
-          type="date"
-          id="operations-day"
-          name="day"
-          value="{{ selected_date_input }}"
-          class="form-control form-control-sm"
-          style="max-width: 190px;"
-        >
-        <button type="submit" class="btn btn-sm btn-primary">Getir</button>
-        {% if not is_today_selected %}
-          <a href="?day={{ today_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">Bug&uuml;n</a>
-        {% endif %}
-        <a href="/admin/" class="btn btn-sm btn-outline-secondary"><i class="bi bi-gear me-1"></i>Admin</a>
-      </form>
     </div>
   </div>
 </section>

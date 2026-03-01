@@ -1,4 +1,4 @@
-import json
+﻿import json
 import hashlib
 import time
 import unicodedata
@@ -85,6 +85,101 @@ def build_page_query_suffix(request, page_param):
     params.pop(page_param, None)
     encoded = params.urlencode()
     return f"&{encoded}" if encoded else ""
+
+
+def parse_float(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_choice_text(value):
+    normalized = unicodedata.normalize("NFKD", str(value or "").strip().lower())
+    without_marks = "".join(char for char in normalized if not unicodedata.combining(char))
+    return "".join(char for char in without_marks if char.isalnum())
+
+
+def _strip_diacritics(value):
+    normalized = unicodedata.normalize("NFKD", str(value or "").strip())
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def _canonical_city(city_value):
+    target = _normalize_choice_text(city_value)
+    if not target:
+        return ""
+    for city_key in NC_CITY_DISTRICT_MAP.keys():
+        if _normalize_choice_text(city_key) == target:
+            return city_key
+    return str(city_value or "").strip()
+
+
+def _canonical_district(city_value, district_value):
+    target = _normalize_choice_text(district_value)
+    if not target:
+        return ""
+    city_key = _canonical_city(city_value)
+    for district in NC_CITY_DISTRICT_MAP.get(city_key, []):
+        if _normalize_choice_text(district) == target:
+            return district
+    return str(district_value or "").strip()
+
+
+def _build_iexact_query(field_name, values):
+    unique_values = []
+    seen = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_values.append(text)
+    if not unique_values:
+        return Q(pk__in=[])
+    query = Q()
+    for value in unique_values:
+        query |= Q(**{f"{field_name}__iexact": value})
+    return query
+
+
+def _build_city_variants(city_value):
+    canonical = _canonical_city(city_value)
+    raw = str(city_value or "").strip()
+    variants = [raw, canonical, _strip_diacritics(raw), _strip_diacritics(canonical)]
+    return [item for item in variants if item]
+
+
+def _build_district_variants(city_value, district_value):
+    canonical = _canonical_district(city_value, district_value)
+    raw = str(district_value or "").strip()
+    variants = [raw, canonical, _strip_diacritics(raw), _strip_diacritics(canonical)]
+    return [item for item in variants if item]
+
+
+def sort_providers_by_distance(providers, latitude, longitude):
+    def squared_distance(provider):
+        if provider.latitude is None or provider.longitude is None:
+            return float("inf")
+        lat_delta = float(provider.latitude) - latitude
+        lon_delta = float(provider.longitude) - longitude
+        return (lat_delta * lat_delta) + (lon_delta * lon_delta)
+
+    return sorted(
+        providers,
+        key=lambda provider: (
+            squared_distance(provider),
+            -float(provider.rating),
+            provider.full_name.lower(),
+            provider.id,
+        ),
+    )
 
 
 def get_provider_for_user(user):
@@ -480,7 +575,7 @@ def reject_rate_limited_request(request, scope, redirect_name, *, max_attempts, 
     if hit_count > max_attempts:
         messages.warning(
             request,
-            f"Çok kısa sürede Çok fazla istek gönderdiniz. Lütfen {window_seconds} saniye sonra tekrar deneyin.",
+            f"Çok kısa sürede çok fazla istek gönderdiniz. Lütfen {window_seconds} saniye sonra tekrar deneyin.",
         )
         return redirect(redirect_name)
     return None
@@ -1081,8 +1176,6 @@ def build_provider_snapshot_payload(provider):
         "unread_messages_count": ServiceMessage.objects.filter(
             service_request__matched_provider=provider,
             service_request__status="matched",
-            service_request__matched_offer__isnull=False,
-            service_request__matched_offer__provider=provider,
             read_at__isnull=True,
         ).exclude(sender_role="provider").count(),
     }
@@ -1204,7 +1297,7 @@ def build_customer_flow_state(service_request, appointment, *, has_accepted_offe
         has_completed_appointment = bool(appointment and appointment.status == "completed")
         return {
             "step": "Adım 4/4",
-            "title": "İ tamamlandı",
+            "title": "İş tamamlandı",
             "hint": "Talep başarıyla tamamlandı.",
             "next_action": (
                 "Ustayı puanlayarak süreci bitirebilirsiniz."
@@ -1265,17 +1358,24 @@ def generate_offer_token():
 
 
 def build_provider_candidate_groups(service_request):
-    base_qs = Provider.objects.filter(
-        is_verified=True,
-        is_available=True,
-        service_types=service_request.service_type,
-        city__iexact=service_request.city,
-    ).prefetch_related("service_types")
+    city_variants = _build_city_variants(service_request.city)
+    base_qs = (
+        Provider.objects.filter(
+            is_verified=True,
+            is_available=True,
+            service_types=service_request.service_type,
+        )
+        .filter(_build_iexact_query("city", city_variants))
+        .prefetch_related("service_types")
+    )
 
     if service_request.district == ANY_DISTRICT_VALUE:
         return [list(base_qs.order_by("-rating", "full_name"))]
 
-    district_first = list(base_qs.filter(district__iexact=service_request.district).order_by("-rating", "full_name"))
+    district_variants = _build_district_variants(service_request.city, service_request.district)
+    district_first = list(
+        base_qs.filter(_build_iexact_query("district", district_variants)).order_by("-rating", "full_name")
+    )
     remaining_city = list(
         base_qs.exclude(id__in=[provider.id for provider in district_first]).order_by("-rating", "full_name")
     )
@@ -1378,6 +1478,9 @@ def index(request):
     normalized_search_params = request.GET.copy()
     if normalized_search_params.get("sort_by") == "distance":
         normalized_search_params["sort_by"] = "relevance"
+    requested_latitude = parse_float(request.GET.get("latitude"))
+    requested_longitude = parse_float(request.GET.get("longitude"))
+    has_location_context = requested_latitude is not None and requested_longitude is not None
     search_form = ServiceSearchForm(normalized_search_params or None)
     provider_page_size_options = [12, 24, 48, 96]
     provider_page_size_raw = (request.GET.get("provider_page_size") or "").strip()
@@ -1415,9 +1518,11 @@ def index(request):
             )
             requires_distinct = True
         if city:
-            providers_qs = providers_qs.filter(city__iexact=city)
+            providers_qs = providers_qs.filter(_build_iexact_query("city", _build_city_variants(city)))
         if district and district != ANY_DISTRICT_VALUE:
-            providers_qs = providers_qs.filter(district__iexact=district)
+            providers_qs = providers_qs.filter(
+                _build_iexact_query("district", _build_district_variants(city, district))
+            )
         if min_rating is not None:
             providers_qs = providers_qs.filter(rating__gte=min_rating)
         if min_reviews is not None:
@@ -1442,22 +1547,48 @@ def index(request):
         else:
             providers_qs = providers_qs.order_by("-rating", "-ratings_count", "full_name", "id")
 
-        provider_page_obj = paginate_items(
-            request,
-            providers_qs,
-            per_page=provider_page_size,
-            page_param="provider_page",
-        )
+        if has_location_context:
+            sorted_providers = sort_providers_by_distance(
+                list(providers_qs),
+                requested_latitude,
+                requested_longitude,
+            )
+            provider_page_obj = paginate_items(
+                request,
+                sorted_providers,
+                per_page=provider_page_size,
+                page_param="provider_page",
+            )
+        else:
+            provider_page_obj = paginate_items(
+                request,
+                providers_qs,
+                per_page=provider_page_size,
+                page_param="provider_page",
+            )
         providers = list(provider_page_obj.object_list)
     else:
         selected_sort_label = "Önerilen"
         providers_qs = providers_qs.order_by("-rating", "-ratings_count", "full_name", "id")
-        provider_page_obj = paginate_items(
-            request,
-            providers_qs,
-            per_page=provider_page_size,
-            page_param="provider_page",
-        )
+        if has_location_context:
+            sorted_providers = sort_providers_by_distance(
+                list(providers_qs),
+                requested_latitude,
+                requested_longitude,
+            )
+            provider_page_obj = paginate_items(
+                request,
+                sorted_providers,
+                per_page=provider_page_size,
+                page_param="provider_page",
+            )
+        else:
+            provider_page_obj = paginate_items(
+                request,
+                providers_qs,
+                per_page=provider_page_size,
+                page_param="provider_page",
+            )
         providers = list(provider_page_obj.object_list)
 
     query_without_provider_page = normalized_search_params.copy()
@@ -1602,7 +1733,7 @@ def create_request(request):
     elif dispatch_result["result"] == "no-candidates":
         messages.info(
             request,
-            "Talebiniz alındı ancak şu an Şehir/ilçe kriterlerinde müsait usta bulunamadı.",
+            "Talebiniz alındı ancak şu an şehir/ilçe kriterlerinde müsait usta bulunamadı.",
         )
     else:
         messages.warning(
@@ -1639,7 +1770,7 @@ def rate_request(request, request_id):
 
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
     if service_request.status != "completed" or service_request.matched_provider is None:
-        messages.error(request, "Puanlama sadece tamamlanmİ ve eşleşmiş talepler için yapılabilir.")
+        messages.error(request, "Puanlama sadece tamamlanmış ve eşleşmiş talepler için yapılabilir.")
         return redirect("my_requests")
     appointment = ServiceAppointment.objects.filter(service_request=service_request).only("id", "status").first()
     has_confirmed_appointment = WorkflowEvent.objects.filter(
@@ -1900,11 +2031,6 @@ def resolve_request_message_access(request, request_id, *, api=False):
                 return None, None, None, JsonResponse({"detail": "forbidden"}, status=403)
             messages.error(request, "Bu mesajlaşmaya erişiminiz yok.")
             return None, None, None, redirect("provider_requests")
-        if service_request.matched_offer_id is None or service_request.matched_offer.provider_id != provider.id:
-            if api:
-                return None, None, None, JsonResponse({"detail": "not-selected-by-customer"}, status=403)
-            messages.warning(request, "Müşteri sizi henüz seçmediği için mesajlaşma açılmadı.")
-            return None, None, None, redirect("provider_requests")
         viewer_role = "provider"
         back_url = "provider_requests"
     else:
@@ -1913,19 +2039,17 @@ def resolve_request_message_access(request, request_id, *, api=False):
                 return None, None, None, JsonResponse({"detail": "forbidden"}, status=403)
             messages.error(request, "Bu mesajlaşmaya erişiminiz yok.")
             return None, None, None, redirect("index")
-        if service_request.matched_provider and not service_request.matched_provider.is_verified:
-            if api:
-                return None, None, None, JsonResponse({"detail": "provider-not-verified"}, status=403)
-            messages.warning(request, "Bu usta henüz admin onaylı olmadığı için mesajlaşma kapalı.")
-            return None, None, None, redirect("my_requests")
-        if service_request.matched_offer_id is None:
-            if api:
-                return None, None, None, JsonResponse({"detail": "provider-not-selected"}, status=403)
-            messages.warning(request, "Usta seçimi tamamlanmadan mesajlaşma açılmaz.")
-            return None, None, None, redirect("my_requests")
         viewer_role = "customer"
         back_url = "my_requests"
 
+    if provider:
+        if service_request.status == "pending_customer" and (
+            service_request.matched_offer_id is None or service_request.matched_offer.provider_id != provider.id
+        ):
+            if api:
+                return None, None, None, JsonResponse({"detail": "not-selected-by-customer"}, status=403)
+            messages.warning(request, "Müşteri sizi henüz seçmediği için mesajlaşma açılmadı.")
+            return None, None, None, redirect("provider_requests")
     if service_request.status != "matched":
         if api:
             return (
@@ -1937,6 +2061,23 @@ def resolve_request_message_access(request, request_id, *, api=False):
         messages.warning(request, "Tamamlanan veya kapalı taleplerde mesajlaşma açık değildir.")
         return None, None, None, redirect(back_url)
 
+    if provider:
+        if service_request.matched_offer_id is None or service_request.matched_offer.provider_id != provider.id:
+            if api:
+                return None, None, None, JsonResponse({"detail": "not-selected-by-customer"}, status=403)
+            messages.warning(request, "Müşteri sizi henüz seçmediği için mesajlaşma açılmadı.")
+            return None, None, None, redirect("provider_requests")
+    else:
+        if service_request.matched_provider and not service_request.matched_provider.is_verified:
+            if api:
+                return None, None, None, JsonResponse({"detail": "provider-not-verified"}, status=403)
+            messages.warning(request, "Bu usta henüz admin onaylı olmadığı için mesajlaşma kapalı.")
+            return None, None, None, redirect("my_requests")
+        if service_request.matched_offer_id is None:
+            if api:
+                return None, None, None, JsonResponse({"detail": "provider-not-selected"}, status=403)
+            messages.warning(request, "Usta seçimi tamamlanmadan mesajlaşma açılmaz.")
+            return None, None, None, redirect("my_requests")
     return service_request, viewer_role, back_url, None
 
 

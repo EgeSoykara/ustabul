@@ -10,7 +10,6 @@ from io import StringIO
 
 from .models import (
     CustomerProfile,
-    EscrowPayment,
     IdempotencyRecord,
     Provider,
     ProviderAvailabilitySlot,
@@ -78,6 +77,32 @@ class MarketplaceTests(TestCase):
 
     def _future_datetime_local(self, days=1):
         return timezone.localtime(timezone.now() + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M")
+
+    def _mark_request_rateable(self, service_request, customer_user, provider):
+        appointment = ServiceAppointment.objects.create(
+            service_request=service_request,
+            customer=customer_user,
+            provider=provider,
+            scheduled_for=timezone.now() - timedelta(hours=2),
+            status="pending",
+        )
+        transition_appointment_status(
+            appointment,
+            "confirmed",
+            actor_user=customer_user,
+            actor_role="customer",
+            source="user",
+            note="Test: customer-confirmed",
+        )
+        transition_appointment_status(
+            appointment,
+            "completed",
+            actor_user=provider.user,
+            actor_role="provider",
+            source="user",
+            note="Test: provider-completed",
+        )
+        return appointment
 
     def test_home_page_loads(self):
         response = self.client.get(reverse("index"))
@@ -218,7 +243,6 @@ class MarketplaceTests(TestCase):
             token="BUDGETA1",
             sequence=1,
             status="accepted",
-            quote_amount=1500,
         )
         ProviderOffer.objects.create(
             service_request=request_b,
@@ -226,7 +250,6 @@ class MarketplaceTests(TestCase):
             token="BUDGETB1",
             sequence=1,
             status="accepted",
-            quote_amount=700,
         )
 
         response = self.client.get(
@@ -378,7 +401,7 @@ class MarketplaceTests(TestCase):
         self.provider_ali.refresh_from_db()
         self.assertEqual(self.provider_ali.full_name, "Ali Usta Yeni")
         self.assertEqual(self.provider_ali.phone, "05550009999")
-        self.assertEqual(self.provider_ali.district, "Hamitkoy")
+        self.assertEqual(self.provider_ali.district, "Hamitköy")
         self.assertFalse(self.provider_ali.is_available)
         self.assertTrue(self.provider_ali.service_types.filter(id=extra_service.id).exists())
 
@@ -417,6 +440,7 @@ class MarketplaceTests(TestCase):
             customer=user,
             status="completed",
         )
+        self._mark_request_rateable(service_request, user, self.provider_ali)
 
         self.client.post(
             reverse("rate_request", args=[service_request.id]),
@@ -444,6 +468,7 @@ class MarketplaceTests(TestCase):
             customer=user,
             status="completed",
         )
+        self._mark_request_rateable(service_request, user, self.provider_ali)
 
         self.client.post(
             reverse("rate_request", args=[service_request.id]),
@@ -686,7 +711,6 @@ class MarketplaceTests(TestCase):
             token="DETACH1111",
             sequence=1,
             status="accepted",
-            quote_amount=1000,
         )
         service_request.matched_offer = blocked_offer
         service_request.matched_at = timezone.now()
@@ -1079,7 +1103,6 @@ class MarketplaceTests(TestCase):
             token="CANCELMETA1",
             sequence=1,
             status="accepted",
-            quote_amount=1000,
         )
         service_request.matched_offer = stale_offer
         service_request.save(update_fields=["matched_offer", "matched_at"])
@@ -1193,6 +1216,8 @@ class MarketplaceTests(TestCase):
             customer=user,
             status="completed",
         )
+        self._mark_request_rateable(req1, user, self.provider_ali)
+        self._mark_request_rateable(req2, user, self.provider_ali)
 
         self.client.post(reverse("rate_request", args=[req1.id]), data={"score": 5, "comment": "Ilk puan"}, follow=True)
         self.client.post(reverse("rate_request", args=[req2.id]), data={"score": 3, "comment": "Ikinci puan"}, follow=True)
@@ -1224,7 +1249,7 @@ class MarketplaceTests(TestCase):
         self.client.login(username="aliusta", password="GucluSifre123!")
         self.client.post(
             reverse("provider_accept_offer", args=[offer.id]),
-            data={"quote_amount": "1500", "quote_note": "Ayni gun gelebilirim."},
+            data={"quote_note": "Ayni gun gelebilirim."},
             follow=True,
         )
 
@@ -1235,7 +1260,7 @@ class MarketplaceTests(TestCase):
         self.assertEqual(service_request.status, "pending_customer")
         self.assertIsNone(service_request.matched_provider)
         self.assertEqual(offer.status, "accepted")
-        self.assertEqual(float(offer.quote_amount), 1500.0)
+        self.assertEqual(offer.quote_note, "Ayni gun gelebilirim.")
         self.assertEqual(sibling_offer.status, "pending")
 
     def test_offer_is_auto_expired_when_time_passes(self):
@@ -1330,7 +1355,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(get_response.status_code, 200)
-        self.assertContains(get_response, "Musteri sizi henuz secmedigi icin mesajlasma acilmadi.")
+        self.assertContains(get_response, "Müşteri sizi henüz seçmediği için mesajlaşma açılmadı.")
 
         post_response = self.client.post(
             reverse("request_messages", args=[pending_request.id]),
@@ -1338,7 +1363,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(post_response.status_code, 200)
-        self.assertContains(post_response, "Musteri sizi henuz secmedigi icin mesajlasma acilmadi.")
+        self.assertContains(post_response, "Müşteri sizi henüz seçmediği için mesajlaşma açılmadı.")
         self.assertEqual(ServiceMessage.objects.filter(service_request=pending_request).count(), 0)
 
     def test_completed_request_messages_page_is_closed(self):
@@ -1390,7 +1415,6 @@ class MarketplaceTests(TestCase):
             token="SELECT1111",
             sequence=1,
             status="accepted",
-            quote_amount=1200,
         )
         offer_2 = ProviderOffer.objects.create(
             service_request=service_request,
@@ -1398,7 +1422,6 @@ class MarketplaceTests(TestCase):
             token="SELECT2222",
             sequence=2,
             status="accepted",
-            quote_amount=1100,
         )
 
         self.client.login(username="teklifsecen", password="GucluSifre123!")
@@ -1443,7 +1466,6 @@ class MarketplaceTests(TestCase):
             token="UNVER1111",
             sequence=1,
             status="accepted",
-            quote_amount=900,
         )
 
         self.client.login(username="onaysizsecim", password="GucluSifre123!")
@@ -1477,22 +1499,20 @@ class MarketplaceTests(TestCase):
             token="CMPA1111",
             sequence=1,
             status="accepted",
-            quote_amount=1800,
         )
-        best_offer = ProviderOffer.objects.create(
+        ProviderOffer.objects.create(
             service_request=service_request,
             provider=self.provider_hasan,
             token="CMPB2222",
             sequence=2,
             status="accepted",
-            quote_amount=950,
         )
 
         self.client.login(username="karsilastirma", password="GucluSifre123!")
         response = self.client.get(reverse("my_requests"))
         requests = response.context["requests"]
         target = next(item for item in requests if item.id == service_request.id)
-        self.assertEqual(target.recommended_offer_id, best_offer.id)
+        self.assertEqual(target.recommended_offer_id, target.accepted_offers[0].id)
         self.assertGreaterEqual(target.accepted_offers[0].comparison_score, target.accepted_offers[1].comparison_score)
 
     def test_provider_reject_keeps_request_if_other_pending_offers_exist(self):
@@ -1684,7 +1704,6 @@ class MarketplaceTests(TestCase):
             token="SNAPSHOT2",
             sequence=1,
             status="accepted",
-            quote_amount=1350,
         )
         ServiceMessage.objects.create(
             service_request=service_request,
@@ -1728,7 +1747,6 @@ class MarketplaceTests(TestCase):
             token="HISTORY001",
             sequence=1,
             status="accepted",
-            quote_amount=1750,
         )
         service_request.matched_offer = offer
         service_request.save(update_fields=["matched_offer"])
@@ -1738,7 +1756,6 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Anlaşma Geçmişi")
         self.assertContains(response, "Ali Usta")
-        self.assertContains(response, "1750")
 
     def test_provider_can_view_agreement_history(self):
         customer = User.objects.create_user(username="anlasmaprovmusteri", password="GucluSifre123!")
@@ -1760,7 +1777,6 @@ class MarketplaceTests(TestCase):
             token="HISTORY002",
             sequence=1,
             status="accepted",
-            quote_amount=2100,
         )
         service_request.matched_offer = offer
         service_request.save(update_fields=["matched_offer"])
@@ -1769,7 +1785,6 @@ class MarketplaceTests(TestCase):
         response = self.client.get(reverse("agreement_history"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Anlasma Provider Musteri")
-        self.assertContains(response, "2100")
 
     def test_customer_can_delete_account(self):
         customer = User.objects.create_user(username="silinenmusteri", password="GucluSifre123!")
@@ -1852,7 +1867,6 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "İletişim ve Konum Bilgileri")
         self.assertContains(response, "Usta Profili")
-
     def test_customer_can_update_identity_from_account_settings(self):
         customer = User.objects.create_user(username="kimlikeski", password="GucluSifre123!")
         CustomerProfile.objects.create(user=customer, phone="05001112233", city="Lefkosa", district="Ortakoy")
@@ -1896,38 +1910,6 @@ class MarketplaceTests(TestCase):
         self.assertEqual(profile.phone, "05553332211")
         self.assertEqual(profile.city, "Girne")
         self.assertEqual(profile.district, "Karakum")
-
-    def test_customer_can_fund_escrow_for_matched_request(self):
-        customer = User.objects.create_user(username="escrow_musteri", password="GucluSifre123!")
-        self.client.login(username="escrow_musteri", password="GucluSifre123!")
-        service_request = ServiceRequest.objects.create(
-            customer_name="Escrow Musteri",
-            customer_phone="05001230000",
-            city="Lefkosa",
-            district="Ortakoy",
-            service_type=self.service,
-            details="Escrow test",
-            customer=customer,
-            matched_provider=self.provider_ali,
-            status="matched",
-        )
-        offer = ProviderOffer.objects.create(
-            service_request=service_request,
-            provider=self.provider_ali,
-            token="ESCROW001",
-            sequence=1,
-            status="accepted",
-            quote_amount=1250,
-        )
-        service_request.matched_offer = offer
-        service_request.save(update_fields=["matched_offer"])
-
-        response = self.client.post(reverse("fund_escrow", args=[service_request.id]), follow=True)
-        self.assertEqual(response.status_code, 200)
-        escrow = EscrowPayment.objects.get(service_request=service_request)
-        self.assertEqual(escrow.status, "funded")
-        self.assertEqual(float(escrow.funded_amount), 1250.0)
-
     def test_customer_appointment_respects_provider_availability_slots(self):
         customer = User.objects.create_user(username="slot_musteri", password="GucluSifre123!")
         self.client.login(username="slot_musteri", password="GucluSifre123!")
@@ -2037,7 +2019,7 @@ class MarketplaceTests(TestCase):
         self.client.login(username="aliusta", password="GucluSifre123!")
         response = self.client.post(
             reverse("provider_accept_offer", args=[offer.id]),
-            data={"quote_amount": "1200", "quote_note": "Teklif"},
+            data={"quote_note": "Teklif"},
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
@@ -2045,7 +2027,4 @@ class MarketplaceTests(TestCase):
         service_request.refresh_from_db()
         self.assertEqual(offer.status, "accepted")
         self.assertEqual(service_request.status, "pending_customer")
-
-
-
 

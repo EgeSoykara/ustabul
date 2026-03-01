@@ -530,6 +530,95 @@ h3,
   box-shadow: var(--shadow) !important;
 }
 
+.operations-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.25rem;
+}
+
+.operations-toolbar-main {
+  min-width: 0;
+}
+
+.operations-selected-date {
+  margin-top: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.42rem 0.62rem;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, rgba(14, 116, 144, 0.24));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-strong) 90%, transparent);
+  line-height: 1;
+}
+
+.operations-selected-date-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.operations-selected-date strong {
+  font-size: 0.9rem;
+}
+
+.operations-toolbar-controls {
+  min-width: 320px;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.operations-day-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.operations-day-nav .btn,
+.operations-day-form .btn {
+  min-height: 40px;
+  font-size: 0.87rem;
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+.operations-day-form {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.operations-day-label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.operations-day-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+}
+
+.operations-day-input {
+  min-height: 40px;
+  border-radius: 10px;
+}
+
+.operations-day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+[data-theme="dark"] .operations-selected-date {
+  border-color: rgba(148, 163, 184, 0.38);
+  background: rgba(15, 23, 42, 0.76);
+}
+
 .section-title {
   font-size: 1.03rem;
 }
@@ -3690,6 +3779,16 @@ body {
 }
 
 @media (max-width: 991px) {
+  .operations-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .operations-toolbar-controls {
+    min-width: 0;
+    width: 100%;
+  }
+
   .site-nav .navbar-collapse {
     padding-top: 0.6rem;
   }
@@ -3730,6 +3829,26 @@ body {
 }
 
 @media (max-width: 767px) {
+  .operations-day-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .operations-day-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .operations-day-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .operations-day-actions .btn,
+  .operations-day-nav .btn,
+  .operations-day-form .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
   .site-main {
     padding-bottom: 20px;
   }
