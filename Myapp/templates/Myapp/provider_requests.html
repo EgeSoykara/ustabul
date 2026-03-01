@@ -15,25 +15,7 @@
         <a href="{% url 'provider_profile' %}" class="btn btn-sm nav-ghost-btn"><i class="bi bi-person-vcard me-1"></i>Profili Düzenle</a>
       </div>
     </div>
-    <p class="mb-2 text-muted">Yeni talepler burada sıralı gelir.</p>
-    <div class="provider-simple-guide" role="note" aria-label="Hızlı kullanım adımları">
-      <strong><i class="bi bi-info-circle-fill me-1"></i>Hızlı kullanım:</strong>
-      <ol class="simple-guide-list mb-2">
-        <li>Bekleyen talepleri kontrol edin.</li>
-        <li>Uygun olan talebi kabul edin.</li>
-        {% if calendar_enabled %}
-          <li>Müşteri mesajlarına ve randevu adımlarına sırayla dönüş yapın.</li>
-        {% else %}
-          <li>Müşteri mesajlarına hızlı dönüş yapın.</li>
-        {% endif %}
-      </ol>
-      {% if calendar_enabled %}
-        <p class="small mb-1">Müşteri panelinde bu aşamalar sırasıyla "Usta yanıtı bekleniyor", "Usta seçimi" ve "Randevu onayı" olarak görünür.</p>
-        <p class="small mb-0">Randevu saati beklenen işler "Aktif Mesajlaşmalar" bölümünde ayrıca belirtilir.</p>
-      {% else %}
-        <p class="small mb-0">Takvim devre dışı. Süreci teklif ve mesajlaşma ile yönetebilirsiniz.</p>
-      {% endif %}
-    </div>
+    <p class="small text-muted mb-0">Öncelik: Bekleyen Talepler, ardından Aktif Mesajlaşmalar.</p>
   </div>
 </section>
 
@@ -47,145 +29,92 @@
   data-unread-messages-count="{{ total_unread_messages }}"
 ></div>
 
-<section class="provider-requests-section provider-kpi-grid mb-4">
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Bekleyen Talep</div>
-    <div class="provider-kpi-value">{{ pending_offers_count }}</div>
-    <div class="provider-kpi-note">İlk kontrol etmeniz gereken bölüm.</div>
-  </article>
-  {% if calendar_enabled %}
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Bekleyen Randevu</div>
-    <div class="provider-kpi-value">{{ pending_appointments_count }}</div>
-    <div class="provider-kpi-note">Randevu onayı bekleyen müşteri sayısı.</div>
-  </article>
-  {% endif %}
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Okunmamış Mesaj</div>
-    <div class="provider-kpi-value">{{ total_unread_messages }}</div>
-    <div class="provider-kpi-note">Mesajlara dönüş yapmak güveni artırır.</div>
-  </article>
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Müşteri Seçimi Bekleyen</div>
-    <div class="provider-kpi-value">{{ waiting_customer_selection_count }}</div>
-    <div class="provider-kpi-note">Müşterinin usta seçmesini bekleyen teklifler.</div>
-  </article>
-  {% if calendar_enabled %}
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Saat Bekleyen Eşleşme</div>
-    <div class="provider-kpi-value">{{ waiting_schedule_count }}</div>
-    <div class="provider-kpi-note">Müşteri randevu saati belirlemedi.</div>
-  </article>
-  {% endif %}
-</section>
-
-<section class="provider-requests-section provider-easy-steps mb-4" aria-label="Kolay kullanım adımları">
-  <article class="provider-step-card">
-    <div class="provider-step-no">1</div>
-    <div class="provider-step-body">
-      <div class="provider-step-title">Talepleri Kontrol Et</div>
-      <div class="provider-step-meta">{{ pending_offers_count }} talep yanıt bekliyor.</div>
-    </div>
-    <a href="#pending-offers" class="btn btn-main provider-step-link">Aç</a>
-  </article>
-  {% if calendar_enabled %}
-    <article class="provider-step-card">
-      <div class="provider-step-no">2</div>
-      <div class="provider-step-body">
-        <div class="provider-step-title">Randevuları Onayla</div>
-        <div class="provider-step-meta">{{ pending_appointments_count }} randevu onay bekliyor.</div>
-      </div>
-      <a href="#pending-appointments" class="btn btn-main provider-step-link">Aç</a>
-    </article>
-  {% endif %}
-  <article class="provider-step-card">
-    <div class="provider-step-no">3</div>
-    <div class="provider-step-body">
-      <div class="provider-step-title">Mesajları Yanıtla</div>
-      <div class="provider-step-meta">{{ total_unread_messages }} okunmamış mesaj var.</div>
-    </div>
-    <a href="#active-threads" class="btn btn-main provider-step-link">Aç</a>
-  </article>
-  <article class="provider-step-card">
-    <div class="provider-step-no">4</div>
-    <div class="provider-step-body">
-      <div class="provider-step-title">Müşteri Seçimini Bekle</div>
-      <div class="provider-step-meta">{{ waiting_customer_selection_count }} teklif müşteri kararı bekliyor.</div>
-    </div>
-    <a href="#waiting-selection" class="btn btn-outline-secondary provider-step-link">Aç</a>
-  </article>
-</section>
-
-<section id="waiting-selection" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
-  <div class="card-body p-4">
-    <details class="provider-history-collapse">
-      <summary><i class="bi bi-hourglass-split me-2"></i>4. Müşteri Seçimi Bekleyen Teklifler</summary>
-      <p class="small text-muted mt-3 mb-3">
-        Teklifinizi kabul listesine gönderdiniz. Müşteri bir usta seçecek. Başka bir usta seçilirse bu liste otomatik güncellenir.
-      </p>
-      {% if waiting_customer_selection_offers %}
-        <div class="table-responsive">
-          <table class="table request-table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Talep No</th>
-                <th>Hizmet</th>
-                <th>Müşteri</th>
-                <th>Teklif Zamanı</th>
-                <th>Durum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for offer in waiting_customer_selection_offers %}
-                <tr>
-                  <td data-label="Talep No">#{{ offer.service_request.id }}</td>
-                  <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
-                  <td data-label="Müşteri">
-                    {{ offer.service_request.customer_name }}
-                    <br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span>
-                  </td>
-                  <td data-label="Teklif Zamanı">{{ offer.responded_at|default:offer.sent_at|date:"d.m.Y H:i" }}</td>
-                  <td data-label="Durum">
-                    <span class="provider-flow-badge provider-flow-warning">Müşteri seçimi bekleniyor</span>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% if waiting_customer_selection_page_obj.has_other_pages %}
-          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
-            <span class="small text-muted">
-              Sayfa {{ waiting_customer_selection_page_obj.number }} / {{ waiting_customer_selection_page_obj.paginator.num_pages }}
-            </span>
-            <nav aria-label="Müşteri seçimi bekleyen teklif sayfalama">
-              <ul class="pagination mb-0">
-                <li class="page-item {% if not waiting_customer_selection_page_obj.has_previous %}disabled{% endif %}">
-                  <a class="page-link" href="?waiting_selection_page={% if waiting_customer_selection_page_obj.has_previous %}{{ waiting_customer_selection_page_obj.previous_page_number }}{% else %}1{% endif %}{{ waiting_selection_page_query }}" aria-label="Önceki">
-                    <span aria-hidden="true">&laquo;</span>
-                  </a>
-                </li>
-                <li class="page-item disabled"><span class="page-link">{{ waiting_customer_selection_page_obj.number }}</span></li>
-                <li class="page-item {% if not waiting_customer_selection_page_obj.has_next %}disabled{% endif %}">
-                  <a class="page-link" href="?waiting_selection_page={% if waiting_customer_selection_page_obj.has_next %}{{ waiting_customer_selection_page_obj.next_page_number }}{% else %}{{ waiting_customer_selection_page_obj.paginator.num_pages }}{% endif %}{{ waiting_selection_page_query }}" aria-label="Sonraki">
-                    <span aria-hidden="true">&raquo;</span>
-                  </a>
-                </li>
-              </ul>
-            </nav>
-          </div>
-        {% endif %}
-      {% else %}
-        <p class="mb-0 text-muted">Şu anda müşteri seçimi bekleyen teklifiniz yok.</p>
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-3">
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <span class="status-pill status-pending_provider">Bekleyen Talep: {{ pending_offers_count }}</span>
+      <span class="status-pill status-pending_customer">Müşteri Seçimi: {{ waiting_customer_selection_count }}</span>
+      <span class="status-pill status-matched">Okunmamış Mesaj: {{ total_unread_messages }}</span>
+      {% if calendar_enabled %}
+        <span class="status-pill status-pending">Bekleyen Randevu: {{ pending_appointments_count }}</span>
       {% endif %}
-    </details>
+    </div>
   </div>
 </section>
 
+<section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h6 mb-3"><i class="bi bi-signpost-2 me-2"></i>Panel Nasıl Çalışır</h2>
+    <ol class="mb-3 ps-3">
+      <li>Önce <strong>Bekleyen Talepler</strong> bölümünden uygun işleri kabul edin.</li>
+      <li><strong>Aktif Mesajlaşmalar</strong> bölümünden müşteriyle detayları netleştirin.</li>
+      {% if calendar_enabled %}
+        <li>Randevu geldiyse <strong>Bekleyen Randevu Talepleri</strong> bölümünde onaylayın veya reddedin.</li>
+        <li>İş tamamlandığında <strong>Onaylı Randevular</strong> bölümünden kapatın.</li>
+      {% else %}
+        <li>İş tamamlandığında ilgili talebi süreçten kapatın.</li>
+      {% endif %}
+    </ol>
+    <p class="small text-muted mb-0">Üstteki sayaçlar yeni talep, mesaj ve randevu geldiğinde otomatik güncellenir.</p>
+  </div>
+</section>
+
+{% if waiting_customer_selection_offers %}
+<section id="waiting-selection" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3"><i class="bi bi-hourglass-split me-2"></i>Müşteri Seçimi Bekleyen Teklifler</h2>
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talep No</th>
+              <th>Hizmet</th>
+              <th>Müşteri</th>
+              <th>Teklif Zamanı</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for offer in waiting_customer_selection_offers %}
+              <tr>
+                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
+                <td data-label="Müşteri">
+                  {{ offer.service_request.customer_name }}
+                  <br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span>
+                </td>
+                <td data-label="Teklif Zamanı">{{ offer.responded_at|default:offer.sent_at|date:"d.m.Y H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if waiting_customer_selection_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ waiting_customer_selection_page_obj.number }} / {{ waiting_customer_selection_page_obj.paginator.num_pages }}</span>
+          <nav aria-label="Müşteri seçimi bekleyen teklif sayfalama">
+            <ul class="pagination mb-0">
+              <li class="page-item {% if not waiting_customer_selection_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?waiting_selection_page={% if waiting_customer_selection_page_obj.has_previous %}{{ waiting_customer_selection_page_obj.previous_page_number }}{% else %}1{% endif %}{{ waiting_selection_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ waiting_customer_selection_page_obj.number }}</span></li>
+              <li class="page-item {% if not waiting_customer_selection_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?waiting_selection_page={% if waiting_customer_selection_page_obj.has_next %}{{ waiting_customer_selection_page_obj.next_page_number }}{% else %}{{ waiting_customer_selection_page_obj.paginator.num_pages }}{% endif %}{{ waiting_selection_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+  </div>
+</section>
+{% endif %}
+
 <section id="pending-offers" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
-    <h2 class="h5 mb-3"><i class="bi bi-inbox-fill me-2"></i>1. Bekleyen Talepler</h2>
-    <p class="small text-muted mb-3">Yeni gelen işler burada görünür. Uygunsanız kabul edin, uygun değilseniz reddedin.</p>
+    <h2 class="h5 mb-3"><i class="bi bi-inbox-fill me-2"></i>Bekleyen Talepler</h2>
     {% if pending_offers %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -193,7 +122,6 @@
             <tr>
               <th>Talep No</th>
               <th>Tarih</th>
-              <th>Süre Sonu</th>
               <th>Hizmet</th>
               <th>Konum</th>
               <th>Müşteri</th>
@@ -206,24 +134,11 @@
               <tr>
                 <td data-label="Talep No">#{{ offer.service_request.id }}</td>
                 <td data-label="Tarih">{{ offer.sent_at|date:"d.m.Y H:i" }}</td>
-                <td data-label="Süre Sonu">
-                  {% if offer.expires_at %}
-                    {{ offer.expires_at|date:"d.m.Y H:i" }}
-                  {% else %}
-                    -
-                  {% endif %}
-                </td>
                 <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
                 <td data-label="Konum">{{ offer.service_request.city }} / {{ offer.service_request.district }}</td>
                 <td data-label="Müşteri">{{ offer.service_request.customer_name }}<br><span class="small text-muted">{{ offer.service_request.customer_phone }}</span></td>
                 <td data-label="Detay">
                   <div class="request-detail-preview">{{ offer.service_request.details|truncatechars:120 }}</div>
-                  {% if offer.service_request.details|length > 120 %}
-                    <details class="request-detail-disclosure mt-1">
-                      <summary>Detayın Tamamını Gör</summary>
-                      <div class="request-detail-full">{{ offer.service_request.details|linebreaksbr }}</div>
-                    </details>
-                  {% endif %}
                 </td>
                 <td data-label="İşlem">
                   <div class="request-actions-stack">
@@ -273,8 +188,7 @@
 
 <section id="active-threads" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
-    <h2 class="h5 mb-3"><i class="bi bi-chat-dots-fill me-2"></i>2. Aktif Mesajlaşmalar</h2>
-    <p class="small text-muted mb-3">Müşterinin seçtiği işlerde mesajlaşma burada açılır. Mesajlara buradan hızlıca cevap verebilirsiniz.</p>
+    <h2 class="h5 mb-3"><i class="bi bi-chat-dots-fill me-2"></i>Aktif Mesajlaşmalar</h2>
     {% if active_threads %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -284,11 +198,7 @@
               <th>Hizmet</th>
               <th>Müşteri</th>
               <th>Durum</th>
-              {% if calendar_enabled %}
-                <th>Randevu Akışı</th>
-              {% else %}
-                <th>Süreç</th>
-              {% endif %}
+              <th>Süreç</th>
               <th>Mesaj</th>
             </tr>
           </thead>
@@ -302,7 +212,7 @@
                   <br><span class="small text-muted">{{ thread.customer_phone }}</span>
                 </td>
                 <td data-label="Durum"><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
-                <td data-label="{% if calendar_enabled %}Randevu Akışı{% else %}Süreç{% endif %}">
+                <td data-label="Süreç">
                   <div class="provider-flow-badge provider-flow-{{ thread.appointment_feedback_tone }}">
                     {{ thread.appointment_feedback_label }}
                   </div>
@@ -352,8 +262,7 @@
 {% if calendar_enabled %}
 <section id="pending-appointments" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
-    <h2 class="h5 mb-3"><i class="bi bi-calendar-week-fill me-2"></i>3. Bekleyen Randevu Talepleri</h2>
-    <p class="small text-muted mb-3">Müşterinin talep ettiği randevu saatleri. Uygunsa onaylayın, değilse reddedin.</p>
+    <h2 class="h5 mb-3"><i class="bi bi-calendar-week-fill me-2"></i>Bekleyen Randevu Talepleri</h2>
     {% if pending_appointments %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -428,7 +337,6 @@
 <section class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-calendar-check-fill me-2"></i>Onaylı Randevular</h2>
-    <p class="small text-muted mb-3">Onaylanan randevular burada görünür. İş bittiyse “İş Tamamlandı” butonunu kullanın.</p>
     {% if confirmed_appointments %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -516,9 +424,7 @@
 
 <section class="card panel-card provider-requests-section shadow-sm reveal-up">
   <div class="card-body p-4">
-    <details class="provider-history-collapse">
-      <summary><i class="bi bi-clock-history me-2"></i>Son Yanıtlarım</summary>
-      <p class="small text-muted mt-3 mb-3">Bilgi amaçlı geçmiş cevaplarınız.</p>
+    <h2 class="h5 mb-3"><i class="bi bi-clock-history me-2"></i>Son Yanıtlarım</h2>
       {% if recent_offers %}
         <div class="table-responsive">
           <table class="table request-table align-middle mb-0">
@@ -569,16 +475,13 @@
       {% else %}
         <p class="mb-0 text-muted">Henüz cevaplanan teklif yok.</p>
       {% endif %}
-    </details>
   </div>
 </section>
 
 {% if calendar_enabled %}
 <section class="card panel-card provider-requests-section shadow-sm reveal-up mt-4">
   <div class="card-body p-4">
-    <details class="provider-history-collapse">
-      <summary><i class="bi bi-calendar2-minus-fill me-2"></i>Randevu Geçmişi</summary>
-      <p class="small text-muted mt-3 mb-3">Önceki randevularınızın özeti.</p>
+    <h2 class="h5 mb-3"><i class="bi bi-calendar2-minus-fill me-2"></i>Randevu Geçmişi</h2>
       {% if recent_appointments %}
         <div class="table-responsive">
           <table class="table request-table align-middle mb-0">
@@ -633,7 +536,6 @@
       {% else %}
         <p class="mb-0 text-muted">Randevu geçmişi henüz oluşmadı.</p>
       {% endif %}
-    </details>
   </div>
 </section>
 {% endif %}
