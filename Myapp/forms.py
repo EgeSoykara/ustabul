@@ -176,6 +176,7 @@ class ServiceSearchForm(forms.Form):
 
 
 class ServiceRequestForm(forms.ModelForm):
+    preferred_provider_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
     city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, label="Şehir")
     district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, label="İlçe")
 
@@ -238,6 +239,33 @@ class ServiceRequestForm(forms.ModelForm):
 
         cleaned_data["city"] = city_key
         cleaned_data["district"] = resolved_district
+        preferred_provider = None
+        preferred_provider_id = cleaned_data.get("preferred_provider_id")
+        if preferred_provider_id:
+            preferred_provider = (
+                Provider.objects.filter(id=preferred_provider_id, is_verified=True, is_available=True)
+                .prefetch_related("service_types")
+                .first()
+            )
+            if not preferred_provider:
+                self.add_error("preferred_provider_id", "Secilen usta su an musait degil veya aktif degil.")
+                return cleaned_data
+
+            service_type = cleaned_data.get("service_type")
+            if service_type and not preferred_provider.service_types.filter(id=service_type.id).exists():
+                self.add_error("service_type", "Secilen usta bu hizmet turunu sunmuyor.")
+
+            normalized_form_city = normalize_choice_value(city_key)
+            normalized_provider_city = normalize_choice_value(preferred_provider.city)
+            if normalized_form_city != normalized_provider_city:
+                self.add_error("city", "Secilen usta farkli bir sehirde hizmet veriyor.")
+            elif resolved_district != ANY_DISTRICT_VALUE:
+                normalized_form_district = normalize_choice_value(resolved_district)
+                normalized_provider_district = normalize_choice_value(preferred_provider.district)
+                if normalized_form_district != normalized_provider_district:
+                    self.add_error("district", "Secilen usta bu ilcede hizmet vermiyor.")
+
+        cleaned_data["preferred_provider"] = preferred_provider
         return cleaned_data
 
 

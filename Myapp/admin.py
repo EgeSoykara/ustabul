@@ -11,6 +11,7 @@ from .models import (
     CustomerProfile,
     ErrorLog,
     IdempotencyRecord,
+    MobileDevice,
     NotificationCursor,
     Provider,
     ProviderAvailabilitySlot,
@@ -354,6 +355,15 @@ class NotificationCursorAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(MobileDevice)
+class MobileDeviceAdmin(admin.ModelAdmin):
+    list_display = ("user", "platform", "device_id", "app_version", "locale", "timezone", "last_seen_at")
+    list_filter = ("platform", "last_seen_at")
+    search_fields = ("user__username", "device_id", "push_token")
+    readonly_fields = ("created_at", "last_seen_at")
+    ordering = ("-last_seen_at", "-id")
 
 
 @admin.register(ErrorLog)

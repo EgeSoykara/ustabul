@@ -77,6 +77,17 @@ def build_request_form_initial(request):
     }
 
 
+def get_preferred_provider(raw_provider_id):
+    raw_value = str(raw_provider_id or "").strip()
+    if not raw_value.isdigit():
+        return None
+    return (
+        Provider.objects.filter(id=int(raw_value), is_verified=True, is_available=True)
+        .prefetch_related("service_types")
+        .first()
+    )
+
+
 def paginate_items(request, items, *, per_page=12, page_param="page"):
     paginator = Paginator(items, per_page)
     return paginator.get_page(request.GET.get(page_param))
@@ -1482,6 +1493,69 @@ def set_other_pending_offers_expired(service_request, exclude_offer_id):
     pending_qs.update(status="expired", responded_at=timezone.now())
 
 
+def dispatch_preferred_provider_offer(
+    service_request,
+    preferred_provider,
+    actor_user=None,
+    actor_role="system",
+    source="system",
+    note="",
+):
+    if not preferred_provider:
+        return {"result": "no-candidates"}
+
+    city_variants = _build_city_variants(service_request.city)
+    candidate_qs = (
+        Provider.objects.filter(
+            id=preferred_provider.id,
+            is_verified=True,
+            is_available=True,
+            service_types=service_request.service_type,
+        )
+        .filter(_build_iexact_query("city", city_variants))
+        .prefetch_related("service_types")
+    )
+    if service_request.district != ANY_DISTRICT_VALUE:
+        district_variants = _build_district_variants(service_request.city, service_request.district)
+        candidate_qs = candidate_qs.filter(_build_iexact_query("district", district_variants))
+
+    provider = candidate_qs.first()
+    if not provider:
+        return {"result": "no-candidates"}
+
+    offered_provider_ids = set(service_request.provider_offers.values_list("provider_id", flat=True))
+    if provider.id in offered_provider_ids:
+        return {"result": "all-contacted"}
+
+    now = timezone.now()
+    created_offer = ProviderOffer.objects.create(
+        service_request=service_request,
+        provider=provider,
+        token=generate_offer_token(),
+        sequence=service_request.provider_offers.count() + 1,
+        status="pending",
+        last_delivery_detail="in-app-queue",
+        sent_at=now,
+        expires_at=now + timedelta(minutes=get_offer_expiry_minutes()),
+        reminder_sent_at=None,
+    )
+
+    service_request.matched_provider = None
+    service_request.matched_offer = None
+    service_request.matched_at = None
+    if not transition_service_request_status(
+        service_request,
+        "pending_provider",
+        extra_update_fields=["matched_provider", "matched_offer", "matched_at"],
+        actor_user=actor_user,
+        actor_role=actor_role,
+        source=source,
+        note=note,
+    ):
+        return {"result": "invalid-state"}
+    return {"result": "offers-created", "offers": [created_offer]}
+
+
 def dispatch_next_provider_offer(service_request, actor_user=None, actor_role="system", source="system", note=""):
     groups = build_provider_candidate_groups(service_request)
     if not groups:
@@ -1680,10 +1754,20 @@ def index(request):
     query_without_provider_page.pop("provider_page", None)
     provider_page_query = query_without_provider_page.urlencode()
 
-    request_form = ServiceRequestForm(initial=build_request_form_initial(request))
+    preferred_provider = get_preferred_provider(request.GET.get("preferred_provider_id"))
+    request_form_initial = build_request_form_initial(request)
+    if preferred_provider and request.user.is_authenticated and not is_provider_user:
+        request_form_initial["preferred_provider_id"] = preferred_provider.id
+        request_form_initial["city"] = preferred_provider.city
+        request_form_initial["district"] = preferred_provider.district
+        provider_service_ids = list(preferred_provider.service_types.values_list("id", flat=True))
+        if len(provider_service_ids) == 1:
+            request_form_initial["service_type"] = provider_service_ids[0]
+    request_form = ServiceRequestForm(initial=request_form_initial)
     context = {
         "search_form": search_form,
         "request_form": request_form,
+        "preferred_provider": preferred_provider,
         "providers": providers,
         "provider_page_obj": provider_page_obj,
         "provider_total_count": provider_page_obj.paginator.count,
@@ -1739,6 +1823,7 @@ def create_request(request):
     actor_role = infer_actor_role(request.user)
     request_form = ServiceRequestForm(request.POST)
     if not request_form.is_valid():
+        preferred_provider = get_preferred_provider(request.POST.get("preferred_provider_id"))
         search_form = ServiceSearchForm()
         provider_page_size_options = [12, 24, 48, 96]
         provider_page_size = 24
@@ -1761,6 +1846,7 @@ def create_request(request):
             {
                 "search_form": search_form,
                 "request_form": request_form,
+                "preferred_provider": preferred_provider,
                 "providers": providers,
                 "provider_page_obj": provider_page_obj,
                 "provider_total_count": provider_page_obj.paginator.count,
@@ -1802,24 +1888,48 @@ def create_request(request):
         customer_profile.district = service_request.district
         customer_profile.save(update_fields=["phone", "city", "district"])
 
-    dispatch_result = dispatch_next_provider_offer(
-        service_request,
-        actor_user=request.user,
-        actor_role=actor_role,
-        source="user",
-        note="Talep için uygun ustalara teklif gönderildi",
-    )
+    preferred_provider = request_form.cleaned_data.get("preferred_provider")
+    if preferred_provider:
+        dispatch_result = dispatch_preferred_provider_offer(
+            service_request,
+            preferred_provider,
+            actor_user=request.user,
+            actor_role=actor_role,
+            source="user",
+            note="Talep secilen ustaya oncelikli olarak iletildi",
+        )
+    else:
+        dispatch_result = dispatch_next_provider_offer(
+            service_request,
+            actor_user=request.user,
+            actor_role=actor_role,
+            source="user",
+            note="Talep için uygun ustalara teklif gönderildi",
+        )
+
     if dispatch_result["result"] == "offers-created":
         offer_count = len(dispatch_result["offers"])
-        messages.success(
-            request,
-            f"Talebiniz alındı. {offer_count} ustaya teklif vermesi için iletildi.",
-        )
+        if preferred_provider:
+            messages.success(
+                request,
+                f"Talebiniz alındı. Oncelikli olarak {preferred_provider.full_name} ustasina iletildi.",
+            )
+        else:
+            messages.success(
+                request,
+                f"Talebiniz alındı. {offer_count} ustaya teklif vermesi için iletildi.",
+            )
     elif dispatch_result["result"] == "no-candidates":
-        messages.info(
-            request,
-            "Talebiniz alındı ancak şu an şehir/ilçe kriterlerinde müsait usta bulunamadı.",
-        )
+        if preferred_provider:
+            messages.info(
+                request,
+                "Talebiniz alindi ancak secilen usta su an bu kriterlerde musait degil.",
+            )
+        else:
+            messages.info(
+                request,
+                "Talebiniz alındı ancak şu an şehir/ilçe kriterlerinde müsait usta bulunamadı.",
+            )
     else:
         messages.warning(
             request,

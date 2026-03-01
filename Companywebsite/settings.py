@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 import importlib.util
 import os
 import sys
@@ -110,6 +111,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
     'channels',
     'Myapp',
 ]
@@ -329,3 +331,26 @@ LIFECYCLE_HEALTH_TOKEN = os.getenv("LIFECYCLE_HEALTH_TOKEN", "").strip()
 ERROR_LOGGING_ENABLED = env_bool("ERROR_LOGGING_ENABLED", True)
 ERROR_LOG_TRACEBACK_MAX_CHARS = int(os.getenv("ERROR_LOG_TRACEBACK_MAX_CHARS", "12000"))
 ERROR_LOG_MESSAGE_MAX_CHARS = int(os.getenv("ERROR_LOG_MESSAGE_MAX_CHARS", "500"))
+
+# Mobile/API auth defaults
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=int(os.getenv("MOBILE_JWT_ACCESS_MINUTES", "30"))
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=int(os.getenv("MOBILE_JWT_REFRESH_DAYS", "14"))
+    ),
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "UPDATE_LAST_LOGIN": True,
+}

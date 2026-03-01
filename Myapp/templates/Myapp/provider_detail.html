@@ -10,7 +10,7 @@
       </div>
       <div class="provider-detail-actions">
         <a href="tel:{{ provider.phone }}" class="btn btn-main"><i class="bi bi-telephone-fill me-1"></i>Hemen Ara</a>
-        <a href="{% url 'index' %}#talep-form" class="btn btn-main-dark"><i class="bi bi-send-check me-1"></i>Talep Oluştur</a>
+        <a href="{% url 'index' %}?preferred_provider_id={{ provider.id }}#talep-form" class="btn btn-main-dark"><i class="bi bi-send-check me-1"></i>Talep Oluştur</a>
       </div>
     </div>
   </div>

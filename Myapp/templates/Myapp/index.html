@@ -166,6 +166,24 @@
                     <p class="small mb-0 provider-phone"><i class="bi bi-telephone-fill me-1"></i><strong>{{ provider.phone }}</strong></p>
                     <div class="provider-actions">
                       <a href="{% url 'provider_detail' provider.id %}" class="btn btn-sm provider-profile-btn">Profili Gör</a>
+                      {% if request.user.is_authenticated and not is_provider_user %}
+                        <button
+                          type="button"
+                          class="btn btn-sm provider-profile-btn"
+                          data-provider-form-open
+                          data-provider-id="{{ provider.id }}"
+                          data-provider-name="{{ provider.full_name }}"
+                          data-provider-city="{{ provider.city }}"
+                          data-provider-district="{{ provider.district }}"
+                          data-provider-phone="{{ provider.phone }}"
+                          data-provider-profile-url="{% url 'provider_detail' provider.id %}"
+                          data-provider-service-ids="{% for service in provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                        >
+                          Bu Ustaya Talep Aç
+                        </button>
+                      {% elif not request.user.is_authenticated %}
+                        <a href="{% url 'customer_login' %}" class="btn btn-sm provider-profile-btn">Bu Ustaya Talep Aç</a>
+                      {% endif %}
                       <a href="tel:{{ provider.phone }}" class="btn btn-sm provider-call-btn" data-provider-call data-phone="{{ provider.phone }}">Ara</a>
                       <a href="#" class="btn btn-sm provider-whatsapp-btn" data-provider-whatsapp data-phone="{{ provider.phone }}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
                     </div>
@@ -241,9 +259,58 @@
           {% endif %}
           <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
             {% csrf_token %}
+            {{ request_form.preferred_provider_id }}
             <div class="honey-trap-field" aria-hidden="true">
               <label for="id_website_url">Website</label>
               <input type="text" id="id_website_url" name="website_url" tabindex="-1" autocomplete="off">
+            </div>
+            <div class="col-12">
+              <div
+                id="preferred-provider-indicator"
+                class="preferred-provider-banner"
+                {% if not request_form.preferred_provider_id.value %}hidden{% endif %}
+              >
+                <div class="preferred-provider-header">
+                  <div class="preferred-provider-copy">
+                    <p class="preferred-provider-title mb-1">
+                      <i class="bi bi-person-check me-1"></i>Özel Usta Talebi
+                    </p>
+                    <p class="preferred-provider-name mb-1" data-selected-provider-name>
+                      {% if preferred_provider %}{{ preferred_provider.full_name }}{% else %}Usta{% endif %}
+                    </p>
+                    <p class="preferred-provider-meta mb-0" data-selected-provider-meta>
+                      {% if preferred_provider %}{{ preferred_provider.city }} / {{ preferred_provider.district }}{% else %}-{% endif %}
+                    </p>
+                  </div>
+                  <div class="preferred-provider-tools">
+                    <a
+                      href="{% if preferred_provider %}{% url 'provider_detail' preferred_provider.id %}{% else %}#{% endif %}"
+                      class="btn btn-sm provider-profile-btn"
+                      id="selected-provider-profile-link"
+                      {% if not preferred_provider %}hidden{% endif %}
+                    >
+                      Profili Gör
+                    </a>
+                    <a
+                      href="{% if preferred_provider %}tel:{{ preferred_provider.phone }}{% else %}#{% endif %}"
+                      class="btn btn-sm provider-call-btn"
+                      id="selected-provider-call-link"
+                      {% if not preferred_provider %}hidden{% endif %}
+                    >
+                      Ara
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-preferred-provider">
+                      Genel Forma Dön
+                    </button>
+                  </div>
+                </div>
+                <p class="preferred-provider-note mb-0">
+                  Talebin önce seçtiğin ustaya gider. İstersen yukarıdaki düğme ile genel eşleşmeye dönebilirsin.
+                </p>
+              </div>
+              {% for error in request_form.preferred_provider_id.errors %}
+                <div class="text-danger small mt-1">{{ error }}</div>
+              {% endfor %}
             </div>
             <div class="col-12">
               <label class="form-label">{{ request_form.customer_name.label }}</label>
@@ -469,6 +536,151 @@
 
     setupCityDistrictByForm("search-form");
     setupCityDistrictByForm("request-form");
+
+    function setupPreferredProviderForm() {
+      const requestForm = document.getElementById("request-form");
+      if (!requestForm) return;
+
+      const preferredProviderInput = requestForm.querySelector("input[name='preferred_provider_id']");
+      if (!preferredProviderInput) return;
+
+      const indicator = document.getElementById("preferred-provider-indicator");
+      const indicatorName = indicator ? indicator.querySelector("[data-selected-provider-name]") : null;
+      const indicatorMeta = indicator ? indicator.querySelector("[data-selected-provider-meta]") : null;
+      const clearButton = document.getElementById("clear-preferred-provider");
+      const citySelect = requestForm.querySelector("select[name='city']");
+      const districtSelect = requestForm.querySelector("select[name='district']");
+      const serviceSelect = requestForm.querySelector("select[name='service_type']");
+      const serviceFilterInput = requestForm.querySelector("input[data-service-type-filter]");
+      const detailsField = requestForm.querySelector("textarea[name='details']");
+      const profileLink = document.getElementById("selected-provider-profile-link");
+      const callLink = document.getElementById("selected-provider-call-link");
+
+      function parseServiceIds(rawValue) {
+        return String(rawValue || "")
+          .split(",")
+          .map(function (item) { return item.trim(); })
+          .filter(Boolean);
+      }
+
+      function syncIndicator(state) {
+        if (!indicator || !indicatorName || !preferredProviderInput) return;
+        const hasPreferredProvider = !!preferredProviderInput.value;
+        indicator.hidden = !hasPreferredProvider;
+        requestForm.classList.toggle("preferred-provider-active", hasPreferredProvider);
+        if (!hasPreferredProvider) {
+          return;
+        }
+
+        if (state && state.name) {
+          indicatorName.textContent = state.name;
+        }
+        if (indicatorMeta && state) {
+          indicatorMeta.textContent = state.meta || "-";
+        }
+        if (profileLink) {
+          if (state && state.profileUrl) {
+            profileLink.href = state.profileUrl;
+            profileLink.hidden = false;
+          } else {
+            profileLink.hidden = true;
+          }
+        }
+        if (callLink) {
+          if (state && state.phone) {
+            callLink.href = "tel:" + state.phone;
+            callLink.hidden = false;
+          } else {
+            callLink.hidden = true;
+          }
+        }
+      }
+
+      function ensureServiceCompatibility(allowedServiceIds) {
+        if (!serviceSelect || !allowedServiceIds.length) return;
+        if (serviceFilterInput && serviceFilterInput.value) {
+          serviceFilterInput.value = "";
+          serviceFilterInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
+        const currentValue = String(serviceSelect.value || "");
+        if (allowedServiceIds.includes(currentValue)) {
+          return;
+        }
+
+        const optionValues = Array.from(serviceSelect.options).map(function (option) {
+          return option.value;
+        });
+        const fallbackValue = allowedServiceIds.find(function (serviceId) {
+          return optionValues.includes(serviceId);
+        });
+        if (!fallbackValue) {
+          return;
+        }
+        serviceSelect.value = fallbackValue;
+        serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      function setPreferredProviderFromButton(button) {
+        const providerId = (button.getAttribute("data-provider-id") || "").trim();
+        if (!providerId) return;
+
+        preferredProviderInput.value = providerId;
+        const providerName = (button.getAttribute("data-provider-name") || "Usta").trim();
+        const providerCity = (button.getAttribute("data-provider-city") || "").trim();
+        const providerDistrict = (button.getAttribute("data-provider-district") || "").trim();
+        const providerPhone = (button.getAttribute("data-provider-phone") || "").trim();
+        const providerProfileUrl = (button.getAttribute("data-provider-profile-url") || "").trim();
+        const providerServiceIds = parseServiceIds(button.getAttribute("data-provider-service-ids"));
+
+        if (citySelect && providerCity) {
+          citySelect.value = providerCity;
+          citySelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (districtSelect && providerDistrict) {
+          districtSelect.value = providerDistrict;
+          districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        ensureServiceCompatibility(providerServiceIds);
+
+        syncIndicator({
+          name: providerName,
+          meta: [providerCity, providerDistrict].filter(Boolean).join(" / "),
+          phone: providerPhone,
+          profileUrl: providerProfileUrl,
+        });
+        requestForm.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (detailsField) {
+          detailsField.focus();
+        }
+      }
+
+      document.querySelectorAll("[data-provider-form-open]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          setPreferredProviderFromButton(button);
+        });
+      });
+
+      if (clearButton) {
+        clearButton.addEventListener("click", function () {
+          preferredProviderInput.value = "";
+          syncIndicator(null);
+        });
+      }
+
+      if (preferredProviderInput.value) {
+        syncIndicator({
+          name: indicatorName ? indicatorName.textContent.trim() : "Usta",
+          meta: indicatorMeta ? indicatorMeta.textContent.trim() : "",
+          profileUrl: profileLink && !profileLink.hidden ? profileLink.getAttribute("href") : "",
+          phone: callLink && !callLink.hidden ? (callLink.getAttribute("href") || "").replace(/^tel:/, "") : "",
+        });
+      } else {
+        syncIndicator(null);
+      }
+    }
+
+    setupPreferredProviderForm();
 
   })();
 </script>

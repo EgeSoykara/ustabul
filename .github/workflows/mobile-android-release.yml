@@ -1,0 +1,63 @@
+name: Mobile Android Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "mobile-v*"
+
+jobs:
+  android-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    defaults:
+      run:
+        working-directory: mobile_app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.2"
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Inject google-services.json (optional)
+        if: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 != '' }}
+        run: echo "${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
+
+      - name: Inject Android release keystore (optional)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: |
+          mkdir -p android/keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/keystore/release-keystore.jks
+
+      - name: Inject Android key.properties (optional)
+        if: ${{ secrets.ANDROID_KEY_PROPERTIES_BASE64 != '' }}
+        run: echo "${{ secrets.ANDROID_KEY_PROPERTIES_BASE64 }}" | base64 --decode > android/key.properties
+
+      - name: Build Android App Bundle
+        env:
+          MOBILE_API_BASE_URL: ${{ secrets.MOBILE_API_BASE_URL }}
+        run: |
+          API_URL="${MOBILE_API_BASE_URL:-https://example.com}"
+          flutter build appbundle --release --dart-define=API_BASE_URL=$API_URL
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: mobile_app/build/app/outputs/bundle/release/app-release.aab

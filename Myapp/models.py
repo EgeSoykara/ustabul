@@ -446,6 +446,38 @@ class NotificationCursor(models.Model):
         return f"{self.user.username} cursor"
 
 
+class MobileDevice(models.Model):
+    PLATFORM_CHOICES = (
+        ("ios", "iOS"),
+        ("android", "Android"),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="mobile_devices",
+    )
+    platform = models.CharField(max_length=16, choices=PLATFORM_CHOICES)
+    device_id = models.CharField(max_length=120)
+    push_token = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    app_version = models.CharField(max_length=40, blank=True)
+    locale = models.CharField(max_length=32, blank=True)
+    timezone = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_seen_at", "-id"]
+        unique_together = ("user", "platform", "device_id")
+        indexes = [
+            models.Index(fields=["user", "last_seen_at"]),
+            models.Index(fields=["platform", "last_seen_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} {self.platform} {self.device_id}"
+
+
 class ProviderAvailabilitySlot(models.Model):
     WEEKDAY_CHOICES = (
         (0, "Pazartesi"),

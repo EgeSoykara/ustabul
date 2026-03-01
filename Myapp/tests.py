@@ -1,4 +1,5 @@
 from datetime import time, timedelta
+import json
 
 from django.test import TestCase, override_settings
 from django.core.management import call_command
@@ -11,6 +12,7 @@ from io import StringIO
 from .models import (
     CustomerProfile,
     IdempotencyRecord,
+    MobileDevice,
     Provider,
     ProviderAvailabilitySlot,
     ProviderOffer,
@@ -176,6 +178,50 @@ class MarketplaceTests(TestCase):
         self.assertEqual(latest.customer, customer)
         self.assertEqual(latest.status, "pending_provider")
         self.assertEqual(ProviderOffer.objects.filter(service_request=latest, status="pending").count(), 2)
+
+    def test_service_request_with_preferred_provider_creates_offer_for_only_selected_provider(self):
+        customer = User.objects.create_user(username="ozelustamusteri", password="GucluSifre123!")
+        self.client.login(username="ozelustamusteri", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Ozel Usta Musteri",
+                "customer_phone": "05000000000",
+                "service_type": self.service.id,
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "details": "Sadece secilen usta test talebi",
+                "preferred_provider_id": self.provider_ali.id,
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Oncelikli olarak Ali Usta ustasina iletildi")
+        created_request = ServiceRequest.objects.latest("created_at")
+        pending_offers = ProviderOffer.objects.filter(service_request=created_request, status="pending")
+        self.assertEqual(pending_offers.count(), 1)
+        self.assertEqual(pending_offers.first().provider_id, self.provider_ali.id)
+
+    def test_service_request_with_preferred_provider_rejects_unsupported_service(self):
+        elektrik = ServiceType.objects.create(name="Elektrik", slug="elektrik")
+        customer = User.objects.create_user(username="uyumsuzhizmet", password="GucluSifre123!")
+        self.client.login(username="uyumsuzhizmet", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Uyumsuz Hizmet",
+                "customer_phone": "05000000000",
+                "service_type": elektrik.id,
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "details": "Secilen usta bu hizmeti vermiyor testi",
+                "preferred_provider_id": self.provider_ali.id,
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Secilen usta bu hizmet turunu sunmuyor.")
+        self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 0)
 
     def test_provider_gets_unread_notification_for_pending_offer(self):
         customer = User.objects.create_user(username="bildirimmusteri", password="GucluSifre123!")
@@ -2171,4 +2217,115 @@ class MarketplaceTests(TestCase):
         service_request.refresh_from_db()
         self.assertEqual(offer.status, "accepted")
         self.assertEqual(service_request.status, "pending_customer")
+
+
+class MobileApiTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.service = ServiceType.objects.create(name="Mobil Tesisat", slug="mobil-tesisat")
+        self.customer_user = User.objects.create_user(username="mobile_customer", password="GucluSifre123!")
+        self.provider_user = User.objects.create_user(username="mobile_provider", password="GucluSifre123!")
+        self.provider = Provider.objects.create(
+            user=self.provider_user,
+            full_name="Mobile Provider",
+            city="Lefkosa",
+            district="Ortakoy",
+            phone="05557770000",
+            is_verified=True,
+            is_available=True,
+        )
+        self.provider.service_types.add(self.service)
+
+    def _login_mobile(self, username, password):
+        response = self.client.post(
+            "/mobile/api/v1/auth/login/",
+            data=json.dumps({"username": username, "password": password}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("access", payload)
+        self.assertIn("refresh", payload)
+        return payload
+
+    def test_mobile_login_returns_tokens_for_customer(self):
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        self.assertEqual(payload["user"]["role"], "customer")
+
+    def test_mobile_me_requires_bearer_token(self):
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/me/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["user"]["username"], "mobile_customer")
+
+    def test_mobile_customer_requests_returns_unread_count(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Mobile Musteri",
+            customer_phone="05000000000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Mobile list test",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILE001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+        ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=self.provider_user,
+            sender_role="provider",
+            body="Yeni mobil mesaj",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/customer/requests/?limit=10&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["results"][0]["unread_messages"], 1)
+
+    def test_mobile_register_device_creates_record(self):
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.post(
+            "/mobile/api/v1/devices/register/",
+            data=json.dumps(
+                {
+                    "platform": "android",
+                    "device_id": "android-device-001",
+                    "push_token": "token_123456789012345678901234567890123456",
+                    "app_version": "1.0.0",
+                    "locale": "tr_TR",
+                    "timezone": "Europe/Istanbul",
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            MobileDevice.objects.filter(
+                user=self.customer_user,
+                platform="android",
+                device_id="android-device-001",
+            ).exists()
+        )
 
