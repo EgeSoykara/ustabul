@@ -14,7 +14,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.urls import reverse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -1094,31 +1094,43 @@ def build_unread_message_map(service_request_ids, viewer_role):
     return {row["service_request_id"]: row["total"] for row in unread_rows}
 
 
+def get_customer_snapshot_cache_seconds():
+    return max(1, int(getattr(settings, "CUSTOMER_SNAPSHOT_CACHE_SECONDS", 3)))
+
+
+def get_provider_snapshot_cache_seconds():
+    return max(1, int(getattr(settings, "PROVIDER_SNAPSHOT_CACHE_SECONDS", 3)))
+
+
 def build_customer_requests_signature(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return "empty"
+
     request_rows = list(
-        user.service_requests.values_list("id", "status", "matched_provider_id", "matched_offer_id", "matched_at").order_by("id")
+        ServiceRequest.objects.filter(customer=user)
+        .values_list("id", "status", "matched_provider_id", "matched_offer_id", "matched_at")
+        .order_by("id")
     )
-    request_ids = [row[0] for row in request_rows]
-    if not request_ids:
+    if not request_rows:
         return "empty"
 
     offer_rows = list(
-        ProviderOffer.objects.filter(service_request_id__in=request_ids, provider__is_verified=True)
+        ProviderOffer.objects.filter(service_request__customer=user, provider__is_verified=True)
         .values_list("service_request_id", "provider_id", "status", "responded_at")
         .order_by("service_request_id", "provider_id")
     )
     appointment_rows = list(
-        ServiceAppointment.objects.filter(service_request_id__in=request_ids)
+        ServiceAppointment.objects.filter(service_request__customer=user)
         .values_list("service_request_id", "status", "scheduled_for", "updated_at")
         .order_by("service_request_id")
     )
     rating_rows = list(
-        ProviderRating.objects.filter(service_request_id__in=request_ids)
+        ProviderRating.objects.filter(service_request__customer=user)
         .values_list("service_request_id", "score", "updated_at")
         .order_by("service_request_id")
     )
     unread_rows = list(
-        ServiceMessage.objects.filter(service_request_id__in=request_ids, read_at__isnull=True)
+        ServiceMessage.objects.filter(service_request__customer=user, read_at__isnull=True)
         .exclude(sender_role="customer")
         .values("service_request_id")
         .annotate(total=Count("id"))
@@ -1136,9 +1148,8 @@ def build_customer_requests_signature(user):
 
 
 def build_customer_snapshot_payload(user):
-    request_ids = list(user.service_requests.values_list("id", flat=True))
     snapshot = {
-        "signature": build_customer_requests_signature(user),
+        "signature": "empty",
         "pending_customer_requests_count": 0,
         "matched_requests_count": 0,
         "pending_customer_appointments_count": 0,
@@ -1146,55 +1157,81 @@ def build_customer_snapshot_payload(user):
         "accepted_offers_count": 0,
         "unread_messages_count": 0,
     }
-    if not request_ids:
+    if not user or not getattr(user, "is_authenticated", False):
         return snapshot
 
-    snapshot["pending_customer_requests_count"] = ServiceRequest.objects.filter(
-        id__in=request_ids,
-        status="pending_customer",
-    ).count()
-    snapshot["matched_requests_count"] = ServiceRequest.objects.filter(
-        id__in=request_ids,
-        status="matched",
-    ).count()
+    cache_key = f"snapshot:customer:{user.id}"
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict):
+        return dict(cached)
+
+    request_counts = ServiceRequest.objects.filter(customer=user).aggregate(
+        pending_customer_requests_count=Count("id", filter=Q(status="pending_customer")),
+        matched_requests_count=Count("id", filter=Q(status="matched")),
+    )
+    snapshot["pending_customer_requests_count"] = int(request_counts.get("pending_customer_requests_count") or 0)
+    snapshot["matched_requests_count"] = int(request_counts.get("matched_requests_count") or 0)
     snapshot["pending_customer_appointments_count"] = ServiceAppointment.objects.filter(
-        service_request_id__in=request_ids,
+        service_request__customer=user,
         status="pending_customer",
     ).count()
     snapshot["confirmed_appointments_count"] = ServiceAppointment.objects.filter(
-        service_request_id__in=request_ids,
+        service_request__customer=user,
         status="confirmed",
     ).count()
     snapshot["accepted_offers_count"] = ProviderOffer.objects.filter(
-        service_request_id__in=request_ids,
+        service_request__customer=user,
         status="accepted",
         provider__is_verified=True,
     ).count()
     snapshot["unread_messages_count"] = ServiceMessage.objects.filter(
-        service_request_id__in=request_ids,
+        service_request__customer=user,
         read_at__isnull=True,
     ).exclude(sender_role="customer").count()
+    snapshot["signature"] = build_customer_requests_signature(user)
+    cache.set(cache_key, snapshot, timeout=get_customer_snapshot_cache_seconds())
     return snapshot
 
 
 def build_provider_snapshot_payload(provider):
-    pending_offers_qs = provider.offers.filter(status="pending").order_by("-sent_at")
-    latest_pending_offer = pending_offers_qs.values("id").first()
-    return {
-        "pending_offers_count": pending_offers_qs.count(),
-        "latest_pending_offer_id": latest_pending_offer["id"] if latest_pending_offer else 0,
-        "waiting_customer_selection_count": provider.offers.filter(
-            status="accepted",
-            service_request__status="pending_customer",
-            service_request__matched_provider__isnull=True,
-        ).count(),
-        "pending_appointments_count": provider.appointments.filter(status="pending").count(),
-        "unread_messages_count": ServiceMessage.objects.filter(
-            service_request__matched_provider=provider,
-            service_request__status="matched",
-            read_at__isnull=True,
-        ).exclude(sender_role="provider").count(),
+    snapshot = {
+        "pending_offers_count": 0,
+        "latest_pending_offer_id": 0,
+        "waiting_customer_selection_count": 0,
+        "pending_appointments_count": 0,
+        "unread_messages_count": 0,
     }
+    if not provider:
+        return snapshot
+
+    cache_key = f"snapshot:provider:{provider.id}"
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict):
+        return dict(cached)
+
+    offer_counts = provider.offers.aggregate(
+        pending_offers_count=Count("id", filter=Q(status="pending")),
+        latest_pending_offer_id=Max("id", filter=Q(status="pending")),
+        waiting_customer_selection_count=Count(
+            "id",
+            filter=Q(
+                status="accepted",
+                service_request__status="pending_customer",
+                service_request__matched_provider__isnull=True,
+            ),
+        ),
+    )
+    snapshot["pending_offers_count"] = int(offer_counts.get("pending_offers_count") or 0)
+    snapshot["latest_pending_offer_id"] = int(offer_counts.get("latest_pending_offer_id") or 0)
+    snapshot["waiting_customer_selection_count"] = int(offer_counts.get("waiting_customer_selection_count") or 0)
+    snapshot["pending_appointments_count"] = provider.appointments.filter(status="pending").count()
+    snapshot["unread_messages_count"] = ServiceMessage.objects.filter(
+        service_request__matched_provider=provider,
+        service_request__status="matched",
+        read_at__isnull=True,
+    ).exclude(sender_role="provider").count()
+    cache.set(cache_key, snapshot, timeout=get_provider_snapshot_cache_seconds())
+    return snapshot
 
 
 def build_customer_flow_state(service_request, appointment, *, has_accepted_offers=False, now=None):

@@ -672,6 +672,7 @@
     let titleFlashTimer = null;
     let titleFlashOn = false;
     let reloadTimer = null;
+    let polling = false;
     const badgeCountKey = "ustabul_provider_unseen_count";
     const snapshotKey = "ustabul_provider_last_snapshot";
 
@@ -772,15 +773,51 @@
       }, delayMs);
     }
 
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) {
-        stopTitleFlash();
-      }
-    });
+    function parseProviderState(payload) {
+      return {
+        pendingOffersCount: Number(payload.pending_offers_count || 0),
+        latestPendingOfferId: Number(payload.latest_pending_offer_id || 0),
+        waitingCustomerSelectionCount: Number(payload.waiting_customer_selection_count || 0),
+        pendingAppointmentsCount: Number(payload.pending_appointments_count || 0),
+        unreadMessagesCount: Number(payload.unread_messages_count || 0),
+      };
+    }
 
-    markProviderNotificationsSeen(baseline);
+    function handleNextState(nextState) {
+      const hasChanges =
+        nextState.pendingOffersCount !== baseline.pendingOffersCount ||
+        nextState.latestPendingOfferId !== baseline.latestPendingOfferId ||
+        nextState.waitingCustomerSelectionCount !== baseline.waitingCustomerSelectionCount ||
+        nextState.pendingAppointmentsCount !== baseline.pendingAppointmentsCount ||
+        nextState.unreadMessagesCount !== baseline.unreadMessagesCount;
+
+      if (!hasChanges) return;
+
+      let message = "Usta panelinde yeni bildirim var.";
+      if (
+        nextState.pendingOffersCount > baseline.pendingOffersCount ||
+        (nextState.latestPendingOfferId > baseline.latestPendingOfferId && nextState.pendingOffersCount > 0)
+      ) {
+        message = "Yeni bir is talebi geldi.";
+      } else if (nextState.waitingCustomerSelectionCount > baseline.waitingCustomerSelectionCount) {
+        message = "Musteri secimi bekleyen yeni bir teklifiniz var.";
+      } else if (nextState.waitingCustomerSelectionCount < baseline.waitingCustomerSelectionCount) {
+        message = "Bir talepte musteri usta secimini yapti.";
+      } else if (nextState.pendingAppointmentsCount > baseline.pendingAppointmentsCount) {
+        message = "Yeni bir randevu talebi geldi.";
+      } else if (nextState.unreadMessagesCount > baseline.unreadMessagesCount) {
+        message = "Yeni bir mesajiniz var.";
+      }
+
+      baseline = nextState;
+      markProviderNotificationsSeen(nextState);
+      triggerLiveAlert(message);
+      scheduleReload(1500);
+    }
 
     async function pollProviderPanel() {
+      if (document.hidden || polling) return;
+      polling = true;
       try {
         const response = await fetch(snapshotUrl, {
           method: "GET",
@@ -790,58 +827,31 @@
         });
         if (!response.ok) return;
         const payload = await response.json();
-        const nextState = {
-          pendingOffersCount: Number(payload.pending_offers_count || 0),
-          latestPendingOfferId: Number(payload.latest_pending_offer_id || 0),
-          waitingCustomerSelectionCount: Number(payload.waiting_customer_selection_count || 0),
-          pendingAppointmentsCount: Number(payload.pending_appointments_count || 0),
-          unreadMessagesCount: Number(payload.unread_messages_count || 0),
-        };
-        const hasChanges =
-          nextState.pendingOffersCount !== baseline.pendingOffersCount ||
-          nextState.latestPendingOfferId !== baseline.latestPendingOfferId ||
-          nextState.waitingCustomerSelectionCount !== baseline.waitingCustomerSelectionCount ||
-          nextState.pendingAppointmentsCount !== baseline.pendingAppointmentsCount ||
-          nextState.unreadMessagesCount !== baseline.unreadMessagesCount;
-
-        if (hasChanges) {
-          let message = "Usta panelinde yeni bildirim var.";
-          if (
-            nextState.pendingOffersCount > baseline.pendingOffersCount ||
-            (nextState.latestPendingOfferId > baseline.latestPendingOfferId && nextState.pendingOffersCount > 0)
-          ) {
-            message = "Yeni bir iş talebi geldi.";
-          } else if (nextState.waitingCustomerSelectionCount > baseline.waitingCustomerSelectionCount) {
-            message = "Müşteri seçimi bekleyen yeni bir teklifiniz var.";
-          } else if (nextState.waitingCustomerSelectionCount < baseline.waitingCustomerSelectionCount) {
-            message = "Bir talepte müşteri usta seçimini yaptı.";
-          } else if (nextState.pendingAppointmentsCount > baseline.pendingAppointmentsCount) {
-            message = "Yeni bir randevu talebi geldi.";
-          } else if (nextState.unreadMessagesCount > baseline.unreadMessagesCount) {
-            message = "Yeni bir mesajınız var.";
-          }
-
-          baseline = nextState;
-          markProviderNotificationsSeen(nextState);
-          triggerLiveAlert(message);
-          scheduleReload(1500);
-        }
+        handleNextState(parseProviderState(payload));
       } catch (error) {
         void error;
+      } finally {
+        polling = false;
       }
     }
 
-    window.setInterval(pollProviderPanel, 8000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        stopTitleFlash();
+        pollProviderPanel();
+      }
+    });
+
+    window.addEventListener("ustabul:nav-snapshot", function (event) {
+      const detail = event ? event.detail : null;
+      if (!detail || detail.role !== "provider") return;
+      handleNextState(parseProviderState(detail.payload || {}));
+    });
+
+    markProviderNotificationsSeen(baseline);
+    window.setInterval(pollProviderPanel, 45000);
+    pollProviderPanel();
   })();
 </script>
 {% endblock %}
-
-
-
-
-
-
-
-
-
 

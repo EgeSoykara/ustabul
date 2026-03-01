@@ -376,6 +376,22 @@
     let reconnectTimerId = null;
     let streamInstance = null;
 
+    function emitNavSnapshotEvent(payload) {
+      if (!payload || typeof payload !== "object") return;
+      try {
+        window.dispatchEvent(
+          new CustomEvent("ustabul:nav-snapshot", {
+            detail: {
+              role: isProvider ? "provider" : "customer",
+              payload: payload,
+            },
+          })
+        );
+      } catch (error) {
+        void error;
+      }
+    }
+
     function applySnapshotPayload(payload) {
       const previousSnapshot = readSnapshot();
       const nextSnapshot = isProvider ? buildProviderSnapshot(payload) : buildCustomerSnapshot(payload);
@@ -386,6 +402,7 @@
         writeBadgeCount(readBadgeCount() + increment);
       }
       writeSnapshot(nextSnapshot);
+      emitNavSnapshotEvent(payload);
     }
 
     async function pollNavNotifications() {
@@ -460,6 +477,7 @@
 
       streamInstance.addEventListener("end", function () {
         closeStream();
+        startPolling();
         scheduleReconnect(800);
       });
 
@@ -472,12 +490,13 @@
 
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden) {
-        pollNavNotifications();
+        if (pollingTimerId !== null) {
+          pollNavNotifications();
+        }
       }
     });
 
     renderNavBadge(readBadgeCount());
-    startPolling();
     connectLiveStream();
   })();
 </script>

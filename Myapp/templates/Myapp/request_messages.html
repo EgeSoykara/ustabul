@@ -101,8 +101,11 @@
     let pollingStopped = false;
     let socket = null;
     let reconnectTimer = null;
+    let pollTimer = null;
+    let pollInFlight = false;
+    let websocketHealthy = false;
 
-    const pollIntervalMs = 5000;
+    const fallbackPollIntervalMs = 15000;
     const reconnectDelayMs = 3000;
 
     function buildSnapshotUrl(afterId) {
@@ -196,6 +199,7 @@
 
     function disableComposer(reasonText) {
       pollingStopped = true;
+      websocketHealthy = false;
       if (socket) {
         try {
           socket.close();
@@ -207,6 +211,7 @@
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      stopPolling();
       if (textarea) textarea.disabled = true;
       if (submitButton) submitButton.disabled = true;
       quickReplyButtons.forEach(function (button) {
@@ -215,8 +220,20 @@
       setStatus(reasonText || "Mesajla\u015fma \u015fu anda kapal\u0131.", true);
     }
 
+    function stopPolling() {
+      if (!pollTimer) return;
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+
+    function startPolling() {
+      if (pollingStopped || pollTimer) return;
+      pollTimer = window.setInterval(pollMessages, fallbackPollIntervalMs);
+    }
+
     async function pollMessages() {
-      if (pollingStopped || document.hidden || !snapshotUrl) return;
+      if (pollingStopped || document.hidden || !snapshotUrl || pollInFlight) return;
+      pollInFlight = true;
       try {
         const response = await fetch(buildSnapshotUrl(latestId), {
           method: "GET",
@@ -237,6 +254,8 @@
         }
       } catch (error) {
         void error;
+      } finally {
+        pollInFlight = false;
       }
     }
 
@@ -253,7 +272,10 @@
       }
 
       socket.addEventListener("open", function () {
+        websocketHealthy = true;
         setStatus("", null);
+        stopPolling();
+        pollMessages();
       });
 
       socket.addEventListener("message", function (event) {
@@ -269,11 +291,14 @@
 
       socket.addEventListener("close", function (event) {
         socket = null;
+        websocketHealthy = false;
         if (pollingStopped) return;
         if ([4401, 4403, 4404, 4409].indexOf(event.code) >= 0) {
           disableComposer("Bu konu\u015fma art\u0131k eri\u015filebilir de\u011fil.");
           return;
         }
+        startPolling();
+        pollMessages();
         if (!document.hidden) {
           setStatus("Ba\u011flant\u0131 kesildi, yeniden ba\u011flan\u0131l\u0131yor...", null);
         }
@@ -331,9 +356,18 @@
       });
     });
 
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) return;
+      if (!websocketHealthy) {
+        pollMessages();
+      }
+    });
+
     scrollToBottom();
-    connectWebSocket();
-    window.setInterval(pollMessages, pollIntervalMs);
+    startPolling();
+    if (wsSupported) {
+      connectWebSocket();
+    }
     pollMessages();
   })();
 </script>

@@ -515,7 +515,7 @@
       button.addEventListener("click", function () {
         if (isMobile) return;
         const card = button.closest(".provider-card");
-        const help = card  card.querySelector("[data-provider-help]") : null;
+        const help = card ? card.querySelector("[data-provider-help]") : null;
         if (!help) return;
         help.hidden = false;
         window.setTimeout(function () {
