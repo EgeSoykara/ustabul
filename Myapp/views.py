@@ -1760,9 +1760,15 @@ def index(request):
         request_form_initial["preferred_provider_id"] = preferred_provider.id
         request_form_initial["city"] = preferred_provider.city
         request_form_initial["district"] = preferred_provider.district
+        request_form_initial["preferred_provider_locked_city"] = preferred_provider.city
+        request_form_initial["preferred_provider_locked_district"] = preferred_provider.district
         provider_service_ids = list(preferred_provider.service_types.values_list("id", flat=True))
-        if len(provider_service_ids) == 1:
-            request_form_initial["service_type"] = provider_service_ids[0]
+        if provider_service_ids:
+            selected_service_id = request_form_initial.get("service_type")
+            if selected_service_id not in provider_service_ids:
+                selected_service_id = provider_service_ids[0]
+            request_form_initial["service_type"] = selected_service_id
+            request_form_initial["preferred_provider_locked_service_id"] = selected_service_id
     request_form = ServiceRequestForm(initial=request_form_initial, preferred_provider=preferred_provider)
     context = {
         "search_form": search_form,

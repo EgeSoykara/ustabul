@@ -4116,12 +4116,26 @@ body {
   background: linear-gradient(135deg, rgba(224, 242, 254, 0.9), rgba(186, 230, 253, 0.45));
 }
 
+#request-form select.location-select-locked {
+  pointer-events: none;
+  user-select: none;
+  cursor: not-allowed;
+  border-color: rgba(14, 116, 144, 0.45);
+  background: linear-gradient(135deg, rgba(224, 242, 254, 0.9), rgba(186, 230, 253, 0.45));
+}
+
 [data-theme="dark"] .preferred-provider-banner {
   border-color: rgba(56, 189, 248, 0.45);
   background: linear-gradient(145deg, rgba(15, 23, 42, 0.86), rgba(12, 74, 110, 0.58));
 }
 
 [data-theme="dark"] #request-form .service-picker select.service-select-locked {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] #request-form select.location-select-locked {
   border-color: rgba(56, 189, 248, 0.45);
   background: rgba(15, 23, 42, 0.9);
   color: #e2e8f0;

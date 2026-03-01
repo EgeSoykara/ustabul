@@ -178,6 +178,8 @@ class ServiceSearchForm(forms.Form):
 class ServiceRequestForm(forms.ModelForm):
     preferred_provider_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
     preferred_provider_locked_service_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
+    preferred_provider_locked_city = forms.CharField(required=False, widget=forms.HiddenInput())
+    preferred_provider_locked_district = forms.CharField(required=False, widget=forms.HiddenInput())
     city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, label="Şehir")
     district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, label="İlçe")
 
@@ -318,14 +320,28 @@ class ServiceRequestForm(forms.ModelForm):
                 self.add_error("service_type", "Secilen usta bu hizmet turunu sunmuyor.")
 
             normalized_form_city = normalize_choice_value(city_key)
+            normalized_form_district = normalize_choice_value(resolved_district)
             normalized_provider_city = normalize_choice_value(preferred_provider.city)
-            if normalized_form_city != normalized_provider_city:
+            normalized_provider_district = normalize_choice_value(preferred_provider.district)
+
+            locked_city = normalize_choice_value(cleaned_data.get("preferred_provider_locked_city"))
+            locked_district = normalize_choice_value(cleaned_data.get("preferred_provider_locked_district"))
+
+            if locked_city:
+                if locked_city != normalized_provider_city:
+                    self.add_error("city", "Ozel usta secimi gecersiz. Lutfen tekrar deneyin.")
+                elif normalized_form_city != locked_city:
+                    self.add_error("city", "Ozel usta modunda sehir degistirilemez. Genel forma donerek secim yapin.")
+            elif normalized_form_city != normalized_provider_city:
                 self.add_error("city", "Secilen usta farkli bir sehirde hizmet veriyor.")
-            elif resolved_district != ANY_DISTRICT_VALUE:
-                normalized_form_district = normalize_choice_value(resolved_district)
-                normalized_provider_district = normalize_choice_value(preferred_provider.district)
-                if normalized_form_district != normalized_provider_district:
-                    self.add_error("district", "Secilen usta bu ilcede hizmet vermiyor.")
+
+            if locked_district:
+                if locked_district != normalized_provider_district:
+                    self.add_error("district", "Ozel usta secimi gecersiz. Lutfen tekrar deneyin.")
+                elif normalized_form_district != locked_district:
+                    self.add_error("district", "Ozel usta modunda ilce degistirilemez. Genel forma donerek secim yapin.")
+            elif normalized_form_district != normalized_provider_district:
+                self.add_error("district", "Secilen usta bu ilcede hizmet vermiyor.")
 
         cleaned_data["preferred_provider"] = preferred_provider
         return cleaned_data

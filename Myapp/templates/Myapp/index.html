@@ -245,12 +245,14 @@
             {% csrf_token %}
             {{ request_form.preferred_provider_id }}
             {{ request_form.preferred_provider_locked_service_id }}
+            {{ request_form.preferred_provider_locked_city }}
+            {{ request_form.preferred_provider_locked_district }}
             <div class="honey-trap-field" aria-hidden="true">
               <label for="id_website_url">Website</label>
               <input type="text" id="id_website_url" name="website_url" tabindex="-1" autocomplete="off">
             </div>
             <div class="col-12">
-              <div id="preferred-provider-indicator" class="preferred-provider-banner" data-selected-provider-service-ids="{% if preferred_provider %}{% for service in preferred_provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}" data-selected-provider-service-id="{{ request_form.preferred_provider_locked_service_id.value|default:'' }}" {% if not request_form.preferred_provider_id.value %}hidden{% endif %}>
+              <div id="preferred-provider-indicator" class="preferred-provider-banner" data-selected-provider-service-ids="{% if preferred_provider %}{% for service in preferred_provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}" data-selected-provider-service-id="{{ request_form.preferred_provider_locked_service_id.value|default:'' }}" data-selected-provider-city="{{ request_form.preferred_provider_locked_city.value|default:'' }}" data-selected-provider-district="{{ request_form.preferred_provider_locked_district.value|default:'' }}" {% if not request_form.preferred_provider_id.value %}hidden{% endif %}>
                 <div class="preferred-provider-header">
                   <div class="preferred-provider-copy">
                     <p class="preferred-provider-title mb-1"><i class="bi bi-person-check me-1"></i>Özel Usta Talebi</p>
@@ -295,7 +297,7 @@
                 </div>
                 {{ request_form.service_type }}
                 <p class="service-picker-note mb-0">Yazarak filtrele veya öne çıkanlardan seç.</p>
-                <p class="small text-muted mt-1 mb-0" id="preferred-provider-service-lock-hint" hidden>Özel usta modunda hizmet sabitlendi. Değiştirmek için "Genel Forma Dön" kullan.</p>
+                <p class="small text-muted mt-1 mb-0" id="preferred-provider-service-lock-hint" hidden>Özel usta modunda hizmet, şehir ve ilçe sabitlendi. Değiştirmek için "Genel Forma Dön" kullan.</p>
                 {% if popular_service_types %}
                   <div class="quick-service-wrap">
                     <span class="quick-service-label">Öne Çıkan Hizmetler</span>
@@ -587,6 +589,8 @@
       if (!preferredProviderInput) return;
 
       const lockedServiceInput = requestForm.querySelector("input[name='preferred_provider_locked_service_id']");
+      const lockedCityInput = requestForm.querySelector("input[name='preferred_provider_locked_city']");
+      const lockedDistrictInput = requestForm.querySelector("input[name='preferred_provider_locked_district']");
       const indicator = document.getElementById("preferred-provider-indicator");
       const indicatorName = indicator ? indicator.querySelector("[data-selected-provider-name]") : null;
       const indicatorMeta = indicator ? indicator.querySelector("[data-selected-provider-meta]") : null;
@@ -599,6 +603,8 @@
       const detailsField = requestForm.querySelector("textarea[name='details']");
       const profileLink = document.getElementById("selected-provider-profile-link");
       const callLink = document.getElementById("selected-provider-call-link");
+      let lockedCityValue = "";
+      let lockedDistrictValue = "";
 
       function parseServiceIds(rawValue) {
         return String(rawValue || "").split(",").map(function (item) { return item.trim(); }).filter(Boolean);
@@ -651,6 +657,56 @@
         serviceLockHint.hidden = !isLocked;
       }
 
+      function isLocationLocked() {
+        return Boolean(lockedCityValue && lockedDistrictValue);
+      }
+
+      function setLocationLock(cityValue, districtValue) {
+        lockedCityValue = String(cityValue || "").trim();
+        lockedDistrictValue = String(districtValue || "").trim();
+        const shouldLock = isLocationLocked();
+
+        if (lockedCityInput) {
+          lockedCityInput.value = shouldLock ? lockedCityValue : "";
+        }
+        if (lockedDistrictInput) {
+          lockedDistrictInput.value = shouldLock ? lockedDistrictValue : "";
+        }
+
+        if (citySelect) {
+          citySelect.classList.toggle("location-select-locked", shouldLock);
+          if (shouldLock && lockedCityValue) {
+            citySelect.value = lockedCityValue;
+            citySelect.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        }
+
+        if (districtSelect) {
+          districtSelect.classList.toggle("location-select-locked", shouldLock);
+          if (shouldLock && lockedDistrictValue) {
+            districtSelect.value = lockedDistrictValue;
+            districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        }
+      }
+
+      function clearLocationLock() {
+        lockedCityValue = "";
+        lockedDistrictValue = "";
+        if (lockedCityInput) {
+          lockedCityInput.value = "";
+        }
+        if (lockedDistrictInput) {
+          lockedDistrictInput.value = "";
+        }
+        if (citySelect) {
+          citySelect.classList.remove("location-select-locked");
+        }
+        if (districtSelect) {
+          districtSelect.classList.remove("location-select-locked");
+        }
+      }
+
       function setServiceLock(allowedServiceIds, forcedServiceId) {
         const normalizedIds = (allowedServiceIds || []).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
         const targetServiceId = String(forcedServiceId || getLockedServiceId(normalizedIds)).trim();
@@ -694,6 +750,44 @@
         syncServiceLockHint(false);
       }
 
+      if (citySelect) {
+        citySelect.addEventListener("mousedown", function (event) {
+          if (!isLocationLocked()) return;
+          event.preventDefault();
+          citySelect.blur();
+        });
+        citySelect.addEventListener("keydown", function (event) {
+          if (!isLocationLocked()) return;
+          event.preventDefault();
+        });
+        citySelect.addEventListener("change", function () {
+          if (!isLocationLocked()) return;
+          if (citySelect.value !== lockedCityValue) {
+            citySelect.value = lockedCityValue;
+            citySelect.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        });
+      }
+
+      if (districtSelect) {
+        districtSelect.addEventListener("mousedown", function (event) {
+          if (!isLocationLocked()) return;
+          event.preventDefault();
+          districtSelect.blur();
+        });
+        districtSelect.addEventListener("keydown", function (event) {
+          if (!isLocationLocked()) return;
+          event.preventDefault();
+        });
+        districtSelect.addEventListener("change", function () {
+          if (!isLocationLocked()) return;
+          if (districtSelect.value !== lockedDistrictValue) {
+            districtSelect.value = lockedDistrictValue;
+            districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        });
+      }
+
       function setPreferredProviderFromButton(button) {
         const providerId = (button.getAttribute("data-provider-id") || "").trim();
         if (!providerId) return;
@@ -706,15 +800,12 @@
         const providerProfileUrl = (button.getAttribute("data-provider-profile-url") || "").trim();
         const providerServiceIds = parseServiceIds(button.getAttribute("data-provider-service-ids"));
 
-        if (citySelect && providerCity) {
-          citySelect.value = providerCity;
-          citySelect.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        if (districtSelect && providerDistrict) {
-          districtSelect.value = providerDistrict;
-          districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
-        }
+        setLocationLock(providerCity, providerDistrict);
         setServiceLock(providerServiceIds);
+        if (indicator) {
+          indicator.setAttribute("data-selected-provider-city", providerCity);
+          indicator.setAttribute("data-selected-provider-district", providerDistrict);
+        }
 
         syncIndicator({
           name: providerName,
@@ -740,7 +831,10 @@
           if (indicator) {
             indicator.setAttribute("data-selected-provider-service-ids", "");
             indicator.setAttribute("data-selected-provider-service-id", "");
+            indicator.setAttribute("data-selected-provider-city", "");
+            indicator.setAttribute("data-selected-provider-district", "");
           }
+          clearLocationLock();
           clearServiceLock();
           syncIndicator(null);
         });
@@ -753,6 +847,19 @@
           (lockedServiceInput ? lockedServiceInput.value : "") ||
           ""
         ).trim();
+        const initialLockedCity = String(
+          (indicator ? indicator.getAttribute("data-selected-provider-city") : "") ||
+          (lockedCityInput ? lockedCityInput.value : "") ||
+          ""
+        ).trim();
+        const initialLockedDistrict = String(
+          (indicator ? indicator.getAttribute("data-selected-provider-district") : "") ||
+          (lockedDistrictInput ? lockedDistrictInput.value : "") ||
+          ""
+        ).trim();
+        if (initialLockedCity && initialLockedDistrict) {
+          setLocationLock(initialLockedCity, initialLockedDistrict);
+        }
         if (initialServiceIds.length) {
           setServiceLock(initialServiceIds, initialLockedServiceId);
         }
@@ -763,6 +870,7 @@
           phone: callLink && !callLink.hidden ? (callLink.getAttribute("href") || "").replace(/^tel:/, "") : "",
         });
       } else {
+        clearLocationLock();
         clearServiceLock();
         syncIndicator(null);
       }

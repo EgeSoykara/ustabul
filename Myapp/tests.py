@@ -193,6 +193,8 @@ class MarketplaceTests(TestCase):
                 "details": "Sadece secilen usta test talebi",
                 "preferred_provider_id": self.provider_ali.id,
                 "preferred_provider_locked_service_id": self.service.id,
+                "preferred_provider_locked_city": "Lefkosa",
+                "preferred_provider_locked_district": "Ortakoy",
             },
             follow=True,
         )
@@ -216,6 +218,8 @@ class MarketplaceTests(TestCase):
         self.assertEqual(form_service_ids, provider_service_ids)
         self.assertNotIn(extra_service.id, form_service_ids)
         self.assertIn("Secili usta icin uygun hizmetler listeleniyor.", request_form.fields["service_type"].help_text)
+        self.assertEqual(request_form.initial.get("preferred_provider_locked_city"), self.provider_ali.city)
+        self.assertEqual(request_form.initial.get("preferred_provider_locked_district"), self.provider_ali.district)
 
     def test_preferred_provider_locked_service_rejects_manual_service_change(self):
         elektrik = ServiceType.objects.create(name="Elektrik", slug="elektrik")
@@ -231,6 +235,8 @@ class MarketplaceTests(TestCase):
                 "preferred_provider_locked_service_id": self.service.id,
                 "city": "Lefkosa",
                 "district": "Ortakoy",
+                "preferred_provider_locked_city": "Lefkosa",
+                "preferred_provider_locked_district": "Ortakoy",
                 "details": "Hizmet degistirme denemesi",
                 "preferred_provider_id": self.provider_ali.id,
             },
@@ -238,6 +244,29 @@ class MarketplaceTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Ozel usta modunda hizmet degistirilemez")
+        self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 0)
+
+    def test_preferred_provider_locked_location_rejects_manual_city_change(self):
+        customer = User.objects.create_user(username="kilitsehir", password="GucluSifre123!")
+        self.client.login(username="kilitsehir", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Kilit Sehir Test",
+                "customer_phone": "05000000000",
+                "service_type": self.service.id,
+                "preferred_provider_locked_service_id": self.service.id,
+                "city": "Girne",
+                "district": "Karakum",
+                "preferred_provider_locked_city": "Lefkosa",
+                "preferred_provider_locked_district": "Ortakoy",
+                "details": "Sehir degistirme denemesi",
+                "preferred_provider_id": self.provider_ali.id,
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ozel usta modunda sehir degistirilemez")
         self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 0)
 
     def test_service_request_with_preferred_provider_rejects_unsupported_service(self):
