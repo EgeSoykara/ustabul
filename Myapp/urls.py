@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path('', views.index, name='index'),
+    path('talep-formu/', views.request_form_page, name='request_form_page'),
     path('usta/<int:provider_id>/', views.provider_detail, name='provider_detail'),
     path('service-worker.js', views.service_worker, name='service_worker'),
     path('offline/', views.offline, name='offline'),

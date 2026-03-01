@@ -88,6 +88,24 @@ def get_preferred_provider(raw_provider_id):
     )
 
 
+def build_service_request_form(request, *, preferred_provider, is_provider_user):
+    request_form_initial = build_request_form_initial(request)
+    if preferred_provider and request.user.is_authenticated and not is_provider_user:
+        request_form_initial["preferred_provider_id"] = preferred_provider.id
+        request_form_initial["city"] = preferred_provider.city
+        request_form_initial["district"] = preferred_provider.district
+        request_form_initial["preferred_provider_locked_city"] = preferred_provider.city
+        request_form_initial["preferred_provider_locked_district"] = preferred_provider.district
+        provider_service_ids = list(preferred_provider.service_types.values_list("id", flat=True))
+        if provider_service_ids:
+            selected_service_id = request_form_initial.get("service_type")
+            if selected_service_id not in provider_service_ids:
+                selected_service_id = provider_service_ids[0]
+            request_form_initial["service_type"] = selected_service_id
+            request_form_initial["preferred_provider_locked_service_id"] = selected_service_id
+    return ServiceRequestForm(initial=request_form_initial, preferred_provider=preferred_provider)
+
+
 def paginate_items(request, items, *, per_page=12, page_param="page"):
     paginator = Paginator(items, per_page)
     return paginator.get_page(request.GET.get(page_param))
@@ -1755,21 +1773,11 @@ def index(request):
     provider_page_query = query_without_provider_page.urlencode()
 
     preferred_provider = get_preferred_provider(request.GET.get("preferred_provider_id"))
-    request_form_initial = build_request_form_initial(request)
-    if preferred_provider and request.user.is_authenticated and not is_provider_user:
-        request_form_initial["preferred_provider_id"] = preferred_provider.id
-        request_form_initial["city"] = preferred_provider.city
-        request_form_initial["district"] = preferred_provider.district
-        request_form_initial["preferred_provider_locked_city"] = preferred_provider.city
-        request_form_initial["preferred_provider_locked_district"] = preferred_provider.district
-        provider_service_ids = list(preferred_provider.service_types.values_list("id", flat=True))
-        if provider_service_ids:
-            selected_service_id = request_form_initial.get("service_type")
-            if selected_service_id not in provider_service_ids:
-                selected_service_id = provider_service_ids[0]
-            request_form_initial["service_type"] = selected_service_id
-            request_form_initial["preferred_provider_locked_service_id"] = selected_service_id
-    request_form = ServiceRequestForm(initial=request_form_initial, preferred_provider=preferred_provider)
+    request_form = build_service_request_form(
+        request,
+        preferred_provider=preferred_provider,
+        is_provider_user=is_provider_user,
+    )
     context = {
         "search_form": search_form,
         "request_form": request_form,
@@ -1784,6 +1792,29 @@ def index(request):
         "city_district_map_json": get_city_district_map_json(),
         "is_provider_user": is_provider_user,
         "popular_service_types": get_popular_service_types(),
+        "form_only_mode": False,
+    }
+    return render(request, "Myapp/index.html", context)
+
+
+@never_cache
+@ensure_csrf_cookie
+def request_form_page(request):
+    refresh_marketplace_lifecycle()
+    is_provider_user = bool(get_provider_for_user(request.user)) if request.user.is_authenticated else False
+    preferred_provider = get_preferred_provider(request.GET.get("preferred_provider_id"))
+    request_form = build_service_request_form(
+        request,
+        preferred_provider=preferred_provider,
+        is_provider_user=is_provider_user,
+    )
+    context = {
+        "request_form": request_form,
+        "preferred_provider": preferred_provider,
+        "city_district_map_json": get_city_district_map_json(),
+        "is_provider_user": is_provider_user,
+        "popular_service_types": get_popular_service_types(),
+        "form_only_mode": True,
     }
     return render(request, "Myapp/index.html", context)
 

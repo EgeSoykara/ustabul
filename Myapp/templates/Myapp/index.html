@@ -1,49 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
+{% if not form_only_mode %}
 <section class="home-v2-top reveal-up">
   <div class="home-v2-top-grid">
     <article class="home-v2-hero-panel">
-      <span class="home-v2-badge"><i class="bi bi-lightning-charge-fill"></i> Hızlı Usta Bul</span>
-      <h1>Mahallendeki en iyi ustaları tek panelden yönet</h1>
-      <p>
-        Hizmeti seç, bölgeni filtrele, doğru ustayı karşılaştır ve tek ekrandan talep aç.
-        Arama ve talep adımları artık aynı akışta.
-      </p>
-      <div class="home-v2-hero-actions">
-        <a class="btn btn-main" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
-        {% if request.user.is_authenticated and not is_provider_user %}
-          <a class="btn btn-main-dark" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
-        {% else %}
-          <a class="btn btn-main-dark" href="{% url 'customer_login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
-        {% endif %}
-      </div>
-      <div class="home-v2-hero-points">
-        <span><i class="bi bi-geo-alt-fill"></i> Şehir/ilçe filtreli liste</span>
-        <span><i class="bi bi-shield-check"></i> Doğrulanmış profiller</span>
-        <span><i class="bi bi-chat-dots-fill"></i> Hızlı teklif akışı</span>
+      <div class="home-v2-hero-shell">
+        <div class="home-v2-hero-main">
+          <span class="home-v2-badge"><i class="bi bi-lightning-charge-fill"></i> Hızlı Usta Bul</span>
+          <h1>Mahallendeki en iyi ustaları tek panelden yönet</h1>
+          <p>
+            Hizmeti seç, bölgeni filtrele, doğru ustayı karşılaştır ve tek ekrandan talep aç.
+            Arama ve talep adımları artık aynı akışta.
+          </p>
+          <div class="home-v2-hero-actions">
+            <a class="btn btn-main" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
+            {% if request.user.is_authenticated and not is_provider_user %}
+              <a class="btn btn-main-dark d-none d-lg-inline-flex" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+              <a class="btn btn-main-dark d-inline-flex d-lg-none" href="{% url 'request_form_page' %}"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+            {% else %}
+              <a class="btn btn-main-dark" href="{% url 'customer_login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
+            {% endif %}
+          </div>
+          <div class="home-v2-hero-points">
+            <span><i class="bi bi-geo-alt-fill"></i> Şehir/ilçe filtreli liste</span>
+            <span><i class="bi bi-shield-check"></i> Doğrulanmış profiller</span>
+            <span><i class="bi bi-chat-dots-fill"></i> Hızlı teklif akışı</span>
+          </div>
+        </div>
+        <aside class="home-v2-hero-side">
+          <div class="home-v2-hero-stat" aria-label="Aktif usta sayısı">
+            <p class="home-v2-hero-stat-label">Listelenen aktif usta</p>
+            <p class="home-v2-hero-stat-value">{{ provider_total_count }}</p>
+            <p class="home-v2-hero-stat-note">Arama filtrelerine göre anlık güncellenir.</p>
+          </div>
+          <div class="home-v2-hero-flow" aria-label="Sistem akışı">
+            <p class="home-v2-hero-flow-title">Nasıl çalışır?</p>
+            <div class="home-v2-hero-flow-row">
+              <span><strong>1</strong> Hizmeti seç</span>
+              <span><strong>2</strong> Ustayı karşılaştır</span>
+              <span><strong>3</strong> Talep gönder</span>
+            </div>
+          </div>
+        </aside>
       </div>
     </article>
-    <aside class="home-v2-overview-panel">
-      <div class="home-v2-overview-card">
-        <p class="home-v2-overview-label">Listelenen aktif usta</p>
-        <p class="home-v2-overview-value">{{ provider_total_count }}</p>
-        <p class="home-v2-overview-note">Anlık arama sonuçlarına göre güncellenir.</p>
-      </div>
-      <div class="home-v2-overview-card">
-        <p class="home-v2-overview-label">Sayfa durumu</p>
-        <p class="home-v2-overview-value">{{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}</p>
-        <p class="home-v2-overview-note">Sıralama: {{ selected_sort_label }}</p>
-      </div>
-      <div class="home-v2-overview-card">
-        <p class="home-v2-overview-label">Destek</p>
-        <p class="home-v2-overview-value">24/7</p>
-        <p class="home-v2-overview-note">İhtiyaç halinde hızlı dönüş.</p>
-      </div>
-    </aside>
   </div>
 </section>
+{% endif %}
+{% if not form_only_mode %}
+<section class="home-v2-mobile-request-cta d-lg-none reveal-up delay-1">
+  {% if request.user.is_authenticated and not is_provider_user %}
+    <a href="{% url 'request_form_page' %}" class="btn btn-main-dark w-100"><i class="bi bi-send-check me-1"></i>Talep Formunu Aç</a>
+  {% elif request.user.is_authenticated and is_provider_user %}
+    <a href="{% url 'provider_requests' %}" class="btn btn-main-dark w-100"><i class="bi bi-briefcase-fill me-1"></i>Usta Paneline Git</a>
+  {% else %}
+    <a href="{% url 'customer_login' %}" class="btn btn-main-dark w-100"><i class="bi bi-box-arrow-in-right me-1"></i>Talep Açmak İçin Giriş Yap</a>
+  {% endif %}
+</section>
+{% endif %}
 
-<section class="row g-4 align-items-start home-v2-main-layout">
+<section class="row g-4 align-items-start home-v2-main-layout{% if form_only_mode %} justify-content-center{% endif %}">
+  {% if not form_only_mode %}
   <div class="col-xl-8">
     <div class="card panel-card shadow-sm home-v2-search-card reveal-up delay-1" id="search-panel">
       <div class="card-body">
@@ -161,7 +178,8 @@
                     <div class="provider-actions">
                       <a href="{% url 'provider_detail' provider.id %}" class="btn btn-sm provider-profile-btn">Profili Gör</a>
                       {% if request.user.is_authenticated and not is_provider_user %}
-                        <button type="button" class="btn btn-sm provider-profile-btn home-v2-provider-select" data-provider-form-open data-provider-id="{{ provider.id }}" data-provider-name="{{ provider.full_name }}" data-provider-city="{{ provider.city }}" data-provider-district="{{ provider.district }}" data-provider-phone="{{ provider.phone }}" data-provider-profile-url="{% url 'provider_detail' provider.id %}" data-provider-service-ids="{% for service in provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}">Bu Ustaya Talep Aç</button>
+                        <button type="button" class="btn btn-sm provider-profile-btn home-v2-provider-select d-none d-lg-inline-flex" data-provider-form-open data-provider-id="{{ provider.id }}" data-provider-name="{{ provider.full_name }}" data-provider-city="{{ provider.city }}" data-provider-district="{{ provider.district }}" data-provider-phone="{{ provider.phone }}" data-provider-profile-url="{% url 'provider_detail' provider.id %}" data-provider-service-ids="{% for service in provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}">Bu Ustaya Talep Aç</button>
+                        <a href="{% url 'request_form_page' %}?preferred_provider_id={{ provider.id }}" class="btn btn-sm provider-profile-btn d-inline-flex d-lg-none">Bu Ustaya Talep Aç</a>
                       {% elif not request.user.is_authenticated %}
                         <a href="{% url 'customer_login' %}" class="btn btn-sm provider-profile-btn">Bu Ustaya Talep Aç</a>
                       {% endif %}
@@ -204,9 +222,15 @@
         {% endif %}
       </div>
     </div>
-  </div>
+    </div>
+{% endif %}
 
-  <div class="col-xl-4">
+  <div class="{% if form_only_mode %}col-12 col-lg-8 col-xl-7{% else %}col-xl-4 home-v2-desktop-form-col{% endif %}">
+    {% if form_only_mode %}
+      <div class="home-v2-form-page-head reveal-up">
+        <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Ana Sayfaya Dön</a>
+      </div>
+    {% endif %}
     {% if not request.user.is_authenticated %}
       <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 auth-gate-card" id="talep-form">
         <div class="card-body">

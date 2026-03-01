@@ -113,6 +113,11 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Mahallendeki en iyi")
 
+    def test_request_form_page_loads(self):
+        response = self.client.get(reverse("request_form_page"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Talep")
+
     def test_anonymous_user_cannot_create_request(self):
         response = self.client.post(
             reverse("create_request"),
