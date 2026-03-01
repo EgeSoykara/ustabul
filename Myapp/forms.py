@@ -173,7 +173,6 @@ class ServiceSearchForm(forms.Form):
         empty_value=None,
         label="Minimum yorum",
     )
-    has_schedule = forms.BooleanField(required=False, label="Takvimi olanlar")
 
 
 class ServiceRequestForm(forms.ModelForm):

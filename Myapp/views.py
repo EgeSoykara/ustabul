@@ -194,6 +194,19 @@ def get_provider_for_user(user):
     return provider
 
 
+def is_calendar_enabled():
+    return bool(getattr(settings, "CALENDAR_FEATURE_ENABLED", False))
+
+
+def is_provider_availability_enabled():
+    return bool(getattr(settings, "PROVIDER_AVAILABILITY_ENABLED", False))
+
+
+def calendar_disabled_redirect(request, redirect_name):
+    messages.info(request, "Takvim özelliği şu anda devre dışı.")
+    return redirect(redirect_name)
+
+
 def queue_provider_pending_approval_warning(request):
     request.session[PROVIDER_PENDING_APPROVAL_FLASH_FLAG] = True
     messages.warning(request, PROVIDER_PENDING_APPROVAL_MESSAGE)
@@ -1119,11 +1132,13 @@ def build_customer_requests_signature(user):
         .values_list("service_request_id", "provider_id", "status", "responded_at")
         .order_by("service_request_id", "provider_id")
     )
-    appointment_rows = list(
-        ServiceAppointment.objects.filter(service_request__customer=user)
-        .values_list("service_request_id", "status", "scheduled_for", "updated_at")
-        .order_by("service_request_id")
-    )
+    appointment_rows = []
+    if is_calendar_enabled():
+        appointment_rows = list(
+            ServiceAppointment.objects.filter(service_request__customer=user)
+            .values_list("service_request_id", "status", "scheduled_for", "updated_at")
+            .order_by("service_request_id")
+        )
     rating_rows = list(
         ProviderRating.objects.filter(service_request__customer=user)
         .values_list("service_request_id", "score", "updated_at")
@@ -1160,7 +1175,8 @@ def build_customer_snapshot_payload(user):
     if not user or not getattr(user, "is_authenticated", False):
         return snapshot
 
-    cache_key = f"snapshot:customer:{user.id}"
+    calendar_suffix = "calendar-on" if is_calendar_enabled() else "calendar-off"
+    cache_key = f"snapshot:customer:{user.id}:{calendar_suffix}"
     cached = cache.get(cache_key)
     if isinstance(cached, dict):
         return dict(cached)
@@ -1171,14 +1187,15 @@ def build_customer_snapshot_payload(user):
     )
     snapshot["pending_customer_requests_count"] = int(request_counts.get("pending_customer_requests_count") or 0)
     snapshot["matched_requests_count"] = int(request_counts.get("matched_requests_count") or 0)
-    snapshot["pending_customer_appointments_count"] = ServiceAppointment.objects.filter(
-        service_request__customer=user,
-        status="pending_customer",
-    ).count()
-    snapshot["confirmed_appointments_count"] = ServiceAppointment.objects.filter(
-        service_request__customer=user,
-        status="confirmed",
-    ).count()
+    if is_calendar_enabled():
+        snapshot["pending_customer_appointments_count"] = ServiceAppointment.objects.filter(
+            service_request__customer=user,
+            status="pending_customer",
+        ).count()
+        snapshot["confirmed_appointments_count"] = ServiceAppointment.objects.filter(
+            service_request__customer=user,
+            status="confirmed",
+        ).count()
     snapshot["accepted_offers_count"] = ProviderOffer.objects.filter(
         service_request__customer=user,
         status="accepted",
@@ -1204,7 +1221,8 @@ def build_provider_snapshot_payload(provider):
     if not provider:
         return snapshot
 
-    cache_key = f"snapshot:provider:{provider.id}"
+    calendar_suffix = "calendar-on" if is_calendar_enabled() else "calendar-off"
+    cache_key = f"snapshot:provider:{provider.id}:{calendar_suffix}"
     cached = cache.get(cache_key)
     if isinstance(cached, dict):
         return dict(cached)
@@ -1224,7 +1242,8 @@ def build_provider_snapshot_payload(provider):
     snapshot["pending_offers_count"] = int(offer_counts.get("pending_offers_count") or 0)
     snapshot["latest_pending_offer_id"] = int(offer_counts.get("latest_pending_offer_id") or 0)
     snapshot["waiting_customer_selection_count"] = int(offer_counts.get("waiting_customer_selection_count") or 0)
-    snapshot["pending_appointments_count"] = provider.appointments.filter(status="pending").count()
+    if is_calendar_enabled():
+        snapshot["pending_appointments_count"] = provider.appointments.filter(status="pending").count()
     snapshot["unread_messages_count"] = ServiceMessage.objects.filter(
         service_request__matched_provider=provider,
         service_request__status="matched",
@@ -1244,13 +1263,14 @@ def build_customer_flow_state(service_request, appointment, *, has_accepted_offe
         "tone": "waiting",
     }
     status = service_request.status
+    calendar_enabled = is_calendar_enabled()
 
     if status == "pending_customer":
         flow.update(
             {
                 "step": "Adım 2/4",
                 "title": "Usta seçimi sizde",
-                "hint": "Teklifler geldiyse bir ustayı seçip randevu aşamasına geçin.",
+                "hint": "Teklifler geldiyse bir ustayı secip ilerleyin.",
                 "next_action": "Listeden bir ustayı seçin.",
                 "tone": "action",
             }
@@ -1267,6 +1287,14 @@ def build_customer_flow_state(service_request, appointment, *, has_accepted_offe
         return flow
 
     if status == "matched":
+        if not calendar_enabled:
+            return {
+                "step": "Adım 3/3",
+                "title": "Usta secildi",
+                "hint": "Usta ile mesajlasip isi netlestirebilirsiniz.",
+                "next_action": "Is tamamlandiginda talebi tamamlandi olarak kapatin.",
+                "tone": "action",
+            }
         flow.update(
             {
                 "step": "Adım 3/4",
@@ -1347,6 +1375,14 @@ def build_customer_flow_state(service_request, appointment, *, has_accepted_offe
         return flow
 
     if status == "completed":
+        if not calendar_enabled:
+            return {
+                "step": "Adım 3/3",
+                "title": "Is tamamlandi",
+                "hint": "Talep basariyla tamamlandi.",
+                "next_action": "Ustayi puanlayarak sureci bitirebilirsiniz.",
+                "tone": "success",
+            }
         has_completed_appointment = bool(appointment and appointment.status == "completed")
         return {
             "step": "Adım 4/4",
@@ -1558,7 +1594,6 @@ def index(request):
         sort_by = (search_form.cleaned_data.get("sort_by") or "relevance").strip() or "relevance"
         min_rating = search_form.cleaned_data.get("min_rating")
         min_reviews = search_form.cleaned_data.get("min_reviews")
-        has_schedule = bool(search_form.cleaned_data.get("has_schedule"))
         requires_distinct = False
 
         if service_type:
@@ -1580,9 +1615,6 @@ def index(request):
             providers_qs = providers_qs.filter(rating__gte=min_rating)
         if min_reviews is not None:
             providers_qs = providers_qs.filter(ratings_count__gte=min_reviews)
-        if has_schedule:
-            providers_qs = providers_qs.filter(availability_slots__is_active=True)
-            requires_distinct = True
         if requires_distinct:
             providers_qs = providers_qs.distinct()
 
@@ -1988,10 +2020,13 @@ def provider_profile_view(request):
     if blocked_response:
         return blocked_response
 
-    availability_form = ProviderAvailabilitySlotForm(provider=provider)
+    calendar_enabled = is_provider_availability_enabled()
+    availability_form = ProviderAvailabilitySlotForm(provider=provider) if calendar_enabled else None
     if request.method == "POST":
         slot_action = (request.POST.get("slot_action") or "").strip()
         if slot_action == "add":
+            if not calendar_enabled:
+                return calendar_disabled_redirect(request, "provider_profile")
             form = ProviderProfileForm(instance=provider)
             availability_form = ProviderAvailabilitySlotForm(request.POST, provider=provider)
             if availability_form.is_valid():
@@ -2001,6 +2036,8 @@ def provider_profile_view(request):
                 messages.success(request, "Musaitlik araligi eklendi.")
                 return redirect("provider_profile")
         elif slot_action == "delete":
+            if not calendar_enabled:
+                return calendar_disabled_redirect(request, "provider_profile")
             form = ProviderProfileForm(instance=provider)
             try:
                 slot_id = int(request.POST.get("slot_id") or 0)
@@ -2019,7 +2056,9 @@ def provider_profile_view(request):
     else:
         form = ProviderProfileForm(instance=provider)
 
-    availability_slots = list(provider.availability_slots.order_by("weekday", "start_time", "end_time"))
+    availability_slots = []
+    if calendar_enabled:
+        availability_slots = list(provider.availability_slots.order_by("weekday", "start_time", "end_time"))
 
     return render(
         request,
@@ -2029,6 +2068,7 @@ def provider_profile_view(request):
             "form": form,
             "availability_form": availability_form,
             "availability_slots": availability_slots,
+            "calendar_enabled": calendar_enabled,
             "city_district_map_json": get_city_district_map_json(),
         },
     )
@@ -2038,13 +2078,13 @@ def get_message_quick_replies(viewer_role):
     if viewer_role == "provider":
         return [
             "Merhaba, talebinizi aldım.",
-            "Müsaitim, uygun saati yazarsanız randevu planlayabiliriz.",
+            "Müsaitim, detaylari paylasirsaniz hemen baslayabilirim.",
             "Yola çıktım, kısa süre içinde ulaşacağım.",
             "Fotoğraf paylaşırsanız daha net yönlendirebilirim.",
         ]
     return [
         "Merhaba, müsait misiniz",
-        "Randevu saatini netleştirelim.",
+        "Ne zaman gelebileceginizi yazabilir misiniz.",
         "Adres detayını paylaşıyorum.",
         "Teşekkürler, onaylıyorum.",
     ]
@@ -2445,6 +2485,7 @@ def my_requests(request):
     if get_provider_for_user(request.user):
         messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
         return redirect("provider_requests")
+    calendar_enabled = is_calendar_enabled()
 
     requests_qs = request.user.service_requests.select_related(
         "service_type",
@@ -2463,17 +2504,20 @@ def my_requests(request):
         rating.service_request_id: rating
         for rating in ProviderRating.objects.filter(service_request_id__in=request_ids)
     }
-    appointment_map = {
-        appointment.service_request_id: appointment
-        for appointment in ServiceAppointment.objects.filter(service_request_id__in=request_ids)
-    }
-    confirmed_appointment_request_ids = set(
-        WorkflowEvent.objects.filter(
-            target_type="appointment",
-            service_request_id__in=request_ids,
-            to_status="confirmed",
-        ).values_list("service_request_id", flat=True)
-    )
+    appointment_map = {}
+    confirmed_appointment_request_ids = set()
+    if calendar_enabled:
+        appointment_map = {
+            appointment.service_request_id: appointment
+            for appointment in ServiceAppointment.objects.filter(service_request_id__in=request_ids)
+        }
+        confirmed_appointment_request_ids = set(
+            WorkflowEvent.objects.filter(
+                target_type="appointment",
+                service_request_id__in=request_ids,
+                to_status="confirmed",
+            ).values_list("service_request_id", flat=True)
+        )
     unread_message_map = build_unread_message_map(request_ids, "customer")
     now = timezone.now()
     for item in requests:
@@ -2481,26 +2525,29 @@ def my_requests(request):
         item.appointment_entry = appointment_map.get(item.id)
         item.cancel_policy_note = ""
         item.cancel_policy_tone = "muted"
-        if item.appointment_entry and item.appointment_entry.status in {"pending_customer", "confirmed"}:
+        if calendar_enabled and item.appointment_entry and item.appointment_entry.status in {"pending_customer", "confirmed"}:
             cancel_policy = evaluate_appointment_cancel_policy(item.appointment_entry, now=now)
             if cancel_policy["category"] in {"last_minute", "no_show"}:
                 item.cancel_policy_note = cancel_policy["ui_note"]
                 item.cancel_policy_tone = "danger" if cancel_policy["category"] == "no_show" else "warning"
-        item.can_rate = (
-            item.status == "completed"
-            and bool(item.matched_provider_id)
-            and bool(item.appointment_entry)
-            and item.appointment_entry.status == "completed"
-            and item.id in confirmed_appointment_request_ids
-        )
+        if calendar_enabled:
+            item.can_rate = (
+                item.status == "completed"
+                and bool(item.matched_provider_id)
+                and bool(item.appointment_entry)
+                and item.appointment_entry.status == "completed"
+                and item.id in confirmed_appointment_request_ids
+            )
+        else:
+            item.can_rate = item.status == "completed" and bool(item.matched_provider_id)
         item.rate_block_reason = ""
-        if item.status == "completed" and item.matched_provider_id and not item.can_rate:
+        if calendar_enabled and item.status == "completed" and item.matched_provider_id and not item.can_rate:
             if item.appointment_entry is None:
                 item.rate_block_reason = "Randevu oluşturulmadan kapanan işlerde puanlama kapalıdır."
             elif item.id not in confirmed_appointment_request_ids:
                 item.rate_block_reason = "Randevu müşteri onayı olmadan kapatıldığı için puanlama kapalıdır."
             elif item.appointment_entry.status != "completed":
-                item.rate_block_reason = "Puanlama için randevunun tamamlanmİ olması gerekir."
+                item.rate_block_reason = "Puanlama için randevunun tamamlanmasi gerekir."
         verified_offers = [
             offer for offer in item.provider_offers.all() if offer.provider_id and getattr(offer.provider, "is_verified", False)
         ]
@@ -2512,7 +2559,7 @@ def my_requests(request):
         item.can_complete_now = False
         item.complete_block_reason = ""
 
-        if item.status == "matched":
+        if item.status == "matched" and calendar_enabled:
             appointment = item.appointment_entry
             if appointment and appointment.status in {"pending", "pending_customer"}:
                 item.complete_block_reason = "Bekleyen randevu talebi varken tamamlanamaz."
@@ -2525,8 +2572,10 @@ def my_requests(request):
                 item.complete_block_reason = "Onaylı randevu zamanı gelmeden tamamlanamaz."
             else:
                 item.can_complete_now = True
+        elif item.status == "matched":
+            item.can_complete_now = True
         item.provider_availability_slots = []
-        if item.matched_provider:
+        if calendar_enabled and item.matched_provider:
             item.provider_availability_slots = list(
                 item.matched_provider.availability_slots.filter(is_active=True).order_by("weekday", "start_time")
             )
@@ -2536,7 +2585,7 @@ def my_requests(request):
             has_accepted_offers=bool(item.accepted_offers),
             now=now,
         )
-        if item.status == "completed" and not item.can_rate:
+        if calendar_enabled and item.status == "completed" and not item.can_rate:
             flow_state["hint"] = "Bu iş kaydı randevu onayı tamamlanmadan kapatıldığı için puanlama kapalıdır."
             flow_state["next_action"] = "Gerekirse yeni bir talep oluşturabilirsiniz."
             flow_state["tone"] = "muted"
@@ -2548,7 +2597,7 @@ def my_requests(request):
     cancelled_count = requests_qs.filter(status="cancelled").count()
     all_request_ids = list(requests_qs.values_list("id", flat=True))
     waiting_provider_appointment_count = 0
-    if all_request_ids:
+    if calendar_enabled and all_request_ids:
         waiting_provider_appointment_count = ServiceAppointment.objects.filter(
             service_request_id__in=all_request_ids,
             status="pending",
@@ -2570,7 +2619,8 @@ def my_requests(request):
             "customer_requests_signature": customer_snapshot["signature"],
             "customer_snapshot": customer_snapshot,
             "customer_flow_summary": customer_flow_summary,
-            "appointment_min_lead_minutes": get_appointment_min_lead_minutes(),
+            "appointment_min_lead_minutes": get_appointment_min_lead_minutes() if calendar_enabled else 0,
+            "calendar_enabled": calendar_enabled,
         },
     )
 
@@ -2883,11 +2933,17 @@ def complete_request(request, request_id):
         messages.warning(request, "Sadece eşleşen talepler tamamlandı olarak işaretlenebilir.")
         return redirect("my_requests")
 
+    calendar_enabled = is_calendar_enabled()
     appointment = ServiceAppointment.objects.filter(service_request=service_request).first()
-    if appointment and appointment.status in {"pending", "pending_customer"}:
+    if calendar_enabled and appointment and appointment.status in {"pending", "pending_customer"}:
         messages.warning(request, "Bekleyen randevu talebi varken talep tamamlanamaz.")
         return redirect("my_requests")
-    if appointment and appointment.status == "confirmed" and appointment.scheduled_for > timezone.now():
+    if (
+        calendar_enabled
+        and appointment
+        and appointment.status == "confirmed"
+        and appointment.scheduled_for > timezone.now()
+    ):
         messages.warning(request, "Onayli randevu zamani gelmeden talep tamamlanamaz.")
         return redirect("my_requests")
 
@@ -2902,7 +2958,7 @@ def complete_request(request, request_id):
         messages.warning(request, "Talep durumu güncellenemedi.")
         return redirect("my_requests")
 
-    if appointment and appointment.status == "confirmed":
+    if calendar_enabled and appointment and appointment.status == "confirmed":
         transition_appointment_status(
             appointment,
             "completed",
@@ -2923,6 +2979,8 @@ def create_appointment(request, request_id):
     if get_provider_for_user(request.user):
         messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
         return redirect("provider_requests")
+    if not is_calendar_enabled():
+        return calendar_disabled_redirect(request, "my_requests")
 
     rate_limit_response = reject_rate_limited_request(
         request,
@@ -3018,6 +3076,8 @@ def cancel_appointment(request, request_id):
     if get_provider_for_user(request.user):
         messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
         return redirect("provider_requests")
+    if not is_calendar_enabled():
+        return calendar_disabled_redirect(request, "my_requests")
 
     rate_limit_response = reject_rate_limited_request(
         request,
@@ -3076,6 +3136,8 @@ def customer_confirm_appointment(request, request_id):
     if get_provider_for_user(request.user):
         messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
         return redirect("provider_requests")
+    if not is_calendar_enabled():
+        return calendar_disabled_redirect(request, "my_requests")
 
     rate_limit_response = reject_rate_limited_request(
         request,
@@ -3271,6 +3333,7 @@ def provider_requests(request):
     provider, blocked_response = get_verified_provider_or_redirect(request)
     if blocked_response:
         return blocked_response
+    calendar_enabled = is_calendar_enabled()
 
     pending_offers_qs = (
         provider.offers.filter(status="pending")
@@ -3305,43 +3368,57 @@ def provider_requests(request):
     )
     recent_offers_page_obj = paginate_items(request, recent_offers_qs, per_page=10, page_param="recent_offer_page")
     recent_offers = list(recent_offers_page_obj.object_list)
-    pending_appointments_qs = (
-        provider.appointments.filter(status="pending")
-        .select_related("service_request", "service_request__service_type")
-        .order_by("scheduled_for")
-    )
-    pending_appointments_count = pending_appointments_qs.count()
-    pending_appointments_page_obj = paginate_items(
-        request,
-        pending_appointments_qs,
-        per_page=10,
-        page_param="pending_appointment_page",
-    )
-    pending_appointments = list(pending_appointments_page_obj.object_list)
-    confirmed_appointments_qs = (
-        provider.appointments.filter(status__in=["confirmed", "pending_customer"])
-        .select_related("service_request", "service_request__service_type")
-        .order_by("scheduled_for")
-    )
-    confirmed_appointments_page_obj = paginate_items(
-        request,
-        confirmed_appointments_qs,
-        per_page=10,
-        page_param="confirmed_appointment_page",
-    )
-    confirmed_appointments = list(confirmed_appointments_page_obj.object_list)
-    recent_appointments_qs = (
-        provider.appointments.exclude(status__in=["pending", "pending_customer", "confirmed"])
-        .select_related("service_request", "service_request__service_type")
-        .order_by("-updated_at")
-    )
-    recent_appointments_page_obj = paginate_items(
-        request,
-        recent_appointments_qs,
-        per_page=10,
-        page_param="recent_appointment_page",
-    )
-    recent_appointments = list(recent_appointments_page_obj.object_list)
+    if calendar_enabled:
+        pending_appointments_qs = (
+            provider.appointments.filter(status="pending")
+            .select_related("service_request", "service_request__service_type")
+            .order_by("scheduled_for")
+        )
+        pending_appointments_count = pending_appointments_qs.count()
+        pending_appointments_page_obj = paginate_items(
+            request,
+            pending_appointments_qs,
+            per_page=10,
+            page_param="pending_appointment_page",
+        )
+        pending_appointments = list(pending_appointments_page_obj.object_list)
+        confirmed_appointments_qs = (
+            provider.appointments.filter(status__in=["confirmed", "pending_customer"])
+            .select_related("service_request", "service_request__service_type")
+            .order_by("scheduled_for")
+        )
+        confirmed_appointments_page_obj = paginate_items(
+            request,
+            confirmed_appointments_qs,
+            per_page=10,
+            page_param="confirmed_appointment_page",
+        )
+        confirmed_appointments = list(confirmed_appointments_page_obj.object_list)
+        recent_appointments_qs = (
+            provider.appointments.exclude(status__in=["pending", "pending_customer", "confirmed"])
+            .select_related("service_request", "service_request__service_type")
+            .order_by("-updated_at")
+        )
+        recent_appointments_page_obj = paginate_items(
+            request,
+            recent_appointments_qs,
+            per_page=10,
+            page_param="recent_appointment_page",
+        )
+        recent_appointments = list(recent_appointments_page_obj.object_list)
+    else:
+        pending_appointments_count = 0
+        pending_appointments_page_obj = paginate_items(request, [], per_page=10, page_param="pending_appointment_page")
+        pending_appointments = []
+        confirmed_appointments_page_obj = paginate_items(
+            request,
+            [],
+            per_page=10,
+            page_param="confirmed_appointment_page",
+        )
+        confirmed_appointments = []
+        recent_appointments_page_obj = paginate_items(request, [], per_page=10, page_param="recent_appointment_page")
+        recent_appointments = []
     active_threads_qs = (
         provider.service_requests.filter(
             status="matched",
@@ -3355,19 +3432,25 @@ def provider_requests(request):
     active_threads = list(active_threads_page_obj.object_list)
     active_thread_ids = [item.id for item in active_threads]
     unread_map = build_unread_message_map(active_thread_ids, "provider")
-    appointment_map = {
-        appointment.service_request_id: appointment
-        for appointment in ServiceAppointment.objects.filter(service_request_id__in=active_thread_ids)
-    }
-    waiting_schedule_count = active_threads_qs.filter(
-        Q(appointment__isnull=True) | Q(appointment__status__in=["rejected", "cancelled"])
-    ).count()
+    appointment_map = {}
+    waiting_schedule_count = 0
+    if calendar_enabled:
+        appointment_map = {
+            appointment.service_request_id: appointment
+            for appointment in ServiceAppointment.objects.filter(service_request_id__in=active_thread_ids)
+        }
+        waiting_schedule_count = active_threads_qs.filter(
+            Q(appointment__isnull=True) | Q(appointment__status__in=["rejected", "cancelled"])
+        ).count()
     for thread in active_threads:
         thread.unread_messages = unread_map.get(thread.id, 0)
         thread.appointment_entry = appointment_map.get(thread.id)
-        thread.appointment_feedback_tone = "neutral"
-        thread.appointment_feedback_label = "Durum güncelleniyor"
-        thread.appointment_feedback_note = "Randevu bilgisi kontrol ediliyor."
+        thread.appointment_feedback_tone = "info"
+        thread.appointment_feedback_label = "Mesajlasma aktif"
+        thread.appointment_feedback_note = "Durumu mesajlardan takip edebilirsiniz."
+
+        if not calendar_enabled:
+            continue
 
         appointment = thread.appointment_entry
         if appointment is None:
@@ -3409,10 +3492,14 @@ def provider_requests(request):
     waiting_selection_page_query = build_page_query_suffix(request, "waiting_selection_page")
     pending_offer_page_query = build_page_query_suffix(request, "pending_offer_page")
     active_thread_page_query = build_page_query_suffix(request, "active_thread_page")
-    pending_appointment_page_query = build_page_query_suffix(request, "pending_appointment_page")
-    confirmed_appointment_page_query = build_page_query_suffix(request, "confirmed_appointment_page")
+    pending_appointment_page_query = ""
+    confirmed_appointment_page_query = ""
     recent_offer_page_query = build_page_query_suffix(request, "recent_offer_page")
-    recent_appointment_page_query = build_page_query_suffix(request, "recent_appointment_page")
+    recent_appointment_page_query = ""
+    if calendar_enabled:
+        pending_appointment_page_query = build_page_query_suffix(request, "pending_appointment_page")
+        confirmed_appointment_page_query = build_page_query_suffix(request, "confirmed_appointment_page")
+        recent_appointment_page_query = build_page_query_suffix(request, "recent_appointment_page")
 
     return render(
         request,
@@ -3446,6 +3533,7 @@ def provider_requests(request):
             "confirmed_appointment_page_query": confirmed_appointment_page_query,
             "recent_offer_page_query": recent_offer_page_query,
             "recent_appointment_page_query": recent_appointment_page_query,
+            "calendar_enabled": calendar_enabled,
         },
     )
 
@@ -3492,6 +3580,8 @@ def provider_confirm_appointment(request, appointment_id):
     provider, blocked_response = get_verified_provider_or_redirect(request)
     if blocked_response:
         return blocked_response
+    if not is_calendar_enabled():
+        return calendar_disabled_redirect(request, "provider_requests")
 
     rate_limit_response = reject_rate_limited_request(
         request,
@@ -3541,6 +3631,8 @@ def provider_complete_appointment(request, appointment_id):
     provider, blocked_response = get_verified_provider_or_redirect(request)
     if blocked_response:
         return blocked_response
+    if not is_calendar_enabled():
+        return calendar_disabled_redirect(request, "provider_requests")
 
     rate_limit_response = reject_rate_limited_request(
         request,
@@ -3612,6 +3704,8 @@ def provider_reject_appointment(request, appointment_id):
     provider, blocked_response = get_verified_provider_or_redirect(request)
     if blocked_response:
         return blocked_response
+    if not is_calendar_enabled():
+        return calendar_disabled_redirect(request, "provider_requests")
 
     rate_limit_response = reject_rate_limited_request(
         request,

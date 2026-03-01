@@ -21,10 +21,18 @@
       <ol class="simple-guide-list mb-2">
         <li>Bekleyen talepleri kontrol edin.</li>
         <li>Uygun olan talebi kabul edin.</li>
-        <li>Müşteri mesajlarına ve randevu adımlarına sırayla dönüş yapın.</li>
+        {% if calendar_enabled %}
+          <li>Müşteri mesajlarına ve randevu adımlarına sırayla dönüş yapın.</li>
+        {% else %}
+          <li>Müşteri mesajlarına hızlı dönüş yapın.</li>
+        {% endif %}
       </ol>
-      <p class="small mb-1">Müşteri panelinde bu aşamalar sırasıyla "Usta yanıtı bekleniyor", "Usta seçimi" ve "Randevu onayı" olarak görünür.</p>
-      <p class="small mb-0">Randevu saati beklenen işler "Aktif Mesajlaşmalar" bölümünde ayrıca belirtilir.</p>
+      {% if calendar_enabled %}
+        <p class="small mb-1">Müşteri panelinde bu aşamalar sırasıyla "Usta yanıtı bekleniyor", "Usta seçimi" ve "Randevu onayı" olarak görünür.</p>
+        <p class="small mb-0">Randevu saati beklenen işler "Aktif Mesajlaşmalar" bölümünde ayrıca belirtilir.</p>
+      {% else %}
+        <p class="small mb-0">Takvim devre dışı. Süreci teklif ve mesajlaşma ile yönetebilirsiniz.</p>
+      {% endif %}
     </div>
   </div>
 </section>
@@ -45,11 +53,13 @@
     <div class="provider-kpi-value">{{ pending_offers_count }}</div>
     <div class="provider-kpi-note">İlk kontrol etmeniz gereken bölüm.</div>
   </article>
+  {% if calendar_enabled %}
   <article class="provider-kpi-card">
     <div class="provider-kpi-title">Bekleyen Randevu</div>
     <div class="provider-kpi-value">{{ pending_appointments_count }}</div>
     <div class="provider-kpi-note">Randevu onayı bekleyen müşteri sayısı.</div>
   </article>
+  {% endif %}
   <article class="provider-kpi-card">
     <div class="provider-kpi-title">Okunmamış Mesaj</div>
     <div class="provider-kpi-value">{{ total_unread_messages }}</div>
@@ -60,11 +70,13 @@
     <div class="provider-kpi-value">{{ waiting_customer_selection_count }}</div>
     <div class="provider-kpi-note">Müşterinin usta seçmesini bekleyen teklifler.</div>
   </article>
+  {% if calendar_enabled %}
   <article class="provider-kpi-card">
     <div class="provider-kpi-title">Saat Bekleyen Eşleşme</div>
     <div class="provider-kpi-value">{{ waiting_schedule_count }}</div>
     <div class="provider-kpi-note">Müşteri randevu saati belirlemedi.</div>
   </article>
+  {% endif %}
 </section>
 
 <section class="provider-requests-section provider-easy-steps mb-4" aria-label="Kolay kullanım adımları">
@@ -76,14 +88,16 @@
     </div>
     <a href="#pending-offers" class="btn btn-main provider-step-link">Aç</a>
   </article>
-  <article class="provider-step-card">
-    <div class="provider-step-no">2</div>
-    <div class="provider-step-body">
-      <div class="provider-step-title">Randevuları Onayla</div>
-      <div class="provider-step-meta">{{ pending_appointments_count }} randevu onay bekliyor.</div>
-    </div>
-    <a href="#pending-appointments" class="btn btn-main provider-step-link">Aç</a>
-  </article>
+  {% if calendar_enabled %}
+    <article class="provider-step-card">
+      <div class="provider-step-no">2</div>
+      <div class="provider-step-body">
+        <div class="provider-step-title">Randevuları Onayla</div>
+        <div class="provider-step-meta">{{ pending_appointments_count }} randevu onay bekliyor.</div>
+      </div>
+      <a href="#pending-appointments" class="btn btn-main provider-step-link">Aç</a>
+    </article>
+  {% endif %}
   <article class="provider-step-card">
     <div class="provider-step-no">3</div>
     <div class="provider-step-body">
@@ -270,7 +284,11 @@
               <th>Hizmet</th>
               <th>Müşteri</th>
               <th>Durum</th>
-              <th>Randevu Akışı</th>
+              {% if calendar_enabled %}
+                <th>Randevu Akışı</th>
+              {% else %}
+                <th>Süreç</th>
+              {% endif %}
               <th>Mesaj</th>
             </tr>
           </thead>
@@ -284,7 +302,7 @@
                   <br><span class="small text-muted">{{ thread.customer_phone }}</span>
                 </td>
                 <td data-label="Durum"><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
-                <td data-label="Randevu Akışı">
+                <td data-label="{% if calendar_enabled %}Randevu Akışı{% else %}Süreç{% endif %}">
                   <div class="provider-flow-badge provider-flow-{{ thread.appointment_feedback_tone }}">
                     {{ thread.appointment_feedback_label }}
                   </div>
@@ -331,6 +349,7 @@
   </div>
 </section>
 
+{% if calendar_enabled %}
 <section id="pending-appointments" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-calendar-week-fill me-2"></i>3. Bekleyen Randevu Talepleri</h2>
@@ -493,6 +512,7 @@
     {% endif %}
   </div>
 </section>
+{% endif %}
 
 <section class="card panel-card provider-requests-section shadow-sm reveal-up">
   <div class="card-body p-4">
@@ -553,6 +573,7 @@
   </div>
 </section>
 
+{% if calendar_enabled %}
 <section class="card panel-card provider-requests-section shadow-sm reveal-up mt-4">
   <div class="card-body p-4">
     <details class="provider-history-collapse">
@@ -615,6 +636,7 @@
     </details>
   </div>
 </section>
+{% endif %}
 <script>
   (function () {
     const confirmForms = document.querySelectorAll("form[data-complete-confirm-form]");
