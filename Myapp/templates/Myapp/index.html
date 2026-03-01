@@ -1,59 +1,62 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="hero-spotlight reveal-up">
-  <div class="hero-layout">
-    <div class="hero-copy">
-      <span class="hero-badge"><i class="bi bi-lightning-charge-fill"></i>HIZLI USTA BUL</span>
-      <h1>Mahallendeki En İyi Ustaları <span>Tek Ekranda</span> Görün</h1>
-      <p>Kuzey Kıbrıs genelinde hizmet türüne göre filtreleyin, ustaları karşılaştırın ve dakikalar içinde talep açın.</p>
-      <div class="hero-actions">
-        <a class="btn hero-btn hero-btn-solid" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
+<section class="home-v2-top reveal-up">
+  <div class="home-v2-top-grid">
+    <article class="home-v2-hero-panel">
+      <span class="home-v2-badge"><i class="bi bi-lightning-charge-fill"></i> Hızlı Usta Bul</span>
+      <h1>Mahallendeki en iyi ustaları tek panelden yönet</h1>
+      <p>
+        Hizmeti seç, bölgeni filtrele, doğru ustayı karşılaştır ve tek ekrandan talep aç.
+        Arama ve talep adımları artık aynı akışta.
+      </p>
+      <div class="home-v2-hero-actions">
+        <a class="btn btn-main" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
         {% if request.user.is_authenticated and not is_provider_user %}
-          <a class="btn hero-btn hero-btn-outline" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+          <a class="btn btn-main-dark" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
         {% else %}
-          <a class="btn hero-btn hero-btn-outline" href="{% url 'customer_login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
+          <a class="btn btn-main-dark" href="{% url 'customer_login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
         {% endif %}
       </div>
-      <div class="trust-ribbon">
-        <span><i class="bi bi-shield-check"></i>Doğrulanmış Profiller</span>
-        <span><i class="bi bi-stopwatch"></i>Hızlı Dönüş</span>
-        <span><i class="bi bi-star"></i>Gerçek Müşteri Puanı</span>
+      <div class="home-v2-hero-points">
+        <span><i class="bi bi-geo-alt-fill"></i> Şehir/ilçe filtreli liste</span>
+        <span><i class="bi bi-shield-check"></i> Doğrulanmış profiller</span>
+        <span><i class="bi bi-chat-dots-fill"></i> Hızlı teklif akışı</span>
       </div>
-    </div>
-    <aside class="hero-metrics">
-      <div class="metric-card">
-        <p class="metric-top"><i class="bi bi-people-fill"></i>Şu an platformda</p>
-        <p class="metric-value">{{ providers|length }}</p>
-        <p class="metric-note">aktif usta listeleniyor</p>
+    </article>
+    <aside class="home-v2-overview-panel">
+      <div class="home-v2-overview-card">
+        <p class="home-v2-overview-label">Listelenen aktif usta</p>
+        <p class="home-v2-overview-value">{{ provider_total_count }}</p>
+        <p class="home-v2-overview-note">Anlık arama sonuçlarına göre güncellenir.</p>
       </div>
-      <div class="metric-card">
-        <p class="metric-top"><i class="bi bi-headset"></i>Destek merkezi</p>
-        <p class="metric-value">24/7</p>
-        <p class="metric-note">anlık canlı destek</p>
+      <div class="home-v2-overview-card">
+        <p class="home-v2-overview-label">Sayfa durumu</p>
+        <p class="home-v2-overview-value">{{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}</p>
+        <p class="home-v2-overview-note">Sıralama: {{ selected_sort_label }}</p>
+      </div>
+      <div class="home-v2-overview-card">
+        <p class="home-v2-overview-label">Destek</p>
+        <p class="home-v2-overview-value">24/7</p>
+        <p class="home-v2-overview-note">İhtiyaç halinde hızlı dönüş.</p>
       </div>
     </aside>
   </div>
 </section>
 
-<section class="status-strip reveal-up delay-1">
-  <div class="status-item"><i class="bi bi-geo-alt-fill"></i>Şehir ve ilçe bazında filtreleme</div>
-  <div class="status-item"><i class="bi bi-check2-circle"></i>Hizmet türüne göre net liste</div>
-  <div class="status-item"><i class="bi bi-chat-left-dots-fill"></i>Talep sonrası hızlı eşleşme</div>
-</section>
-
-<section class="row g-4 align-items-start">
-  <div class="col-xl-7">
-    <div class="card panel-card shadow-sm reveal-up delay-1" id="search-panel">
+<section class="row g-4 align-items-start home-v2-main-layout">
+  <div class="col-xl-8">
+    <div class="card panel-card shadow-sm home-v2-search-card reveal-up delay-1" id="search-panel">
       <div class="card-body">
-        <h2 class="h5 mb-3 section-title"><i class="bi bi-search me-2"></i>Usta Ara</h2>
-        <form method="get" class="row g-3 search-form" id="search-form">
+        <div class="home-v2-card-head">
+          <h2 class="h5 mb-0 section-title"><i class="bi bi-search me-2"></i>Arama ve Filtre</h2>
+          <span class="home-v2-card-head-note">Aradığın hizmete göre listeyi sadeleştir.</span>
+        </div>
+        <form method="get" class="row g-3" id="search-form">
           <div class="col-12">
             <label class="form-label">{{ search_form.query.label }}</label>
             <div class="search-query-row">
               {{ search_form.query }}
-              <button type="submit" class="btn btn-main search-query-btn">
-                <i class="bi bi-search me-1"></i>Ara
-              </button>
+              <button type="submit" class="btn btn-main search-query-btn"><i class="bi bi-search me-1"></i>Ara</button>
             </div>
           </div>
           <div class="col-lg-6">
@@ -61,24 +64,16 @@
             <div class="service-picker">
               <div class="service-filter-shell">
                 <i class="bi bi-search"></i>
-                <input
-                  type="search"
-                  class="service-filter-input"
-                  data-service-type-filter
-                  placeholder="Hizmet ara (örnek: klima, kombi, elektrik)"
-                  autocomplete="off"
-                >
+                <input type="search" class="service-filter-input" data-service-type-filter placeholder="Hizmet ara (örnek: klima, kombi, elektrik)" autocomplete="off">
               </div>
               {{ search_form.service_type }}
-              <p class="service-picker-note mb-0">Yazarak filtreleyin veya öne çıkanlardan seçin.</p>
+              <p class="service-picker-note mb-0">Yazarak filtrele veya öne çıkanlardan seç.</p>
               {% if popular_service_types %}
                 <div class="quick-service-wrap">
                   <span class="quick-service-label">Öne Çıkan Hizmetler</span>
                   <div class="quick-service-list">
                     {% for service_type in popular_service_types %}
-                      <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">
-                        {{ service_type.name }}
-                      </button>
+                      <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">{{ service_type.name }}</button>
                     {% endfor %}
                   </div>
                 </div>
@@ -93,63 +88,66 @@
             <label class="form-label">{{ search_form.district.label }}</label>
             {{ search_form.district }}
           </div>
-          <div class="col-md-4 col-lg-3">
-            <label class="form-label">{{ search_form.min_rating.label }}</label>
-            {{ search_form.min_rating }}
-          </div>
-          <div class="col-md-4 col-lg-3">
-            <label class="form-label">{{ search_form.min_reviews.label }}</label>
-            {{ search_form.min_reviews }}
-          </div>
-          <div class="col-md-4 col-lg-3">
-            <label class="form-label">{{ search_form.sort_by.label }}</label>
-            {{ search_form.sort_by }}
-          </div>
-          <div class="col-12 form-toolbar">
-            <button type="submit" class="btn btn-primary btn-main"><i class="bi bi-funnel-fill me-1"></i>Filtrele</button>
+          <details class="home-v2-advanced-filter col-12">
+            <summary><i class="bi bi-sliders me-1"></i>Gelişmiş filtreler</summary>
+            <div class="row g-3 mt-1">
+              <div class="col-md-4">
+                <label class="form-label">{{ search_form.min_rating.label }}</label>
+                {{ search_form.min_rating }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">{{ search_form.min_reviews.label }}</label>
+                {{ search_form.min_reviews }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">{{ search_form.sort_by.label }}</label>
+                {{ search_form.sort_by }}
+              </div>
+            </div>
+          </details>
+          <div class="col-12 home-v2-filter-actions">
+            <button type="submit" class="btn btn-main"><i class="bi bi-funnel-fill me-1"></i>Filtreyi Uygula</button>
+            <a href="{% url 'index' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i>Temizle</a>
           </div>
         </form>
       </div>
     </div>
 
-    <div class="card panel-card shadow-sm mt-4 reveal-up delay-2">
+    <div class="card panel-card shadow-sm mt-4 reveal-up delay-2 home-v2-provider-card-wrap">
       <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-          <h2 class="h5 mb-0 section-title"><i class="bi bi-person-workspace me-2"></i>Müsait Ustalar</h2>
-          <div class="d-flex align-items-center gap-2 flex-wrap">
-            <form method="get" class="provider-page-size-form">
-              {% for key, value in request.GET.items %}
-                {% if key != "provider_page" and key != "provider_page_size" %}
-                  <input type="hidden" name="{{ key }}" value="{{ value }}">
-                {% endif %}
-              {% endfor %}
-              <label for="provider-page-size" class="small text-muted me-1">Sayfa boyutu</label>
-              <select id="provider-page-size" name="provider_page_size" onchange="this.form.submit()">
-                {% for size_option in provider_page_size_options %}
-                  <option value="{{ size_option }}" {% if size_option == provider_page_size %}selected{% endif %}>{{ size_option }}</option>
-                {% endfor %}
-              </select>
-            </form>
+        <div class="home-v2-provider-head">
+          <div>
+            <h2 class="h5 mb-1 section-title"><i class="bi bi-person-workspace me-2"></i>Müsait Ustalar</h2>
+            <p class="small text-muted mb-0">Toplam {{ provider_total_count }} usta bulundu. Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}.</p>
           </div>
+          <form method="get" class="provider-page-size-form">
+            {% for key, value in request.GET.items %}
+              {% if key != "provider_page" and key != "provider_page_size" %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+              {% endif %}
+            {% endfor %}
+            <label for="provider-page-size" class="small text-muted me-1">Sayfa boyutu</label>
+            <select id="provider-page-size" name="provider_page_size" onchange="this.form.submit()">
+              {% for size_option in provider_page_size_options %}
+                <option value="{{ size_option }}" {% if size_option == provider_page_size %}selected{% endif %}>{{ size_option }}</option>
+              {% endfor %}
+            </select>
+          </form>
         </div>
-        <p class="small text-muted mb-3">
-          Toplam {{ provider_total_count }} usta bulundu.
-          Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}.
-          Sıralama: {{ selected_sort_label }}.
-        </p>
         {% if providers %}
           <div class="row g-3 provider-grid">
             {% for provider in providers %}
-              <div class="col-md-6 col-xl-6">
-                <article class="provider-card p-3 h-100">
-                  <div class="d-flex align-items-start justify-content-between mb-3">
+              <div class="col-md-6">
+                <article class="provider-card home-v2-provider-item p-3 h-100">
+                  <div class="home-v2-provider-top">
                     <div class="provider-head">
                       <span class="avatar-dot">{{ provider.full_name|slice:":1"|upper }}</span>
                       <div>
                         <h3 class="h6 mb-0">{{ provider.full_name }}</h3>
+                        <p class="small mb-0 provider-location"><i class="bi bi-geo-alt-fill me-1"></i>{{ provider.city }} / {{ provider.district }}</p>
                       </div>
                     </div>
-                    <span class="pill">
+                    <span class="pill home-v2-service-pill">
                       {% for service in provider.service_types.all %}
                         {{ service.name }}{% if not forloop.last %}, {% endif %}
                       {% empty %}
@@ -157,30 +155,13 @@
                       {% endfor %}
                     </span>
                   </div>
-                  <p class="small mb-1 provider-location"><i class="bi bi-geo-alt-fill me-1"></i>{{ provider.city }} / {{ provider.district }}</p>
-                  <p class="small mb-1 provider-rating">
-                    <i class="bi bi-star-fill me-1"></i>Ortalama Puan: {{ provider.rating }} / 5
-                    <span class="rating-count">({{ provider.ratings_count }} değerlendirme)</span>
-                  </p>
+                  <p class="small mb-2 provider-rating"><i class="bi bi-star-fill me-1"></i>{{ provider.rating }} / 5 <span class="rating-count">({{ provider.ratings_count }} değerlendirme)</span></p>
                   <div class="provider-bottom">
                     <p class="small mb-0 provider-phone"><i class="bi bi-telephone-fill me-1"></i><strong>{{ provider.phone }}</strong></p>
                     <div class="provider-actions">
                       <a href="{% url 'provider_detail' provider.id %}" class="btn btn-sm provider-profile-btn">Profili Gör</a>
                       {% if request.user.is_authenticated and not is_provider_user %}
-                        <button
-                          type="button"
-                          class="btn btn-sm provider-profile-btn"
-                          data-provider-form-open
-                          data-provider-id="{{ provider.id }}"
-                          data-provider-name="{{ provider.full_name }}"
-                          data-provider-city="{{ provider.city }}"
-                          data-provider-district="{{ provider.district }}"
-                          data-provider-phone="{{ provider.phone }}"
-                          data-provider-profile-url="{% url 'provider_detail' provider.id %}"
-                          data-provider-service-ids="{% for service in provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
-                        >
-                          Bu Ustaya Talep Aç
-                        </button>
+                        <button type="button" class="btn btn-sm provider-profile-btn home-v2-provider-select" data-provider-form-open data-provider-id="{{ provider.id }}" data-provider-name="{{ provider.full_name }}" data-provider-city="{{ provider.city }}" data-provider-district="{{ provider.district }}" data-provider-phone="{{ provider.phone }}" data-provider-profile-url="{% url 'provider_detail' provider.id %}" data-provider-service-ids="{% for service in provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}">Bu Ustaya Talep Aç</button>
                       {% elif not request.user.is_authenticated %}
                         <a href="{% url 'customer_login' %}" class="btn btn-sm provider-profile-btn">Bu Ustaya Talep Aç</a>
                       {% endif %}
@@ -188,9 +169,7 @@
                       <a href="#" class="btn btn-sm provider-whatsapp-btn" data-provider-whatsapp data-phone="{{ provider.phone }}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
                     </div>
                   </div>
-                  <p class="small text-muted provider-contact-help mb-0" data-provider-help hidden>
-                    Masaüstünde arama açılmazsa WhatsApp'ı kullanın.
-                  </p>
+                  <p class="small text-muted provider-contact-help mb-0" data-provider-help hidden>Masaüstünde arama açılmazsa WhatsApp kullan.</p>
                 </article>
               </div>
             {% endfor %}
@@ -218,95 +197,73 @@
             </div>
           {% endif %}
         {% else %}
-          <p class="mb-0">Kriterlere uygun usta bulunamadı.</p>
+          <div class="home-v2-empty-state">
+            <i class="bi bi-emoji-frown"></i>
+            <p class="mb-0">Kriterlere uygun usta bulunamadı. Filtreleri genişletip tekrar dene.</p>
+          </div>
         {% endif %}
       </div>
     </div>
   </div>
 
-  <div class="col-xl-5">
+  <div class="col-xl-4">
     {% if not request.user.is_authenticated %}
       <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 auth-gate-card" id="talep-form">
         <div class="card-body">
           <h2 class="h5 mb-3 section-title"><i class="bi bi-shield-lock-fill me-2"></i>Talep Açmak İçin Giriş Gerekli</h2>
-          <p class="mb-3 auth-gate-note">Talep oluşturma sadece giriş yapan müşteriler için açıktır.</p>
-          <div class="d-grid gap-2">
-            <a href="{% url 'customer_login' %}" class="btn btn-main-dark w-100 auth-gate-login-btn">
-              <i class="bi bi-box-arrow-in-right me-2"></i>Müşteri Girişi
-            </a>
-            <a href="{% url 'customer_signup' %}" class="btn w-100 auth-gate-signup-btn">
-              <i class="bi bi-person-plus-fill me-2"></i>Hemen Kayıt Ol
-            </a>
+          <p class="mb-3 auth-gate-note">Talep oluşturma sadece giriş yapan müşteriler için açık.</p>
+          <ul class="home-v2-login-benefits">
+            <li>Talep durumunu tek panelden takip et.</li>
+            <li>Usta seçimi ve randevuyu kolay yönet.</li>
+            <li>Mesajlaşma ile süreci hızlandır.</li>
+          </ul>
+          <div class="d-grid gap-2 mt-3">
+            <a href="{% url 'customer_login' %}" class="btn btn-main-dark w-100 auth-gate-login-btn"><i class="bi bi-box-arrow-in-right me-2"></i>Müşteri Girişi</a>
+            <a href="{% url 'customer_signup' %}" class="btn w-100 auth-gate-signup-btn"><i class="bi bi-person-plus-fill me-2"></i>Hemen Kayıt Ol</a>
           </div>
         </div>
       </div>
     {% elif is_provider_user %}
-      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3">
+      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 home-v2-provider-mode" id="talep-form">
         <div class="card-body">
-          <h2 class="h5 mb-3 section-title"><i class="bi bi-tools me-2"></i>Usta Modu</h2>
-          <p class="mb-3">Usta hesabı ile giriş yaptığınız için talep oluşturma kapalı.</p>
-          <a href="{% url 'provider_requests' %}" class="btn btn-main-dark w-100">
-            <i class="bi bi-briefcase-fill me-2"></i>Usta Paneline Git
-          </a>
+          <h2 class="h5 mb-3 section-title"><i class="bi bi-tools me-2"></i>Usta Modu Aktif</h2>
+          <p class="mb-3">Usta hesabı ile giriş yaptığın için talep oluşturma kapalı. Müşteri taleplerini panelden yönetebilirsin.</p>
+          <a href="{% url 'provider_requests' %}" class="btn btn-main-dark w-100"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneline Git</a>
         </div>
       </div>
     {% else %}
-      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3" id="talep-form">
+      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 home-v2-request-card" id="talep-form">
         <div class="card-body">
-          <h2 class="h5 mb-3 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Oluştur</h2>
-          {% if request.user.is_authenticated %}
-            <p class="small text-muted mb-3"><i class="bi bi-person-check-fill me-1"></i>Giriş yaptığın için bilgiler otomatik dolduruldu.</p>
-          {% endif %}
+          <h2 class="h5 mb-2 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Oluştur</h2>
+          <p class="small text-muted mb-3">Formu doldur, sistem uygun ustaları sıralı şekilde devreye alsın.</p>
+          <div class="home-v2-step-row">
+            <span><strong>1</strong> Bilgileri doldur</span>
+            <span><strong>2</strong> Uygun ustayı seç</span>
+            <span><strong>3</strong> Teklifleri karşılaştır</span>
+          </div>
           <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
             {% csrf_token %}
             {{ request_form.preferred_provider_id }}
+            {{ request_form.preferred_provider_locked_service_id }}
             <div class="honey-trap-field" aria-hidden="true">
               <label for="id_website_url">Website</label>
               <input type="text" id="id_website_url" name="website_url" tabindex="-1" autocomplete="off">
             </div>
             <div class="col-12">
-              <div
-                id="preferred-provider-indicator"
-                class="preferred-provider-banner"
-                {% if not request_form.preferred_provider_id.value %}hidden{% endif %}
-              >
+              <div id="preferred-provider-indicator" class="preferred-provider-banner" data-selected-provider-service-ids="{% if preferred_provider %}{% for service in preferred_provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}" data-selected-provider-service-id="{{ request_form.preferred_provider_locked_service_id.value|default:'' }}" {% if not request_form.preferred_provider_id.value %}hidden{% endif %}>
                 <div class="preferred-provider-header">
                   <div class="preferred-provider-copy">
-                    <p class="preferred-provider-title mb-1">
-                      <i class="bi bi-person-check me-1"></i>Özel Usta Talebi
-                    </p>
-                    <p class="preferred-provider-name mb-1" data-selected-provider-name>
-                      {% if preferred_provider %}{{ preferred_provider.full_name }}{% else %}Usta{% endif %}
-                    </p>
-                    <p class="preferred-provider-meta mb-0" data-selected-provider-meta>
-                      {% if preferred_provider %}{{ preferred_provider.city }} / {{ preferred_provider.district }}{% else %}-{% endif %}
-                    </p>
+                    <p class="preferred-provider-title mb-1"><i class="bi bi-person-check me-1"></i>Özel Usta Talebi</p>
+                    <p class="preferred-provider-name mb-1" data-selected-provider-name>{% if preferred_provider %}{{ preferred_provider.full_name }}{% else %}Usta{% endif %}</p>
+                    <p class="preferred-provider-meta mb-0" data-selected-provider-meta>{% if preferred_provider %}{{ preferred_provider.city }} / {{ preferred_provider.district }}{% else %}-{% endif %}</p>
                   </div>
                   <div class="preferred-provider-tools">
-                    <a
-                      href="{% if preferred_provider %}{% url 'provider_detail' preferred_provider.id %}{% else %}#{% endif %}"
-                      class="btn btn-sm provider-profile-btn"
-                      id="selected-provider-profile-link"
-                      {% if not preferred_provider %}hidden{% endif %}
-                    >
-                      Profili Gör
-                    </a>
-                    <a
-                      href="{% if preferred_provider %}tel:{{ preferred_provider.phone }}{% else %}#{% endif %}"
-                      class="btn btn-sm provider-call-btn"
-                      id="selected-provider-call-link"
-                      {% if not preferred_provider %}hidden{% endif %}
-                    >
-                      Ara
-                    </a>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-preferred-provider">
-                      Genel Forma Dön
-                    </button>
+                    <a href="{% if preferred_provider %}{% url 'provider_detail' preferred_provider.id %}{% else %}#{% endif %}" class="btn btn-sm provider-profile-btn" id="selected-provider-profile-link" {% if not preferred_provider %}hidden{% endif %}>Profili Gör</a>
+                    <a href="{% if preferred_provider %}tel:{{ preferred_provider.phone }}{% else %}#{% endif %}" class="btn btn-sm provider-call-btn" id="selected-provider-call-link" {% if not preferred_provider %}hidden{% endif %}>Ara</a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-preferred-provider">Genel Forma Dön</button>
                   </div>
                 </div>
-                <p class="preferred-provider-note mb-0">
-                  Talebin önce seçtiğin ustaya gider. İstersen yukarıdaki düğme ile genel eşleşmeye dönebilirsin.
-                </p>
+                <p class="preferred-provider-note mb-0">Talep önce seçtiğin ustaya gider. İstersen genel eşleşmeye dönebilirsin.</p>
               </div>
               {% for error in request_form.preferred_provider_id.errors %}
                 <div class="text-danger small mt-1">{{ error }}</div>
@@ -315,9 +272,7 @@
             <div class="col-12">
               <label class="form-label">{{ request_form.customer_name.label }}</label>
               {{ request_form.customer_name }}
-              {% for error in request_form.customer_name.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
+              {% for error in request_form.customer_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-12">
               <label class="form-label">{{ request_form.customer_phone.label }}</label>
@@ -329,65 +284,46 @@
                   <p class="mb-0">Boşluk veya tire kullansan da sistem numarayı otomatik düzeltir.</p>
                 </div>
               {% endif %}
-              {% for error in request_form.customer_phone.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
+              {% for error in request_form.customer_phone.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-12">
               <label class="form-label">{{ request_form.service_type.label }}</label>
               <div class="service-picker">
                 <div class="service-filter-shell">
                   <i class="bi bi-search"></i>
-                  <input
-                    type="search"
-                    class="service-filter-input"
-                    data-service-type-filter
-                    placeholder="Hizmet ara (örnek: tesisat, boya, montaj)"
-                    autocomplete="off"
-                  >
+                  <input type="search" class="service-filter-input" data-service-type-filter placeholder="Hizmet ara (örnek: tesisat, boya, montaj)" autocomplete="off">
                 </div>
                 {{ request_form.service_type }}
-                <p class="service-picker-note mb-0">Yazarak filtreleyin veya öne çıkanlardan seçin.</p>
+                <p class="service-picker-note mb-0">Yazarak filtrele veya öne çıkanlardan seç.</p>
+                <p class="small text-muted mt-1 mb-0" id="preferred-provider-service-lock-hint" hidden>Özel usta modunda hizmet sabitlendi. Değiştirmek için "Genel Forma Dön" kullan.</p>
                 {% if popular_service_types %}
                   <div class="quick-service-wrap">
                     <span class="quick-service-label">Öne Çıkan Hizmetler</span>
                     <div class="quick-service-list">
                       {% for service_type in popular_service_types %}
-                        <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">
-                          {{ service_type.name }}
-                        </button>
+                        <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">{{ service_type.name }}</button>
                       {% endfor %}
                     </div>
                   </div>
                 {% endif %}
               </div>
-              {% for error in request_form.service_type.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
+              {% for error in request_form.service_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-md-6">
               <label class="form-label">{{ request_form.city.label }}</label>
               {{ request_form.city }}
-              {% for error in request_form.city.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
+              {% for error in request_form.city.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-md-6">
               <label class="form-label">{{ request_form.district.label }}</label>
               {{ request_form.district }}
-              {% for error in request_form.district.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
+              {% for error in request_form.district.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-12">
               <label class="form-label">{{ request_form.details.label }}</label>
               {{ request_form.details }}
-              {% if request_form.details.help_text %}
-                <p class="small text-muted mt-1 mb-0">{{ request_form.details.help_text }}</p>
-              {% endif %}
-              {% for error in request_form.details.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
+              {% if request_form.details.help_text %}<p class="small text-muted mt-1 mb-0">{{ request_form.details.help_text }}</p>{% endif %}
+              {% for error in request_form.details.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             <div class="col-12">
               <button type="submit" class="btn btn-dark w-100 btn-main-dark"><i class="bi bi-send-fill me-2"></i>Talep Gönder</button>
@@ -398,6 +334,7 @@
     {% endif %}
   </div>
 </section>
+
 <script id="city-district-map" type="application/json">{{ city_district_map_json|safe }}</script>
 <script>
   (function () {
@@ -406,29 +343,47 @@
 
     function setupServiceTypePickerByForm(formId) {
       const form = document.getElementById(formId);
-      if (!form) return;
+      if (!form) return null;
 
       const serviceSelect = form.querySelector("select[name='service_type']");
-      if (!serviceSelect) return;
+      if (!serviceSelect) return null;
 
       const filterInput = form.querySelector("input[data-service-type-filter]");
       const quickButtons = form.querySelectorAll("button[data-service-choice]");
+      const defaultFilterPlaceholder = filterInput ? (filterInput.getAttribute("placeholder") || "") : "";
       const baseOptions = Array.from(serviceSelect.options).map(function (option) {
-        return {
-          value: option.value,
-          text: option.textContent,
-        };
+        return { value: option.value, text: option.textContent };
       });
+
+      let lockedServiceIds = null;
+      let strictlyLockedServiceId = "";
 
       function normalizeText(text) {
         return (text || "").toLocaleLowerCase("tr-TR");
       }
 
+      function isStrictlyLocked() {
+        return Boolean(strictlyLockedServiceId);
+      }
+
       function syncQuickButtons() {
         quickButtons.forEach(function (button) {
-          const isActive = button.getAttribute("data-service-choice") === serviceSelect.value;
+          const serviceValue = (button.getAttribute("data-service-choice") || "").trim();
+          const isAllowed = !lockedServiceIds || !serviceValue || lockedServiceIds.has(serviceValue);
+          button.hidden = !isAllowed;
+          button.disabled = !isAllowed;
+          if (!isAllowed) {
+            button.classList.remove("is-active");
+            return;
+          }
+          const isActive = serviceValue === serviceSelect.value;
           button.classList.toggle("is-active", isActive);
         });
+      }
+
+      function allowedByLock(optionValue) {
+        if (!lockedServiceIds) return true;
+        return optionValue === "" || lockedServiceIds.has(optionValue);
       }
 
       function renderOptions(query) {
@@ -439,6 +394,7 @@
         let matchCount = 0;
         baseOptions.forEach(function (item) {
           const isPlaceholder = item.value === "";
+          if (!allowedByLock(item.value)) return;
           const matches = normalizedQuery === "" || isPlaceholder || normalizeText(item.text).includes(normalizedQuery);
           if (!matches) return;
 
@@ -446,7 +402,6 @@
           option.value = item.value;
           option.textContent = item.text;
           serviceSelect.appendChild(option);
-
           if (!isPlaceholder) matchCount += 1;
         });
 
@@ -454,15 +409,80 @@
           serviceSelect.innerHTML = "";
           const emptyOption = document.createElement("option");
           emptyOption.value = "";
-          emptyOption.textContent = "Eşleşen hizmet bulunamadı";
+          emptyOption.textContent = lockedServiceIds ? "Bu usta için uygun hizmet bulunamadı" : "Eşleşen hizmet bulunamadı";
           serviceSelect.appendChild(emptyOption);
         }
 
         const selectedStillExists = Array.from(serviceSelect.options).some(function (option) {
           return option.value === previousValue;
         });
-      serviceSelect.value = selectedStillExists ? previousValue : "";
+        serviceSelect.value = selectedStillExists ? previousValue : "";
         syncQuickButtons();
+      }
+
+      function getFirstAllowedServiceValue() {
+        for (let index = 0; index < baseOptions.length; index += 1) {
+          const item = baseOptions[index];
+          if (!item.value) continue;
+          if (allowedByLock(item.value)) return item.value;
+        }
+        return "";
+      }
+
+      function setFilterLockState(isLocked) {
+        if (!filterInput) return;
+        filterInput.disabled = isLocked;
+        if (isLocked) {
+          filterInput.value = "";
+          filterInput.placeholder = "Özel usta için hizmet sabitlendi";
+          return;
+        }
+        filterInput.placeholder = defaultFilterPlaceholder;
+      }
+
+      function setSelectLockState(isLocked) {
+        serviceSelect.classList.toggle("service-select-locked", isLocked);
+        if (isLocked) {
+          serviceSelect.setAttribute("aria-readonly", "true");
+        } else {
+          serviceSelect.removeAttribute("aria-readonly");
+        }
+      }
+
+      function lockToServices(serviceIds) {
+        const normalizedIds = (serviceIds || []).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
+        lockedServiceIds = new Set(normalizedIds);
+        strictlyLockedServiceId = "";
+        setFilterLockState(true);
+        setSelectLockState(false);
+        renderOptions("");
+
+        const currentValue = String(serviceSelect.value || "");
+        if (!allowedByLock(currentValue)) {
+          const fallbackValue = getFirstAllowedServiceValue();
+          serviceSelect.value = fallbackValue;
+          serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+
+      function lockToSingleService(serviceId) {
+        const normalizedServiceId = String(serviceId || "").trim();
+        if (!normalizedServiceId) return;
+        lockedServiceIds = new Set([normalizedServiceId]);
+        strictlyLockedServiceId = normalizedServiceId;
+        setFilterLockState(true);
+        setSelectLockState(true);
+        renderOptions("");
+        serviceSelect.value = normalizedServiceId;
+        syncQuickButtons();
+      }
+
+      function unlockServices() {
+        lockedServiceIds = null;
+        strictlyLockedServiceId = "";
+        setFilterLockState(false);
+        setSelectLockState(false);
+        renderOptions(filterInput ? filterInput.value : "");
       }
 
       if (filterInput) {
@@ -475,6 +495,7 @@
       quickButtons.forEach(function (button) {
         button.addEventListener("click", function () {
           const serviceValue = button.getAttribute("data-service-choice") || "";
+          if (lockedServiceIds && serviceValue && !lockedServiceIds.has(serviceValue)) return;
           if (filterInput) {
             filterInput.value = "";
             renderOptions("");
@@ -485,12 +506,33 @@
         });
       });
 
-      serviceSelect.addEventListener("change", syncQuickButtons);
-      syncQuickButtons();
-    }
+      serviceSelect.addEventListener("mousedown", function (event) {
+        if (!isStrictlyLocked()) return;
+        event.preventDefault();
+        serviceSelect.blur();
+      });
 
+      serviceSelect.addEventListener("keydown", function (event) {
+        if (!isStrictlyLocked()) return;
+        event.preventDefault();
+      });
+
+      serviceSelect.addEventListener("change", function () {
+        if (isStrictlyLocked() && serviceSelect.value !== strictlyLockedServiceId) {
+          serviceSelect.value = strictlyLockedServiceId;
+        }
+        syncQuickButtons();
+      });
+
+      syncQuickButtons();
+      return {
+        lockToServices: lockToServices,
+        lockToSingleService: lockToSingleService,
+        unlockServices: unlockServices,
+      };
+    }
     setupServiceTypePickerByForm("search-form");
-    setupServiceTypePickerByForm("request-form");
+    const requestServicePicker = setupServiceTypePickerByForm("request-form");
 
     function setupCityDistrictByForm(formId) {
       const form = document.getElementById(formId);
@@ -544,6 +586,7 @@
       const preferredProviderInput = requestForm.querySelector("input[name='preferred_provider_id']");
       if (!preferredProviderInput) return;
 
+      const lockedServiceInput = requestForm.querySelector("input[name='preferred_provider_locked_service_id']");
       const indicator = document.getElementById("preferred-provider-indicator");
       const indicatorName = indicator ? indicator.querySelector("[data-selected-provider-name]") : null;
       const indicatorMeta = indicator ? indicator.querySelector("[data-selected-provider-meta]") : null;
@@ -552,15 +595,24 @@
       const districtSelect = requestForm.querySelector("select[name='district']");
       const serviceSelect = requestForm.querySelector("select[name='service_type']");
       const serviceFilterInput = requestForm.querySelector("input[data-service-type-filter]");
+      const serviceLockHint = document.getElementById("preferred-provider-service-lock-hint");
       const detailsField = requestForm.querySelector("textarea[name='details']");
       const profileLink = document.getElementById("selected-provider-profile-link");
       const callLink = document.getElementById("selected-provider-call-link");
 
       function parseServiceIds(rawValue) {
-        return String(rawValue || "")
-          .split(",")
-          .map(function (item) { return item.trim(); })
-          .filter(Boolean);
+        return String(rawValue || "").split(",").map(function (item) { return item.trim(); }).filter(Boolean);
+      }
+
+      function getLockedServiceId(allowedServiceIds) {
+        const normalizedIds = (allowedServiceIds || []).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
+        if (!normalizedIds.length) return "";
+
+        const currentValue = String(serviceSelect ? serviceSelect.value : "").trim();
+        if (currentValue && normalizedIds.includes(currentValue)) {
+          return currentValue;
+        }
+        return normalizedIds[0];
       }
 
       function syncIndicator(state) {
@@ -568,9 +620,7 @@
         const hasPreferredProvider = !!preferredProviderInput.value;
         indicator.hidden = !hasPreferredProvider;
         requestForm.classList.toggle("preferred-provider-active", hasPreferredProvider);
-        if (!hasPreferredProvider) {
-          return;
-        }
+        if (!hasPreferredProvider) return;
 
         if (state && state.name) {
           indicatorName.textContent = state.name;
@@ -596,29 +646,52 @@
         }
       }
 
-      function ensureServiceCompatibility(allowedServiceIds) {
-        if (!serviceSelect || !allowedServiceIds.length) return;
-        if (serviceFilterInput && serviceFilterInput.value) {
-          serviceFilterInput.value = "";
-          serviceFilterInput.dispatchEvent(new Event("input", { bubbles: true }));
-        }
+      function syncServiceLockHint(isLocked) {
+        if (!serviceLockHint) return;
+        serviceLockHint.hidden = !isLocked;
+      }
 
-        const currentValue = String(serviceSelect.value || "");
-        if (allowedServiceIds.includes(currentValue)) {
+      function setServiceLock(allowedServiceIds, forcedServiceId) {
+        const normalizedIds = (allowedServiceIds || []).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
+        const targetServiceId = String(forcedServiceId || getLockedServiceId(normalizedIds)).trim();
+        if (!targetServiceId) {
+          clearServiceLock();
           return;
         }
 
-        const optionValues = Array.from(serviceSelect.options).map(function (option) {
-          return option.value;
-        });
-        const fallbackValue = allowedServiceIds.find(function (serviceId) {
-          return optionValues.includes(serviceId);
-        });
-        if (!fallbackValue) {
-          return;
+        if (requestServicePicker && typeof requestServicePicker.lockToSingleService === "function") {
+          requestServicePicker.lockToSingleService(targetServiceId);
+        } else if (requestServicePicker && typeof requestServicePicker.lockToServices === "function") {
+          requestServicePicker.lockToServices([targetServiceId]);
+        } else if (serviceSelect) {
+          serviceSelect.value = targetServiceId;
+          serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
         }
-        serviceSelect.value = fallbackValue;
-        serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
+
+        if (lockedServiceInput) {
+          lockedServiceInput.value = targetServiceId;
+        }
+        if (indicator) {
+          indicator.setAttribute("data-selected-provider-service-ids", normalizedIds.join(","));
+          indicator.setAttribute("data-selected-provider-service-id", targetServiceId);
+        }
+        syncServiceLockHint(true);
+      }
+
+      function clearServiceLock() {
+        if (requestServicePicker && typeof requestServicePicker.unlockServices === "function") {
+          requestServicePicker.unlockServices();
+        } else if (serviceFilterInput) {
+          serviceFilterInput.disabled = false;
+        }
+
+        if (lockedServiceInput) {
+          lockedServiceInput.value = "";
+        }
+        if (indicator) {
+          indicator.setAttribute("data-selected-provider-service-id", "");
+        }
+        syncServiceLockHint(false);
       }
 
       function setPreferredProviderFromButton(button) {
@@ -641,7 +714,7 @@
           districtSelect.value = providerDistrict;
           districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
         }
-        ensureServiceCompatibility(providerServiceIds);
+        setServiceLock(providerServiceIds);
 
         syncIndicator({
           name: providerName,
@@ -664,11 +737,25 @@
       if (clearButton) {
         clearButton.addEventListener("click", function () {
           preferredProviderInput.value = "";
+          if (indicator) {
+            indicator.setAttribute("data-selected-provider-service-ids", "");
+            indicator.setAttribute("data-selected-provider-service-id", "");
+          }
+          clearServiceLock();
           syncIndicator(null);
         });
       }
 
       if (preferredProviderInput.value) {
+        const initialServiceIds = parseServiceIds(indicator ? indicator.getAttribute("data-selected-provider-service-ids") : "");
+        const initialLockedServiceId = String(
+          (indicator ? indicator.getAttribute("data-selected-provider-service-id") : "") ||
+          (lockedServiceInput ? lockedServiceInput.value : "") ||
+          ""
+        ).trim();
+        if (initialServiceIds.length) {
+          setServiceLock(initialServiceIds, initialLockedServiceId);
+        }
         syncIndicator({
           name: indicatorName ? indicatorName.textContent.trim() : "Usta",
           meta: indicatorMeta ? indicatorMeta.textContent.trim() : "",
@@ -676,12 +763,11 @@
           phone: callLink && !callLink.hidden ? (callLink.getAttribute("href") || "").replace(/^tel:/, "") : "",
         });
       } else {
+        clearServiceLock();
         syncIndicator(null);
       }
     }
-
     setupPreferredProviderForm();
-
   })();
 </script>
 <script>
@@ -727,7 +813,6 @@
         }, 2400);
       });
     });
-
   })();
 </script>
 {% endblock %}

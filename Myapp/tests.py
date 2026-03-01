@@ -111,7 +111,7 @@ class MarketplaceTests(TestCase):
     def test_home_page_loads(self):
         response = self.client.get(reverse("index"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Mahallendeki En")
+        self.assertContains(response, "Mahallendeki en iyi")
 
     def test_anonymous_user_cannot_create_request(self):
         response = self.client.post(
@@ -192,6 +192,7 @@ class MarketplaceTests(TestCase):
                 "district": "Ortakoy",
                 "details": "Sadece secilen usta test talebi",
                 "preferred_provider_id": self.provider_ali.id,
+                "preferred_provider_locked_service_id": self.service.id,
             },
             follow=True,
         )
@@ -201,6 +202,43 @@ class MarketplaceTests(TestCase):
         pending_offers = ProviderOffer.objects.filter(service_request=created_request, status="pending")
         self.assertEqual(pending_offers.count(), 1)
         self.assertEqual(pending_offers.first().provider_id, self.provider_ali.id)
+
+    def test_index_request_form_limits_services_for_preferred_provider(self):
+        extra_service = ServiceType.objects.create(name="Elektrik", slug="elektrik")
+        customer = User.objects.create_user(username="tercihlihizmet", password="GucluSifre123!")
+        self.client.login(username="tercihlihizmet", password="GucluSifre123!")
+        response = self.client.get(reverse("index"), data={"preferred_provider_id": self.provider_ali.id})
+
+        self.assertEqual(response.status_code, 200)
+        request_form = response.context["request_form"]
+        form_service_ids = set(request_form.fields["service_type"].queryset.values_list("id", flat=True))
+        provider_service_ids = set(self.provider_ali.service_types.values_list("id", flat=True))
+        self.assertEqual(form_service_ids, provider_service_ids)
+        self.assertNotIn(extra_service.id, form_service_ids)
+        self.assertIn("Secili usta icin uygun hizmetler listeleniyor.", request_form.fields["service_type"].help_text)
+
+    def test_preferred_provider_locked_service_rejects_manual_service_change(self):
+        elektrik = ServiceType.objects.create(name="Elektrik", slug="elektrik")
+        self.provider_ali.service_types.add(elektrik)
+        customer = User.objects.create_user(username="kilitbozma", password="GucluSifre123!")
+        self.client.login(username="kilitbozma", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Kilit Bozma Test",
+                "customer_phone": "05000000000",
+                "service_type": elektrik.id,
+                "preferred_provider_locked_service_id": self.service.id,
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "details": "Hizmet degistirme denemesi",
+                "preferred_provider_id": self.provider_ali.id,
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ozel usta modunda hizmet degistirilemez")
+        self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 0)
 
     def test_service_request_with_preferred_provider_rejects_unsupported_service(self):
         elektrik = ServiceType.objects.create(name="Elektrik", slug="elektrik")

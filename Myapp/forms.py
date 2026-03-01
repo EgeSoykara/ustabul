@@ -177,6 +177,7 @@ class ServiceSearchForm(forms.Form):
 
 class ServiceRequestForm(forms.ModelForm):
     preferred_provider_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
+    preferred_provider_locked_service_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
     city = FlexibleChoiceField(choices=[("", "Şehir seçin")] + NC_CITY_CHOICES, label="Şehir")
     district = FlexibleChoiceField(choices=DISTRICT_CHOICES_WITH_ANY, label="İlçe")
 
@@ -203,11 +204,56 @@ class ServiceRequestForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        preferred_provider = kwargs.pop("preferred_provider", None)
         super().__init__(*args, **kwargs)
+        self._preferred_provider = preferred_provider
+
         self.fields["customer_phone"].help_text = PHONE_HELP_TEXT
         self.fields["details"].help_text = (
             f"En fazla {SERVICE_REQUEST_DETAILS_MAX_LENGTH} karakter girebilirsiniz."
         )
+        self._apply_preferred_provider_service_filter()
+
+    def _extract_preferred_provider_id(self):
+        raw_value = None
+        if self.is_bound:
+            raw_value = self.data.get(self.add_prefix("preferred_provider_id"))
+            if raw_value in [None, ""]:
+                raw_value = self.data.get("preferred_provider_id")
+        else:
+            raw_value = self.initial.get("preferred_provider_id")
+
+        raw_text = str(raw_value or "").strip()
+        if not raw_text.isdigit():
+            return None
+        return int(raw_text)
+
+    def _resolve_preferred_provider(self):
+        if self._preferred_provider is not None:
+            return self._preferred_provider
+
+        preferred_provider_id = self._extract_preferred_provider_id()
+        if not preferred_provider_id:
+            return None
+
+        self._preferred_provider = (
+            Provider.objects.filter(id=preferred_provider_id, is_verified=True, is_available=True)
+            .prefetch_related("service_types")
+            .first()
+        )
+        return self._preferred_provider
+
+    def _apply_preferred_provider_service_filter(self):
+        preferred_provider = self._resolve_preferred_provider()
+        if not preferred_provider:
+            return
+
+        self.fields["service_type"].queryset = preferred_provider.service_types.order_by("name")
+        self.fields["service_type"].error_messages["invalid_choice"] = "Secilen usta bu hizmet turunu sunmuyor."
+        if not self.is_bound:
+            self.fields["service_type"].help_text = (
+                "Secili usta icin uygun hizmetler listeleniyor."
+            )
 
     def clean_customer_phone(self):
         return normalize_phone_value(self.cleaned_data.get("customer_phone"))
@@ -239,19 +285,35 @@ class ServiceRequestForm(forms.ModelForm):
 
         cleaned_data["city"] = city_key
         cleaned_data["district"] = resolved_district
-        preferred_provider = None
+        preferred_provider = self._resolve_preferred_provider()
         preferred_provider_id = cleaned_data.get("preferred_provider_id")
         if preferred_provider_id:
-            preferred_provider = (
-                Provider.objects.filter(id=preferred_provider_id, is_verified=True, is_available=True)
-                .prefetch_related("service_types")
-                .first()
-            )
+            if not preferred_provider or preferred_provider.id != preferred_provider_id:
+                preferred_provider = (
+                    Provider.objects.filter(id=preferred_provider_id, is_verified=True, is_available=True)
+                    .prefetch_related("service_types")
+                    .first()
+                )
+                self._preferred_provider = preferred_provider
             if not preferred_provider:
                 self.add_error("preferred_provider_id", "Secilen usta su an musait degil veya aktif degil.")
                 return cleaned_data
 
             service_type = cleaned_data.get("service_type")
+            locked_service_id = cleaned_data.get("preferred_provider_locked_service_id")
+            if locked_service_id:
+                locked_service = preferred_provider.service_types.filter(id=locked_service_id).first()
+                if not locked_service:
+                    self.add_error("service_type", "Ozel usta secimi gecersiz. Lutfen tekrar deneyin.")
+                elif service_type and service_type.id != locked_service.id:
+                    self.add_error(
+                        "service_type",
+                        "Ozel usta modunda hizmet degistirilemez. Genel forma donerek secim yapin.",
+                    )
+                else:
+                    cleaned_data["service_type"] = locked_service
+                    service_type = locked_service
+
             if service_type and not preferred_provider.service_types.filter(id=service_type.id).exists():
                 self.add_error("service_type", "Secilen usta bu hizmet turunu sunmuyor.")
 

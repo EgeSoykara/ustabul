@@ -1763,7 +1763,7 @@ def index(request):
         provider_service_ids = list(preferred_provider.service_types.values_list("id", flat=True))
         if len(provider_service_ids) == 1:
             request_form_initial["service_type"] = provider_service_ids[0]
-    request_form = ServiceRequestForm(initial=request_form_initial)
+    request_form = ServiceRequestForm(initial=request_form_initial, preferred_provider=preferred_provider)
     context = {
         "search_form": search_form,
         "request_form": request_form,
@@ -1821,9 +1821,9 @@ def create_request(request):
         return duplicate_response
 
     actor_role = infer_actor_role(request.user)
-    request_form = ServiceRequestForm(request.POST)
+    preferred_provider = get_preferred_provider(request.POST.get("preferred_provider_id"))
+    request_form = ServiceRequestForm(request.POST, preferred_provider=preferred_provider)
     if not request_form.is_valid():
-        preferred_provider = get_preferred_provider(request.POST.get("preferred_provider_id"))
         search_form = ServiceSearchForm()
         provider_page_size_options = [12, 24, 48, 96]
         provider_page_size = 24
