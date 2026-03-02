@@ -1,8 +1,9 @@
-const CACHE_NAME = "ustabul-pwa-v9";
+const CACHE_NAME = "ustabul-pwa-v10";
 const PRECACHE_URLS = [
   "/",
   "/offline/",
   "/static/css/style.css",
+  "/static/css/premium-theme.css",
   "/static/pwa/manifest.webmanifest",
   "/static/pwa/icon-192.png",
   "/static/pwa/icon-512.png"

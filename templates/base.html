@@ -11,14 +11,15 @@
   <title>UstaBul</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="manifest" href="{% static 'pwa/manifest.webmanifest' %}">
   <link rel="icon" type="image/svg+xml" href="{% static 'pwa/favicon.svg' %}?v=20260228-1">
   <link rel="alternate icon" type="image/png" href="{% static 'pwa/icon-192.png' %}?v=20260228-1">
   <link rel="apple-touch-icon" href="{% static 'pwa/icon-192.png' %}">
-  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260301-9">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260302-10">
+  <link rel="stylesheet" href="{% static 'css/premium-theme.css' %}?v=20260302-3">
 </head>
 <body>
 <div class="bg-orb orb-a"></div>
@@ -58,7 +59,7 @@
             </a>
           {% endif %}
           {% if request.user.is_authenticated %}
-            <a class="nav-link nav-notification-link {% if request.path == '/bildirimler/' %}active{% endif %}" href="{% url 'notifications' %}">
+            <a class="nav-link nav-notification-link {% if request.path == '/bildirimler/' %}active{% endif %}" href="{% url 'notifications' %}" data-live-notification-nav>
               <i class="bi bi-bell me-1"></i>Bildirimler
               {% if nav_unread_notifications_count %}
                 <span class="nav-live-badge">
@@ -242,13 +243,34 @@
     const snapshotUrl = isProvider
       ? "{% url 'provider_panel_snapshot' %}"
       : "{% url 'customer_requests_snapshot' %}";
+    const notificationsCountUrl = "{% url 'notifications_unread_count' %}";
+    const notificationsPath = "{% url 'notifications' %}";
     const streamUrl = "{% url 'nav_live_stream' %}";
     const navSelector = isProvider ? "[data-live-provider-nav]" : "[data-live-customer-nav]";
+    const notificationSelector = "[data-live-notification-nav]";
     const badgeCountKey = isProvider ? "ustabul_provider_unseen_count" : "ustabul_customer_unseen_count";
     const snapshotKey = isProvider ? "ustabul_provider_last_snapshot" : "ustabul_customer_last_snapshot";
 
     function renderNavBadge(count) {
       const targets = document.querySelectorAll(navSelector);
+      if (!targets.length) return;
+      targets.forEach(function (target) {
+        let badge = target.querySelector(".nav-live-badge");
+        if (!count) {
+          if (badge) badge.remove();
+          return;
+        }
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "nav-live-badge";
+          target.appendChild(badge);
+        }
+        badge.textContent = count > 99 ? "99+" : String(count);
+      });
+    }
+
+    function renderNotificationBadge(count) {
+      const targets = document.querySelectorAll(notificationSelector);
       if (!targets.length) return;
       targets.forEach(function (target) {
         let badge = target.querySelector(".nav-live-badge");
@@ -373,6 +395,7 @@
     }
 
     let pollingTimerId = null;
+    let notificationPollingTimerId = null;
     let reconnectTimerId = null;
     let streamInstance = null;
 
@@ -398,8 +421,12 @@
       const increment = isProvider
         ? getProviderIncrement(previousSnapshot, nextSnapshot)
         : getCustomerIncrement(previousSnapshot, nextSnapshot);
+      const unreadNotificationsCount = Number(payload.unread_notifications_count || 0);
       if (increment > 0) {
         writeBadgeCount(readBadgeCount() + increment);
+      }
+      if (Number.isFinite(unreadNotificationsCount) && unreadNotificationsCount >= 0) {
+        renderNotificationBadge(unreadNotificationsCount);
       }
       writeSnapshot(nextSnapshot);
       emitNavSnapshotEvent(payload);
@@ -417,6 +444,26 @@
         if (!response.ok) return;
         const payload = await response.json();
         applySnapshotPayload(payload);
+      } catch (error) {
+        void error;
+      }
+    }
+
+    async function syncNotificationBadge() {
+      if (document.hidden) return;
+      try {
+        const response = await fetch(notificationsCountUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const unreadNotificationsCount = Number(payload.unread_notifications_count || 0);
+        if (Number.isFinite(unreadNotificationsCount) && unreadNotificationsCount >= 0) {
+          renderNotificationBadge(unreadNotificationsCount);
+        }
       } catch (error) {
         void error;
       }
@@ -490,13 +537,19 @@
 
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden) {
+        syncNotificationBadge();
         if (pollingTimerId !== null) {
           pollNavNotifications();
         }
       }
     });
 
+    if (window.location.pathname === notificationsPath) {
+      renderNotificationBadge(0);
+    }
     renderNavBadge(readBadgeCount());
+    syncNotificationBadge();
+    notificationPollingTimerId = window.setInterval(syncNotificationBadge, 8000);
     connectLiveStream();
   })();
 </script>

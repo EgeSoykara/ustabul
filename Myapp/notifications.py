@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.urls import reverse
 from django.utils import timezone
 
@@ -51,6 +51,25 @@ def get_notification_cursor(user, *, create=False):
         cursor, _created = NotificationCursor.objects.get_or_create(user=user, defaults={"workflow_seen_at": None})
         return cursor
     return NotificationCursor.objects.filter(user=user).only("id", "workflow_seen_at").first()
+
+
+def invalidate_unread_notifications_cache(*user_refs):
+    cache_keys = []
+    seen_user_ids = set()
+    for ref in user_refs:
+        if ref is None:
+            continue
+        user_id = getattr(ref, "id", ref)
+        try:
+            normalized_id = int(user_id)
+        except (TypeError, ValueError):
+            continue
+        if normalized_id <= 0 or normalized_id in seen_user_ids:
+            continue
+        seen_user_ids.add(normalized_id)
+        cache_keys.append(f"notif:unread:{normalized_id}")
+    if cache_keys:
+        cache.delete_many(cache_keys)
 
 
 def get_incoming_message_queryset(user, provider=None, now=None):
@@ -116,10 +135,13 @@ def mark_all_notifications_read(user):
 
     provider = get_provider_for_user(user)
     now = timezone.now()
+    workflow_qs = get_workflow_event_queryset(user, provider=provider, now=now).exclude(actor_user=user)
+    latest_workflow_at = workflow_qs.aggregate(latest=Max("created_at")).get("latest")
+    seen_at = latest_workflow_at if latest_workflow_at and latest_workflow_at > now else now
 
-    get_incoming_message_queryset(user, provider=provider, now=now).filter(read_at__isnull=True).update(read_at=now)
+    get_incoming_message_queryset(user, provider=provider, now=now).filter(read_at__isnull=True).update(read_at=seen_at)
     cursor = get_notification_cursor(user, create=True)
-    cursor.workflow_seen_at = now
+    cursor.workflow_seen_at = seen_at
     cursor.save(update_fields=["workflow_seen_at", "updated_at"])
     cache.set(f"notif:unread:{user.id}", 0, timeout=max(1, int(getattr(settings, "NOTIFICATION_UNREAD_CACHE_SECONDS", 6))))
 

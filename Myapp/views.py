@@ -41,7 +41,13 @@ from .forms import (
     ServiceSearchForm,
     ServiceMessageForm,
 )
-from .notifications import build_notification_entries, get_notification_retention_days, mark_all_notifications_read
+from .notifications import (
+    build_notification_entries,
+    get_notification_retention_days,
+    get_total_unread_notifications_count,
+    invalidate_unread_notifications_cache,
+    mark_all_notifications_read,
+)
 from .models import (
     ActivityLog,
     CustomerProfile,
@@ -234,6 +240,75 @@ def get_provider_for_user(user):
     provider = Provider.objects.filter(user_id=user.id).first()
     setattr(user, PROVIDER_CACHE_ATTR, provider)
     return provider
+
+
+def resolve_provider_user_id(provider_obj=None, provider_id=None):
+    if provider_obj is not None:
+        cached_user_id = getattr(provider_obj, "user_id", None)
+        if cached_user_id:
+            return cached_user_id
+    if provider_id:
+        return Provider.objects.filter(id=provider_id).values_list("user_id", flat=True).first()
+    return None
+
+
+def invalidate_notification_cache_for_instance(instance, *, actor_user=None):
+    user_ids = set()
+
+    if actor_user and getattr(actor_user, "id", None):
+        user_ids.add(actor_user.id)
+
+    if isinstance(instance, ServiceRequest):
+        if instance.customer_id:
+            user_ids.add(instance.customer_id)
+        matched_provider_user_id = resolve_provider_user_id(
+            provider_obj=getattr(instance, "matched_provider", None),
+            provider_id=instance.matched_provider_id,
+        )
+        if matched_provider_user_id:
+            user_ids.add(matched_provider_user_id)
+        if instance.id:
+            offer_provider_user_ids = Provider.objects.filter(offers__service_request_id=instance.id).values_list(
+                "user_id", flat=True
+            )
+            user_ids.update(int(user_id) for user_id in offer_provider_user_ids if user_id)
+
+    elif isinstance(instance, ServiceAppointment):
+        if instance.customer_id:
+            user_ids.add(instance.customer_id)
+        appointment_provider_user_id = resolve_provider_user_id(
+            provider_obj=getattr(instance, "provider", None),
+            provider_id=instance.provider_id,
+        )
+        if appointment_provider_user_id:
+            user_ids.add(appointment_provider_user_id)
+
+        service_request = getattr(instance, "service_request", None)
+        if service_request is not None:
+            if service_request.customer_id:
+                user_ids.add(service_request.customer_id)
+            matched_provider_user_id = resolve_provider_user_id(
+                provider_obj=getattr(service_request, "matched_provider", None),
+                provider_id=service_request.matched_provider_id,
+            )
+            if matched_provider_user_id:
+                user_ids.add(matched_provider_user_id)
+        elif instance.service_request_id:
+            request_row = ServiceRequest.objects.filter(id=instance.service_request_id).values(
+                "customer_id",
+                "matched_provider_id",
+            ).first()
+            if request_row:
+                if request_row.get("customer_id"):
+                    user_ids.add(int(request_row["customer_id"]))
+                matched_provider_user_id = resolve_provider_user_id(
+                    provider_id=request_row.get("matched_provider_id")
+                )
+                if matched_provider_user_id:
+                    user_ids.add(matched_provider_user_id)
+
+    if user_ids:
+        invalidate_unread_notifications_cache(*user_ids)
 
 
 def is_calendar_enabled():
@@ -684,6 +759,7 @@ def create_workflow_event(
             summary=f"Talep durumu: {from_status} -> {to_status}",
             note=note_text,
         )
+        invalidate_notification_cache_for_instance(instance, actor_user=actor_user)
         return
 
     if isinstance(instance, ServiceAppointment):
@@ -708,6 +784,7 @@ def create_workflow_event(
             summary=f"Randevu durumu: {from_status} -> {to_status}",
             note=note_text,
         )
+        invalidate_notification_cache_for_instance(instance, actor_user=actor_user)
 
 
 def create_activity_log(
@@ -1217,6 +1294,7 @@ def build_customer_snapshot_payload(user):
         "confirmed_appointments_count": 0,
         "accepted_offers_count": 0,
         "unread_messages_count": 0,
+        "unread_notifications_count": 0,
     }
     if not user or not getattr(user, "is_authenticated", False):
         return snapshot
@@ -1225,7 +1303,9 @@ def build_customer_snapshot_payload(user):
     cache_key = f"snapshot:customer:{user.id}:{calendar_suffix}"
     cached = cache.get(cache_key)
     if isinstance(cached, dict):
-        return dict(cached)
+        payload = dict(cached)
+        payload["unread_notifications_count"] = get_total_unread_notifications_count(user)
+        return payload
 
     request_counts = ServiceRequest.objects.filter(customer=user).aggregate(
         pending_customer_requests_count=Count("id", filter=Q(status="pending_customer")),
@@ -1251,27 +1331,38 @@ def build_customer_snapshot_payload(user):
         service_request__customer=user,
         read_at__isnull=True,
     ).exclude(sender_role="customer").count()
+    snapshot["unread_notifications_count"] = get_total_unread_notifications_count(user)
     snapshot["signature"] = build_customer_requests_signature(user)
     cache.set(cache_key, snapshot, timeout=get_customer_snapshot_cache_seconds())
     return snapshot
 
 
-def build_provider_snapshot_payload(provider):
+def build_provider_snapshot_payload(provider, *, user=None):
     snapshot = {
         "pending_offers_count": 0,
         "latest_pending_offer_id": 0,
         "waiting_customer_selection_count": 0,
         "pending_appointments_count": 0,
         "unread_messages_count": 0,
+        "unread_notifications_count": 0,
     }
     if not provider:
         return snapshot
+
+    provider_user = user
+    if provider_user is None:
+        provider_user = getattr(provider, "user", None)
+    if provider_user is None and getattr(provider, "user_id", None):
+        provider_user = provider.user
 
     calendar_suffix = "calendar-on" if is_calendar_enabled() else "calendar-off"
     cache_key = f"snapshot:provider:{provider.id}:{calendar_suffix}"
     cached = cache.get(cache_key)
     if isinstance(cached, dict):
-        return dict(cached)
+        payload = dict(cached)
+        if provider_user and getattr(provider_user, "is_authenticated", True):
+            payload["unread_notifications_count"] = get_total_unread_notifications_count(provider_user)
+        return payload
 
     offer_counts = provider.offers.aggregate(
         pending_offers_count=Count("id", filter=Q(status="pending")),
@@ -1295,6 +1386,8 @@ def build_provider_snapshot_payload(provider):
         service_request__status="matched",
         read_at__isnull=True,
     ).exclude(sender_role="provider").count()
+    if provider_user and getattr(provider_user, "is_authenticated", True):
+        snapshot["unread_notifications_count"] = get_total_unread_notifications_count(provider_user)
     cache.set(cache_key, snapshot, timeout=get_provider_snapshot_cache_seconds())
     return snapshot
 
@@ -1589,6 +1682,7 @@ def dispatch_preferred_provider_offer(
     service_request.matched_provider = None
     service_request.matched_offer = None
     service_request.matched_at = None
+    previous_status = service_request.status
     if not transition_service_request_status(
         service_request,
         "pending_provider",
@@ -1599,6 +1693,16 @@ def dispatch_preferred_provider_offer(
         note=note,
     ):
         return {"result": "invalid-state"}
+    if previous_status == "pending_provider":
+        create_workflow_event(
+            service_request,
+            from_status="pending_provider",
+            to_status="pending_provider",
+            actor_user=actor_user,
+            actor_role=actor_role,
+            source=source,
+            note=note or "Talep yeni bir ustaya iletildi",
+        )
     return {"result": "offers-created", "offers": [created_offer]}
 
 
@@ -1665,6 +1769,7 @@ def dispatch_next_provider_offer(service_request, actor_user=None, actor_role="s
         service_request.matched_provider = None
         service_request.matched_offer = None
         service_request.matched_at = None
+        previous_status = service_request.status
         if not transition_service_request_status(
             service_request,
             "pending_provider",
@@ -1675,6 +1780,16 @@ def dispatch_next_provider_offer(service_request, actor_user=None, actor_role="s
             note=note,
         ):
             return {"result": "invalid-state"}
+        if previous_status == "pending_provider":
+            create_workflow_event(
+                service_request,
+                from_status="pending_provider",
+                to_status="pending_provider",
+                actor_user=actor_user,
+                actor_role=actor_role,
+                source=source,
+                note=note or "Talep yeni bir ustaya iletildi",
+            )
         return {"result": "offers-created", "offers": created_offers}
 
     service_request.matched_provider = None
@@ -2411,6 +2526,7 @@ def request_messages(request, request_id):
                 note=message_item.body,
             )
             publish_service_message_event(message_item)
+            invalidate_notification_cache_for_instance(service_request, actor_user=request.user)
             if is_ajax:
                 return JsonResponse(
                     {
@@ -2424,9 +2540,11 @@ def request_messages(request, request_id):
     else:
         form = ServiceMessageForm()
 
-    ServiceMessage.objects.filter(service_request=service_request, read_at__isnull=True).exclude(
+    marked_count = ServiceMessage.objects.filter(service_request=service_request, read_at__isnull=True).exclude(
         sender_role=viewer_role
     ).update(read_at=timezone.now())
+    if marked_count:
+        invalidate_notification_cache_for_instance(service_request, actor_user=request.user)
     thread_messages = list(service_request.messages.select_related("sender_user").order_by("id"))
     latest_message_id = thread_messages[-1].id if thread_messages else 0
 
@@ -2461,9 +2579,11 @@ def request_messages_snapshot(request, request_id):
     else:
         after_id = 0
 
-    ServiceMessage.objects.filter(service_request=service_request, read_at__isnull=True).exclude(
+    marked_count = ServiceMessage.objects.filter(service_request=service_request, read_at__isnull=True).exclude(
         sender_role=viewer_role
     ).update(read_at=timezone.now())
+    if marked_count:
+        invalidate_notification_cache_for_instance(service_request, actor_user=request.user)
 
     thread_qs = service_request.messages.select_related("sender_user").order_by("id")
     if after_id > 0:
@@ -2490,9 +2610,11 @@ def notifications_view(request):
     # Opening the notifications page should behave like "mark all as read".
     mark_all_notifications_read(request.user)
     entries = build_notification_entries(request.user, limit=250)
+    for entry in entries:
+        entry["is_unread"] = False
     page_obj = paginate_items(request, entries, per_page=20, page_param="page")
     page_entries = list(page_obj.object_list)
-    unread_count = sum(1 for item in entries if item.get("is_unread"))
+    unread_count = 0
 
     return render(
         request,
@@ -2513,6 +2635,18 @@ def notifications_mark_all_read(request):
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return JsonResponse({"ok": True})
     return redirect("notifications")
+
+
+@login_required
+@never_cache
+def notifications_unread_count(request):
+    response = JsonResponse(
+        {
+            "unread_notifications_count": get_total_unread_notifications_count(request.user),
+        }
+    )
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 @login_required
@@ -3016,7 +3150,7 @@ def nav_live_stream(request):
 
     def build_payload():
         if is_provider:
-            return build_provider_snapshot_payload(provider)
+            return build_provider_snapshot_payload(provider, user=request.user)
         return build_customer_snapshot_payload(request.user)
 
     def stream_events():
@@ -3752,7 +3886,7 @@ def provider_panel_snapshot(request):
         return blocked_response
 
     refresh_marketplace_lifecycle()
-    payload = build_provider_snapshot_payload(provider)
+    payload = build_provider_snapshot_payload(provider, user=request.user)
     response = JsonResponse(payload)
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response

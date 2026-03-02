@@ -20,6 +20,7 @@ urlpatterns = [
     path('taleplerim/', views.my_requests, name='my_requests'),
     path('bildirimler/', views.notifications_view, name='notifications'),
     path('bildirimler/okundu/', views.notifications_mark_all_read, name='notifications_mark_all_read'),
+    path('api/bildirimler/sayac/', views.notifications_unread_count, name='notifications_unread_count'),
     path('operasyon/', views.operations_dashboard, name='operations_dashboard'),
     path('anlasmalar/', views.agreement_history, name='agreement_history'),
     path('hesap/ayarlar/', views.account_settings, name='account_settings'),

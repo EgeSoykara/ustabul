@@ -1,984 +1,250 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block content %}
 {% if not form_only_mode %}
-<section class="home-v2-top reveal-up">
-  <div class="home-v2-top-grid">
-    <article class="home-v2-hero-panel">
-      <div class="home-v2-hero-shell">
-        <div class="home-v2-hero-main">
-          <span class="home-v2-badge"><i class="bi bi-lightning-charge-fill"></i> Hızlı Usta Bul</span>
-          <h1>Mahallendeki en iyi ustaları tek panelden yönet</h1>
-          <p>
-            Hizmeti seç, bölgeni filtrele, doğru ustayı karşılaştır ve tek ekrandan talep aç.
-            Arama ve talep adımları artık aynı akışta.
-          </p>
-          <div class="home-v2-hero-actions">
-            <a class="btn btn-main" href="#search-panel"><i class="bi bi-search me-1"></i>Usta Ara</a>
-            {% if request.user.is_authenticated and not is_provider_user %}
-              <a class="btn btn-main-dark d-none d-lg-inline-flex" href="#talep-form"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
-              <a class="btn btn-main-dark d-inline-flex d-lg-none" href="{% url 'request_form_page' %}"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
-            {% else %}
-              <a class="btn btn-main-dark" href="{% url 'customer_login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
-            {% endif %}
-          </div>
-          <div class="home-v2-hero-points">
-            <span><i class="bi bi-geo-alt-fill"></i> Şehir/ilçe filtreli liste</span>
-            <span><i class="bi bi-shield-check"></i> Doğrulanmış profiller</span>
-            <span><i class="bi bi-chat-dots-fill"></i> Hızlı teklif akışı</span>
-          </div>
-        </div>
-        <aside class="home-v2-hero-side">
-          <div class="home-v2-hero-stat" aria-label="Aktif usta sayısı">
-            <p class="home-v2-hero-stat-label">Listelenen aktif usta</p>
-            <p class="home-v2-hero-stat-value">{{ provider_total_count }}</p>
-            <p class="home-v2-hero-stat-note">Arama filtrelerine göre anlık güncellenir.</p>
-          </div>
-          <div class="home-v2-hero-flow" aria-label="Sistem akışı">
-            <p class="home-v2-hero-flow-title">Nasıl çalışır?</p>
-            <div class="home-v2-hero-flow-row">
-              <span><strong>1</strong> Hizmeti seç</span>
-              <span><strong>2</strong> Ustayı karşılaştır</span>
-              <span><strong>3</strong> Talep gönder</span>
-            </div>
-          </div>
-        </aside>
-      </div>
-    </article>
-  </div>
-</section>
-{% endif %}
-{% if not form_only_mode %}
-<section class="home-v2-mobile-request-cta d-lg-none reveal-up delay-1">
-  {% if request.user.is_authenticated and not is_provider_user %}
-    <a href="{% url 'request_form_page' %}" class="btn btn-main-dark w-100"><i class="bi bi-send-check me-1"></i>Talep Formunu Aç</a>
-  {% elif request.user.is_authenticated and is_provider_user %}
-    <a href="{% url 'provider_requests' %}" class="btn btn-main-dark w-100"><i class="bi bi-briefcase-fill me-1"></i>Usta Paneline Git</a>
-  {% else %}
-    <a href="{% url 'customer_login' %}" class="btn btn-main-dark w-100"><i class="bi bi-box-arrow-in-right me-1"></i>Talep Açmak İçin Giriş Yap</a>
-  {% endif %}
-</section>
-{% endif %}
-
-<section class="row g-4 align-items-start home-v2-main-layout{% if form_only_mode %} justify-content-center{% endif %}">
-  {% if not form_only_mode %}
-  <div class="col-xl-8">
-    <div class="card panel-card shadow-sm home-v2-search-card reveal-up delay-1" id="search-panel">
-      <div class="card-body">
-        <div class="home-v2-card-head">
-          <h2 class="h5 mb-0 section-title"><i class="bi bi-search me-2"></i>Arama ve Filtre</h2>
-          <span class="home-v2-card-head-note">Aradığın hizmete göre listeyi sadeleştir.</span>
-        </div>
-        <form method="get" class="row g-3" id="search-form">
-          <div class="col-12">
-            <label class="form-label">{{ search_form.query.label }}</label>
-            <div class="search-query-row">
-              {{ search_form.query }}
-              <button type="submit" class="btn btn-main search-query-btn"><i class="bi bi-search me-1"></i>Ara</button>
-            </div>
-          </div>
-          <div class="col-lg-6">
-            <label class="form-label">{{ search_form.service_type.label }}</label>
-            <div class="service-picker">
-              <div class="service-filter-shell">
-                <i class="bi bi-search"></i>
-                <input type="search" class="service-filter-input" data-service-type-filter placeholder="Hizmet ara (örnek: klima, kombi, elektrik)" autocomplete="off">
-              </div>
-              {{ search_form.service_type }}
-              <p class="service-picker-note mb-0">Yazarak filtrele veya öne çıkanlardan seç.</p>
-              {% if popular_service_types %}
-                <div class="quick-service-wrap">
-                  <span class="quick-service-label">Öne Çıkan Hizmetler</span>
-                  <div class="quick-service-list">
-                    {% for service_type in popular_service_types %}
-                      <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">{{ service_type.name }}</button>
-                    {% endfor %}
-                  </div>
-                </div>
-              {% endif %}
-            </div>
-          </div>
-          <div class="col-lg-3">
-            <label class="form-label">{{ search_form.city.label }}</label>
-            {{ search_form.city }}
-          </div>
-          <div class="col-lg-3">
-            <label class="form-label">{{ search_form.district.label }}</label>
-            {{ search_form.district }}
-          </div>
-          <details class="home-v2-advanced-filter col-12">
-            <summary><i class="bi bi-sliders me-1"></i>Gelişmiş filtreler</summary>
-            <div class="row g-3 mt-1">
-              <div class="col-md-4">
-                <label class="form-label">{{ search_form.min_rating.label }}</label>
-                {{ search_form.min_rating }}
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">{{ search_form.min_reviews.label }}</label>
-                {{ search_form.min_reviews }}
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">{{ search_form.sort_by.label }}</label>
-                {{ search_form.sort_by }}
-              </div>
-            </div>
-          </details>
-          <div class="col-12 home-v2-filter-actions">
-            <button type="submit" class="btn btn-main"><i class="bi bi-funnel-fill me-1"></i>Filtreyi Uygula</button>
-            <a href="{% url 'index' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i>Temizle</a>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div class="card panel-card shadow-sm mt-4 reveal-up delay-2 home-v2-provider-card-wrap">
-      <div class="card-body">
-        <div class="home-v2-provider-head">
-          <div>
-            <h2 class="h5 mb-1 section-title"><i class="bi bi-person-workspace me-2"></i>Müsait Ustalar</h2>
-            <p class="small text-muted mb-0">Toplam {{ provider_total_count }} usta bulundu. Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}.</p>
-          </div>
-          <form method="get" class="provider-page-size-form">
-            {% for key, value in request.GET.items %}
-              {% if key != "provider_page" and key != "provider_page_size" %}
-                <input type="hidden" name="{{ key }}" value="{{ value }}">
-              {% endif %}
-            {% endfor %}
-            <label for="provider-page-size" class="small text-muted me-1">Sayfa boyutu</label>
-            <select id="provider-page-size" name="provider_page_size" onchange="this.form.submit()">
-              {% for size_option in provider_page_size_options %}
-                <option value="{{ size_option }}" {% if size_option == provider_page_size %}selected{% endif %}>{{ size_option }}</option>
-              {% endfor %}
-            </select>
-          </form>
-        </div>
-        {% if providers %}
-          <div class="row g-3 provider-grid">
-            {% for provider in providers %}
-              <div class="col-md-6">
-                <article class="provider-card home-v2-provider-item p-3 h-100">
-                  <div class="home-v2-provider-top">
-                    <div class="provider-head">
-                      <span class="avatar-dot">{{ provider.full_name|slice:":1"|upper }}</span>
-                      <div>
-                        <h3 class="h6 mb-0">{{ provider.full_name }}</h3>
-                        <p class="small mb-0 provider-location"><i class="bi bi-geo-alt-fill me-1"></i>{{ provider.city }} / {{ provider.district }}</p>
-                      </div>
-                    </div>
-                    <span class="pill home-v2-service-pill">
-                      {% for service in provider.service_types.all %}
-                        {{ service.name }}{% if not forloop.last %}, {% endif %}
-                      {% empty %}
-                        Hizmet belirtilmedi
-                      {% endfor %}
-                    </span>
-                  </div>
-                  <p class="small mb-2 provider-rating"><i class="bi bi-star-fill me-1"></i>{{ provider.rating }} / 5 <span class="rating-count">({{ provider.ratings_count }} değerlendirme)</span></p>
-                  <div class="provider-bottom">
-                    <p class="small mb-0 provider-phone"><i class="bi bi-telephone-fill me-1"></i><strong>{{ provider.phone }}</strong></p>
-                    <div class="provider-actions">
-                      <a href="{% url 'provider_detail' provider.id %}" class="btn btn-sm provider-profile-btn">Profili Gör</a>
-                      {% if request.user.is_authenticated and not is_provider_user %}
-                        <button type="button" class="btn btn-sm provider-profile-btn home-v2-provider-select d-none d-lg-inline-flex" data-provider-form-open data-provider-id="{{ provider.id }}" data-provider-name="{{ provider.full_name }}" data-provider-city="{{ provider.city }}" data-provider-district="{{ provider.district }}" data-provider-phone="{{ provider.phone }}" data-provider-profile-url="{% url 'provider_detail' provider.id %}" data-provider-service-ids="{% for service in provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}">Bu Ustaya Talep Aç</button>
-                        <a href="{% url 'request_form_page' %}?preferred_provider_id={{ provider.id }}" class="btn btn-sm provider-profile-btn d-inline-flex d-lg-none">Bu Ustaya Talep Aç</a>
-                      {% elif not request.user.is_authenticated %}
-                        <a href="{% url 'customer_login' %}" class="btn btn-sm provider-profile-btn">Bu Ustaya Talep Aç</a>
-                      {% endif %}
-                      <a href="tel:{{ provider.phone }}" class="btn btn-sm provider-call-btn" data-provider-call data-phone="{{ provider.phone }}">Ara</a>
-                      <a href="#" class="btn btn-sm provider-whatsapp-btn" data-provider-whatsapp data-phone="{{ provider.phone }}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
-                    </div>
-                  </div>
-                  <p class="small text-muted provider-contact-help mb-0" data-provider-help hidden>Masaüstünde arama açılmazsa WhatsApp kullan.</p>
-                </article>
-              </div>
-            {% endfor %}
-          </div>
-          {% if provider_page_obj.has_other_pages %}
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
-              <span class="small text-muted">Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}</span>
-              <nav aria-label="Usta listesi sayfalama">
-                <ul class="pagination pagination-sm mb-0">
-                  <li class="page-item {% if not provider_page_obj.has_previous %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page=1" aria-label="İlk">&laquo;&laquo;</a>
-                  </li>
-                  <li class="page-item {% if not provider_page_obj.has_previous %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_previous %}{{ provider_page_obj.previous_page_number }}{% else %}1{% endif %}" aria-label="Önceki">&laquo;</a>
-                  </li>
-                  <li class="page-item disabled"><span class="page-link">{{ provider_page_obj.number }}</span></li>
-                  <li class="page-item {% if not provider_page_obj.has_next %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={% if provider_page_obj.has_next %}{{ provider_page_obj.next_page_number }}{% else %}{{ provider_page_obj.paginator.num_pages }}{% endif %}" aria-label="Sonraki">&raquo;</a>
-                  </li>
-                  <li class="page-item {% if not provider_page_obj.has_next %}disabled{% endif %}">
-                    <a class="page-link" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={{ provider_page_obj.paginator.num_pages }}" aria-label="Son">&raquo;&raquo;</a>
-                  </li>
-                </ul>
-              </nav>
-            </div>
-          {% endif %}
+<section class="card panel-card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <h1 class="h4 mb-0">Mahallendeki en iyi ustaları bul</h1>
+      <div class="d-flex align-items-center gap-2">
+        {% if request.user.is_authenticated and not is_provider_user %}
+          <a href="#talep-form" class="btn btn-main"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+        {% elif request.user.is_authenticated and is_provider_user %}
+          <a href="{% url 'provider_requests' %}" class="btn btn-main"><i class="bi bi-briefcase-fill me-1"></i>Usta Paneli</a>
         {% else %}
-          <div class="home-v2-empty-state">
-            <i class="bi bi-emoji-frown"></i>
-            <p class="mb-0">Kriterlere uygun usta bulunamadı. Filtreleri genişletip tekrar dene.</p>
-          </div>
+          <a href="{% url 'customer_login' %}" class="btn btn-main"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
         {% endif %}
       </div>
     </div>
-    </div>
-{% endif %}
 
-  <div class="{% if form_only_mode %}col-12 col-lg-8 col-xl-7{% else %}col-xl-4 home-v2-desktop-form-col{% endif %}">
-    {% if form_only_mode %}
-      <div class="home-v2-form-page-head reveal-up">
-        <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Ana Sayfaya Dön</a>
+    <form method="get" class="row g-2" id="search-form">
+      <div class="col-lg-3">
+        <label class="form-label">{{ search_form.query.label }}</label>
+        {{ search_form.query }}
       </div>
-    {% endif %}
-    {% if not request.user.is_authenticated %}
-      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 auth-gate-card" id="talep-form">
-        <div class="card-body">
-          <h2 class="h5 mb-3 section-title"><i class="bi bi-shield-lock-fill me-2"></i>Talep Açmak İçin Giriş Gerekli</h2>
-          <p class="mb-3 auth-gate-note">Talep oluşturma sadece giriş yapan müşteriler için açık.</p>
-          <ul class="home-v2-login-benefits">
-            <li>Talep durumunu tek panelden takip et.</li>
-            <li>Usta seçimi ve randevuyu kolay yönet.</li>
-            <li>Mesajlaşma ile süreci hızlandır.</li>
-          </ul>
-          <div class="d-grid gap-2 mt-3">
-            <a href="{% url 'customer_login' %}" class="btn btn-main-dark w-100 auth-gate-login-btn"><i class="bi bi-box-arrow-in-right me-2"></i>Müşteri Girişi</a>
-            <a href="{% url 'customer_signup' %}" class="btn w-100 auth-gate-signup-btn"><i class="bi bi-person-plus-fill me-2"></i>Hemen Kayıt Ol</a>
-          </div>
-        </div>
+      <div class="col-lg-3">
+        <label class="form-label">{{ search_form.service_type.label }}</label>
+        {{ search_form.service_type }}
       </div>
-    {% elif is_provider_user %}
-      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 home-v2-provider-mode" id="talep-form">
-        <div class="card-body">
-          <h2 class="h5 mb-3 section-title"><i class="bi bi-tools me-2"></i>Usta Modu Aktif</h2>
-          <p class="mb-3">Usta hesabı ile giriş yaptığın için talep oluşturma kapalı. Müşteri taleplerini panelden yönetebilirsin.</p>
-          <a href="{% url 'provider_requests' %}" class="btn btn-main-dark w-100"><i class="bi bi-briefcase-fill me-2"></i>Usta Paneline Git</a>
-        </div>
+      <div class="col-lg-2">
+        <label class="form-label">{{ search_form.city.label }}</label>
+        {{ search_form.city }}
       </div>
-    {% else %}
-      <div class="card panel-card shadow-sm sticky-form reveal-up delay-3 home-v2-request-card" id="talep-form">
-        <div class="card-body">
-          <h2 class="h5 mb-2 section-title"><i class="bi bi-send-check-fill me-2"></i>Hizmet Talebi Oluştur</h2>
-          <p class="small text-muted mb-3">Formu doldur, sistem uygun ustaları sıralı şekilde devreye alsın.</p>
-          <div class="home-v2-step-row">
-            <span><strong>1</strong> Bilgileri doldur</span>
-            <span><strong>2</strong> Uygun ustayı seç</span>
-            <span><strong>3</strong> Teklifleri karşılaştır</span>
-          </div>
-          <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
-            {% csrf_token %}
-            {{ request_form.preferred_provider_id }}
-            {{ request_form.preferred_provider_locked_service_id }}
-            {{ request_form.preferred_provider_locked_city }}
-            {{ request_form.preferred_provider_locked_district }}
-            <div class="honey-trap-field" aria-hidden="true">
-              <label for="id_website_url">Website</label>
-              <input type="text" id="id_website_url" name="website_url" tabindex="-1" autocomplete="off">
-            </div>
-            <div class="col-12">
-              <div id="preferred-provider-indicator" class="preferred-provider-banner" data-selected-provider-service-ids="{% if preferred_provider %}{% for service in preferred_provider.service_types.all %}{{ service.id }}{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}" data-selected-provider-service-id="{{ request_form.preferred_provider_locked_service_id.value|default:'' }}" data-selected-provider-city="{{ request_form.preferred_provider_locked_city.value|default:'' }}" data-selected-provider-district="{{ request_form.preferred_provider_locked_district.value|default:'' }}" {% if not request_form.preferred_provider_id.value %}hidden{% endif %}>
-                <div class="preferred-provider-header">
-                  <div class="preferred-provider-copy">
-                    <p class="preferred-provider-title mb-1"><i class="bi bi-person-check me-1"></i>Özel Usta Talebi</p>
-                    <p class="preferred-provider-name mb-1" data-selected-provider-name>{% if preferred_provider %}{{ preferred_provider.full_name }}{% else %}Usta{% endif %}</p>
-                    <p class="preferred-provider-meta mb-0" data-selected-provider-meta>{% if preferred_provider %}{{ preferred_provider.city }} / {{ preferred_provider.district }}{% else %}-{% endif %}</p>
-                  </div>
-                  <div class="preferred-provider-tools">
-                    <a href="{% if preferred_provider %}{% url 'provider_detail' preferred_provider.id %}{% else %}#{% endif %}" class="btn btn-sm provider-profile-btn" id="selected-provider-profile-link" {% if not preferred_provider %}hidden{% endif %}>Profili Gör</a>
-                    <a href="{% if preferred_provider %}tel:{{ preferred_provider.phone }}{% else %}#{% endif %}" class="btn btn-sm provider-call-btn" id="selected-provider-call-link" {% if not preferred_provider %}hidden{% endif %}>Ara</a>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-preferred-provider">Genel Forma Dön</button>
-                  </div>
-                </div>
-                <p class="preferred-provider-note mb-0">Talep önce seçtiğin ustaya gider. İstersen genel eşleşmeye dönebilirsin.</p>
+      <div class="col-lg-2">
+        <label class="form-label">{{ search_form.district.label }}</label>
+        {{ search_form.district }}
+      </div>
+      <div class="col-lg-2 d-flex align-items-end gap-2">
+        <button type="submit" class="btn btn-main w-100">Ara</button>
+        <a href="{% url 'index' %}" class="btn btn-outline-secondary w-100">Temizle</a>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <h2 class="h5 mb-0">Müsait Ustalar</h2>
+      <span class="small text-muted">Toplam {{ provider_total_count }} usta</span>
+    </div>
+
+    {% if providers %}
+      <div class="row g-3">
+        {% for provider in providers %}
+          <div class="col-md-6 col-xl-4">
+            <article class="border rounded p-3 h-100 d-flex flex-column gap-2">
+              <h3 class="h6 mb-0">{{ provider.full_name }}</h3>
+              <div class="small text-muted">{{ provider.city }} / {{ provider.district }}</div>
+              <div class="small">⭐ {{ provider.rating }} / 5{% if provider.ratings_count %} ({{ provider.ratings_count }}){% endif %}</div>
+              <div class="small text-muted">
+                {% for service in provider.service_types.all %}
+                  {{ service.name }}{% if not forloop.last %}, {% endif %}
+                {% empty %}
+                  Hizmet bilgisi yok
+                {% endfor %}
               </div>
-              {% for error in request_form.preferred_provider_id.errors %}
-                <div class="text-danger small mt-1">{{ error }}</div>
-              {% endfor %}
-            </div>
-            <div class="col-12">
-              <label class="form-label">{{ request_form.customer_name.label }}</label>
-              {{ request_form.customer_name }}
-              {% for error in request_form.customer_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-12">
-              <label class="form-label">{{ request_form.customer_phone.label }}</label>
-              {{ request_form.customer_phone }}
-              {% if request_form.customer_phone.help_text %}
-                <div class="phone-field-guide">
-                  <div class="phone-field-guide-title"><i class="bi bi-info-circle-fill me-1"></i>Telefon Formatı</div>
-                  <p>{{ request_form.customer_phone.help_text }}</p>
-                  <p class="mb-0">Boşluk veya tire kullansan da sistem numarayı otomatik düzeltir.</p>
-                </div>
-              {% endif %}
-              {% for error in request_form.customer_phone.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-12">
-              <label class="form-label">{{ request_form.service_type.label }}</label>
-              <div class="service-picker">
-                <div class="service-filter-shell">
-                  <i class="bi bi-search"></i>
-                  <input type="search" class="service-filter-input" data-service-type-filter placeholder="Hizmet ara (örnek: tesisat, boya, montaj)" autocomplete="off">
-                </div>
-                {{ request_form.service_type }}
-                <p class="service-picker-note mb-0">Yazarak filtrele veya öne çıkanlardan seç.</p>
-                <p class="small text-muted mt-1 mb-0" id="preferred-provider-service-lock-hint" hidden>Özel usta modunda hizmet, şehir ve ilçe sabitlendi. Değiştirmek için "Genel Forma Dön" kullan.</p>
-                {% if popular_service_types %}
-                  <div class="quick-service-wrap">
-                    <span class="quick-service-label">Öne Çıkan Hizmetler</span>
-                    <div class="quick-service-list">
-                      {% for service_type in popular_service_types %}
-                        <button type="button" class="quick-service-btn" data-service-choice="{{ service_type.id }}">{{ service_type.name }}</button>
-                      {% endfor %}
-                    </div>
-                  </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap mt-auto">
+                <a href="{% url 'provider_detail' provider.id %}" class="btn btn-sm btn-outline-secondary">Profil</a>
+                {% if request.user.is_authenticated and not is_provider_user %}
+                  <a href="{% url 'request_form_page' %}?preferred_provider_id={{ provider.id }}" class="btn btn-sm btn-main">Bu Ustaya Talep Aç</a>
+                {% elif not request.user.is_authenticated %}
+                  <a href="{% url 'customer_login' %}" class="btn btn-sm btn-main">Bu Ustaya Talep Aç</a>
                 {% endif %}
               </div>
-              {% for error in request_form.service_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">{{ request_form.city.label }}</label>
-              {{ request_form.city }}
-              {% for error in request_form.city.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">{{ request_form.district.label }}</label>
-              {{ request_form.district }}
-              {% for error in request_form.district.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-12">
-              <label class="form-label">{{ request_form.details.label }}</label>
-              {{ request_form.details }}
-              <div class="request-details-meta">
-                {% if request_form.details.help_text %}<p class="small text-muted mt-1 mb-0">{{ request_form.details.help_text }}</p>{% endif %}
-                <span class="request-details-counter" data-request-details-counter></span>
-              </div>
-              <p class="small text-danger mt-1 mb-0" data-request-details-limit-error hidden>
-                Limit asildi. Lutfen metni kisaltin.
-              </p>
-              {% for error in request_form.details.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-12">
-              <button type="submit" class="btn btn-dark w-100 btn-main-dark"><i class="bi bi-send-fill me-2"></i>Talep Gönder</button>
-            </div>
-          </form>
-        </div>
+            </article>
+          </div>
+        {% endfor %}
       </div>
+
+      {% if provider_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ provider_page_obj.number }} / {{ provider_page_obj.paginator.num_pages }}</span>
+          <div class="d-flex align-items-center gap-2">
+            {% if provider_page_obj.has_previous %}
+              <a class="btn btn-sm btn-outline-secondary" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={{ provider_page_obj.previous_page_number }}">Önceki</a>
+            {% endif %}
+            {% if provider_page_obj.has_next %}
+              <a class="btn btn-sm btn-outline-secondary" href="{{ provider_page_query }}{% if provider_page_query %}&{% endif %}provider_page={{ provider_page_obj.next_page_number }}">Sonraki</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Kriterlere uygun usta bulunamadı.</p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<section class="card panel-card shadow-sm" id="talep-form">
+  <div class="card-body p-4">
+    {% if form_only_mode %}
+      <div class="mb-3">
+        <a href="{% url 'index' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Ana Sayfa</a>
+      </div>
+    {% endif %}
+
+    {% if not request.user.is_authenticated %}
+      <h2 class="h5 mb-2">Talep Açmak İçin Giriş Yap</h2>
+      <p class="small text-muted mb-3">Talep oluşturmak için müşteri hesabı ile giriş yapmalısınız.</p>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="{% url 'customer_login' %}" class="btn btn-main">Müşteri Girişi</a>
+        <a href="{% url 'customer_signup' %}" class="btn btn-outline-secondary">Kayıt Ol</a>
+      </div>
+    {% elif is_provider_user %}
+      <h2 class="h5 mb-2">Usta Hesabında Talep Formu Kapalı</h2>
+      <p class="small text-muted mb-3">Müşteri taleplerini usta panelinden yönetebilirsiniz.</p>
+      <a href="{% url 'provider_requests' %}" class="btn btn-main">Usta Paneline Git</a>
+    {% else %}
+      <h2 class="h5 mb-3">Talep Formu</h2>
+
+      <form method="post" action="{% url 'create_request' %}" class="row g-3" id="request-form">
+        {% csrf_token %}
+        {{ request_form.preferred_provider_id }}
+        {{ request_form.preferred_provider_locked_service_id }}
+        {{ request_form.preferred_provider_locked_city }}
+        {{ request_form.preferred_provider_locked_district }}
+
+        <div class="honey-trap-field" aria-hidden="true">
+          <label for="id_website_url">Website</label>
+          <input type="text" id="id_website_url" name="website_url" tabindex="-1" autocomplete="off">
+        </div>
+
+        {% if preferred_provider %}
+          <div class="col-12">
+            <div class="alert alert-info mb-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div>
+                <strong>Özel Usta:</strong> {{ preferred_provider.full_name }} ({{ preferred_provider.city }} / {{ preferred_provider.district }})
+              </div>
+              <a href="{% url 'request_form_page' %}" class="btn btn-sm btn-outline-secondary">Genel Forma Dön</a>
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="col-md-6">
+          <label class="form-label">{{ request_form.customer_name.label }}</label>
+          {{ request_form.customer_name }}
+          {% for error in request_form.customer_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">{{ request_form.customer_phone.label }}</label>
+          {{ request_form.customer_phone }}
+          {% for error in request_form.customer_phone.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">{{ request_form.service_type.label }}</label>
+          {{ request_form.service_type }}
+          {% for error in request_form.service_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">{{ request_form.city.label }}</label>
+          {{ request_form.city }}
+          {% for error in request_form.city.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">{{ request_form.district.label }}</label>
+          {{ request_form.district }}
+          {% for error in request_form.district.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">{{ request_form.details.label }}</label>
+          {{ request_form.details }}
+          {% if request_form.details.help_text %}<div class="small text-muted mt-1">{{ request_form.details.help_text }}</div>{% endif %}
+          {% for error in request_form.details.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          {% for error in request_form.preferred_provider_id.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="col-12">
+          <button type="submit" class="btn btn-main"><i class="bi bi-send-check me-1"></i>Talebi Gönder</button>
+        </div>
+      </form>
     {% endif %}
   </div>
 </section>
 
-<script id="city-district-map" type="application/json">{{ city_district_map_json|safe }}</script>
 <script>
   (function () {
-    const cityDistrictMapElement = document.getElementById("city-district-map");
-    const cityDistrictMap = cityDistrictMapElement ? JSON.parse(cityDistrictMapElement.textContent) : {};
+    const cityDistrictMap = JSON.parse('{{ city_district_map_json|escapejs }}');
 
-    function setupServiceTypePickerByForm(formId) {
-      const form = document.getElementById(formId);
-      if (!form) return null;
-
-      const serviceSelect = form.querySelector("select[name='service_type']");
-      if (!serviceSelect) return null;
-
-      const filterInput = form.querySelector("input[data-service-type-filter]");
-      const quickButtons = form.querySelectorAll("button[data-service-choice]");
-      const defaultFilterPlaceholder = filterInput ? (filterInput.getAttribute("placeholder") || "") : "";
-      const baseOptions = Array.from(serviceSelect.options).map(function (option) {
-        return { value: option.value, text: option.textContent };
-      });
-
-      let lockedServiceIds = null;
-      let strictlyLockedServiceId = "";
-
-      function normalizeText(text) {
-        return (text || "").toLocaleLowerCase("tr-TR");
-      }
-
-      function isStrictlyLocked() {
-        return Boolean(strictlyLockedServiceId);
-      }
-
-      function syncQuickButtons() {
-        quickButtons.forEach(function (button) {
-          const serviceValue = (button.getAttribute("data-service-choice") || "").trim();
-          const isAllowed = !lockedServiceIds || !serviceValue || lockedServiceIds.has(serviceValue);
-          button.hidden = !isAllowed;
-          button.disabled = !isAllowed;
-          if (!isAllowed) {
-            button.classList.remove("is-active");
-            return;
-          }
-          const isActive = serviceValue === serviceSelect.value;
-          button.classList.toggle("is-active", isActive);
-        });
-      }
-
-      function allowedByLock(optionValue) {
-        if (!lockedServiceIds) return true;
-        return optionValue === "" || lockedServiceIds.has(optionValue);
-      }
-
-      function renderOptions(query) {
-        const previousValue = serviceSelect.value;
-        const normalizedQuery = normalizeText(query).trim();
-        serviceSelect.innerHTML = "";
-
-        let matchCount = 0;
-        baseOptions.forEach(function (item) {
-          const isPlaceholder = item.value === "";
-          if (!allowedByLock(item.value)) return;
-          const matches = normalizedQuery === "" || isPlaceholder || normalizeText(item.text).includes(normalizedQuery);
-          if (!matches) return;
-
-          const option = document.createElement("option");
-          option.value = item.value;
-          option.textContent = item.text;
-          serviceSelect.appendChild(option);
-          if (!isPlaceholder) matchCount += 1;
-        });
-
-        if (matchCount === 0) {
-          serviceSelect.innerHTML = "";
-          const emptyOption = document.createElement("option");
-          emptyOption.value = "";
-          emptyOption.textContent = lockedServiceIds ? "Bu usta için uygun hizmet bulunamadı" : "Eşleşen hizmet bulunamadı";
-          serviceSelect.appendChild(emptyOption);
-        }
-
-        const selectedStillExists = Array.from(serviceSelect.options).some(function (option) {
-          return option.value === previousValue;
-        });
-        serviceSelect.value = selectedStillExists ? previousValue : "";
-        syncQuickButtons();
-      }
-
-      function getFirstAllowedServiceValue() {
-        for (let index = 0; index < baseOptions.length; index += 1) {
-          const item = baseOptions[index];
-          if (!item.value) continue;
-          if (allowedByLock(item.value)) return item.value;
-        }
-        return "";
-      }
-
-      function setFilterLockState(isLocked) {
-        if (!filterInput) return;
-        filterInput.disabled = isLocked;
-        if (isLocked) {
-          filterInput.value = "";
-          filterInput.placeholder = "Özel usta için hizmet sabitlendi";
-          return;
-        }
-        filterInput.placeholder = defaultFilterPlaceholder;
-      }
-
-      function setSelectLockState(isLocked) {
-        serviceSelect.classList.toggle("service-select-locked", isLocked);
-        if (isLocked) {
-          serviceSelect.setAttribute("aria-readonly", "true");
-        } else {
-          serviceSelect.removeAttribute("aria-readonly");
-        }
-      }
-
-      function lockToServices(serviceIds) {
-        const normalizedIds = (serviceIds || []).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
-        lockedServiceIds = new Set(normalizedIds);
-        strictlyLockedServiceId = "";
-        setFilterLockState(true);
-        setSelectLockState(false);
-        renderOptions("");
-
-        const currentValue = String(serviceSelect.value || "");
-        if (!allowedByLock(currentValue)) {
-          const fallbackValue = getFirstAllowedServiceValue();
-          serviceSelect.value = fallbackValue;
-          serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      }
-
-      function lockToSingleService(serviceId) {
-        const normalizedServiceId = String(serviceId || "").trim();
-        if (!normalizedServiceId) return;
-        lockedServiceIds = new Set([normalizedServiceId]);
-        strictlyLockedServiceId = normalizedServiceId;
-        setFilterLockState(true);
-        setSelectLockState(true);
-        renderOptions("");
-        serviceSelect.value = normalizedServiceId;
-        syncQuickButtons();
-      }
-
-      function unlockServices() {
-        lockedServiceIds = null;
-        strictlyLockedServiceId = "";
-        setFilterLockState(false);
-        setSelectLockState(false);
-        renderOptions(filterInput ? filterInput.value : "");
-      }
-
-      if (filterInput) {
-        filterInput.addEventListener("input", function () {
-          renderOptions(filterInput.value);
-        });
-        renderOptions(filterInput.value);
-      }
-
-      quickButtons.forEach(function (button) {
-        button.addEventListener("click", function () {
-          const serviceValue = button.getAttribute("data-service-choice") || "";
-          if (lockedServiceIds && serviceValue && !lockedServiceIds.has(serviceValue)) return;
-          if (filterInput) {
-            filterInput.value = "";
-            renderOptions("");
-          }
-          serviceSelect.value = serviceValue;
-          serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
-          syncQuickButtons();
-        });
-      });
-
-      serviceSelect.addEventListener("mousedown", function (event) {
-        if (!isStrictlyLocked()) return;
-        event.preventDefault();
-        serviceSelect.blur();
-      });
-
-      serviceSelect.addEventListener("keydown", function (event) {
-        if (!isStrictlyLocked()) return;
-        event.preventDefault();
-      });
-
-      serviceSelect.addEventListener("change", function () {
-        if (isStrictlyLocked() && serviceSelect.value !== strictlyLockedServiceId) {
-          serviceSelect.value = strictlyLockedServiceId;
-        }
-        syncQuickButtons();
-      });
-
-      syncQuickButtons();
-      return {
-        lockToServices: lockToServices,
-        lockToSingleService: lockToSingleService,
-        unlockServices: unlockServices,
-      };
-    }
-    setupServiceTypePickerByForm("search-form");
-    const requestServicePicker = setupServiceTypePickerByForm("request-form");
-
-    function setupCityDistrictByForm(formId) {
-      const form = document.getElementById(formId);
-      if (!form) return;
-
-      const citySelect = form.querySelector("select[name='city']");
-      const districtSelect = form.querySelector("select[name='district']");
+    function syncDistrictOptions(citySelect, districtSelect) {
       if (!citySelect || !districtSelect) return;
+      const selectedCity = citySelect.value || "";
+      const currentDistrict = districtSelect.value || "";
+      const districts = cityDistrictMap[selectedCity] || [];
 
-      function repopulateDistricts() {
-        const selectedBefore = districtSelect.value;
-        const city = citySelect.value;
-        const districts = cityDistrictMap[city] || [];
-        districtSelect.innerHTML = "";
+      districtSelect.innerHTML = "";
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "İlçe seçin";
+      districtSelect.appendChild(placeholder);
 
-        const emptyOption = document.createElement("option");
-        emptyOption.value = "";
-        emptyOption.textContent = "İlçe seçin";
-        districtSelect.appendChild(emptyOption);
+      const anyOption = document.createElement("option");
+      anyOption.value = "Herhangi";
+      anyOption.textContent = "Herhangi";
+      districtSelect.appendChild(anyOption);
 
-        const anyOption = document.createElement("option");
-        anyOption.value = "Herhangi";
-        anyOption.textContent = "Herhangi";
-        districtSelect.appendChild(anyOption);
-
-        districts.forEach(function (district) {
-          const option = document.createElement("option");
-          option.value = district;
-          option.textContent = district;
-          districtSelect.appendChild(option);
-        });
-
-        if (selectedBefore && districts.includes(selectedBefore)) {
-          districtSelect.value = selectedBefore;
-        } else {
-          districtSelect.value = "";
-        }
-      }
-
-      citySelect.addEventListener("change", repopulateDistricts);
-      repopulateDistricts();
-    }
-
-    setupCityDistrictByForm("search-form");
-    setupCityDistrictByForm("request-form");
-
-    function setupPreferredProviderForm() {
-      const requestForm = document.getElementById("request-form");
-      if (!requestForm) return;
-
-      const preferredProviderInput = requestForm.querySelector("input[name='preferred_provider_id']");
-      if (!preferredProviderInput) return;
-
-      const lockedServiceInput = requestForm.querySelector("input[name='preferred_provider_locked_service_id']");
-      const lockedCityInput = requestForm.querySelector("input[name='preferred_provider_locked_city']");
-      const lockedDistrictInput = requestForm.querySelector("input[name='preferred_provider_locked_district']");
-      const indicator = document.getElementById("preferred-provider-indicator");
-      const indicatorName = indicator ? indicator.querySelector("[data-selected-provider-name]") : null;
-      const indicatorMeta = indicator ? indicator.querySelector("[data-selected-provider-meta]") : null;
-      const clearButton = document.getElementById("clear-preferred-provider");
-      const citySelect = requestForm.querySelector("select[name='city']");
-      const districtSelect = requestForm.querySelector("select[name='district']");
-      const serviceSelect = requestForm.querySelector("select[name='service_type']");
-      const serviceFilterInput = requestForm.querySelector("input[data-service-type-filter]");
-      const serviceLockHint = document.getElementById("preferred-provider-service-lock-hint");
-      const detailsField = requestForm.querySelector("textarea[name='details']");
-      const profileLink = document.getElementById("selected-provider-profile-link");
-      const callLink = document.getElementById("selected-provider-call-link");
-      let lockedCityValue = "";
-      let lockedDistrictValue = "";
-
-      function parseServiceIds(rawValue) {
-        return String(rawValue || "").split(",").map(function (item) { return item.trim(); }).filter(Boolean);
-      }
-
-      function getLockedServiceId(allowedServiceIds) {
-        const normalizedIds = (allowedServiceIds || []).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
-        if (!normalizedIds.length) return "";
-
-        const currentValue = String(serviceSelect ? serviceSelect.value : "").trim();
-        if (currentValue && normalizedIds.includes(currentValue)) {
-          return currentValue;
-        }
-        return normalizedIds[0];
-      }
-
-      function syncIndicator(state) {
-        if (!indicator || !indicatorName || !preferredProviderInput) return;
-        const hasPreferredProvider = !!preferredProviderInput.value;
-        indicator.hidden = !hasPreferredProvider;
-        requestForm.classList.toggle("preferred-provider-active", hasPreferredProvider);
-        if (!hasPreferredProvider) return;
-
-        if (state && state.name) {
-          indicatorName.textContent = state.name;
-        }
-        if (indicatorMeta && state) {
-          indicatorMeta.textContent = state.meta || "-";
-        }
-        if (profileLink) {
-          if (state && state.profileUrl) {
-            profileLink.href = state.profileUrl;
-            profileLink.hidden = false;
-          } else {
-            profileLink.hidden = true;
-          }
-        }
-        if (callLink) {
-          if (state && state.phone) {
-            callLink.href = "tel:" + state.phone;
-            callLink.hidden = false;
-          } else {
-            callLink.hidden = true;
-          }
-        }
-      }
-
-      function syncServiceLockHint(isLocked) {
-        if (!serviceLockHint) return;
-        serviceLockHint.hidden = !isLocked;
-      }
-
-      function isLocationLocked() {
-        return Boolean(lockedCityValue && lockedDistrictValue);
-      }
-
-      function setLocationLock(cityValue, districtValue) {
-        lockedCityValue = String(cityValue || "").trim();
-        lockedDistrictValue = String(districtValue || "").trim();
-        const shouldLock = isLocationLocked();
-
-        if (lockedCityInput) {
-          lockedCityInput.value = shouldLock ? lockedCityValue : "";
-        }
-        if (lockedDistrictInput) {
-          lockedDistrictInput.value = shouldLock ? lockedDistrictValue : "";
-        }
-
-        if (citySelect) {
-          citySelect.classList.toggle("location-select-locked", shouldLock);
-          if (shouldLock && lockedCityValue) {
-            citySelect.value = lockedCityValue;
-            citySelect.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        }
-
-        if (districtSelect) {
-          districtSelect.classList.toggle("location-select-locked", shouldLock);
-          if (shouldLock && lockedDistrictValue) {
-            districtSelect.value = lockedDistrictValue;
-            districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        }
-      }
-
-      function clearLocationLock() {
-        lockedCityValue = "";
-        lockedDistrictValue = "";
-        if (lockedCityInput) {
-          lockedCityInput.value = "";
-        }
-        if (lockedDistrictInput) {
-          lockedDistrictInput.value = "";
-        }
-        if (citySelect) {
-          citySelect.classList.remove("location-select-locked");
-        }
-        if (districtSelect) {
-          districtSelect.classList.remove("location-select-locked");
-        }
-      }
-
-      function setServiceLock(allowedServiceIds, forcedServiceId) {
-        const normalizedIds = (allowedServiceIds || []).map(function (item) { return String(item || "").trim(); }).filter(Boolean);
-        const targetServiceId = String(forcedServiceId || getLockedServiceId(normalizedIds)).trim();
-        if (!targetServiceId) {
-          clearServiceLock();
-          return;
-        }
-
-        if (requestServicePicker && typeof requestServicePicker.lockToSingleService === "function") {
-          requestServicePicker.lockToSingleService(targetServiceId);
-        } else if (requestServicePicker && typeof requestServicePicker.lockToServices === "function") {
-          requestServicePicker.lockToServices([targetServiceId]);
-        } else if (serviceSelect) {
-          serviceSelect.value = targetServiceId;
-          serviceSelect.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-
-        if (lockedServiceInput) {
-          lockedServiceInput.value = targetServiceId;
-        }
-        if (indicator) {
-          indicator.setAttribute("data-selected-provider-service-ids", normalizedIds.join(","));
-          indicator.setAttribute("data-selected-provider-service-id", targetServiceId);
-        }
-        syncServiceLockHint(true);
-      }
-
-      function clearServiceLock() {
-        if (requestServicePicker && typeof requestServicePicker.unlockServices === "function") {
-          requestServicePicker.unlockServices();
-        } else if (serviceFilterInput) {
-          serviceFilterInput.disabled = false;
-        }
-
-        if (lockedServiceInput) {
-          lockedServiceInput.value = "";
-        }
-        if (indicator) {
-          indicator.setAttribute("data-selected-provider-service-id", "");
-        }
-        syncServiceLockHint(false);
-      }
-
-      if (citySelect) {
-        citySelect.addEventListener("mousedown", function (event) {
-          if (!isLocationLocked()) return;
-          event.preventDefault();
-          citySelect.blur();
-        });
-        citySelect.addEventListener("keydown", function (event) {
-          if (!isLocationLocked()) return;
-          event.preventDefault();
-        });
-        citySelect.addEventListener("change", function () {
-          if (!isLocationLocked()) return;
-          if (citySelect.value !== lockedCityValue) {
-            citySelect.value = lockedCityValue;
-            citySelect.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        });
-      }
-
-      if (districtSelect) {
-        districtSelect.addEventListener("mousedown", function (event) {
-          if (!isLocationLocked()) return;
-          event.preventDefault();
-          districtSelect.blur();
-        });
-        districtSelect.addEventListener("keydown", function (event) {
-          if (!isLocationLocked()) return;
-          event.preventDefault();
-        });
-        districtSelect.addEventListener("change", function () {
-          if (!isLocationLocked()) return;
-          if (districtSelect.value !== lockedDistrictValue) {
-            districtSelect.value = lockedDistrictValue;
-            districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        });
-      }
-
-      function setPreferredProviderFromButton(button) {
-        const providerId = (button.getAttribute("data-provider-id") || "").trim();
-        if (!providerId) return;
-
-        preferredProviderInput.value = providerId;
-        const providerName = (button.getAttribute("data-provider-name") || "Usta").trim();
-        const providerCity = (button.getAttribute("data-provider-city") || "").trim();
-        const providerDistrict = (button.getAttribute("data-provider-district") || "").trim();
-        const providerPhone = (button.getAttribute("data-provider-phone") || "").trim();
-        const providerProfileUrl = (button.getAttribute("data-provider-profile-url") || "").trim();
-        const providerServiceIds = parseServiceIds(button.getAttribute("data-provider-service-ids"));
-
-        setLocationLock(providerCity, providerDistrict);
-        setServiceLock(providerServiceIds);
-        if (indicator) {
-          indicator.setAttribute("data-selected-provider-city", providerCity);
-          indicator.setAttribute("data-selected-provider-district", providerDistrict);
-        }
-
-        syncIndicator({
-          name: providerName,
-          meta: [providerCity, providerDistrict].filter(Boolean).join(" / "),
-          phone: providerPhone,
-          profileUrl: providerProfileUrl,
-        });
-        requestForm.scrollIntoView({ behavior: "smooth", block: "start" });
-        if (detailsField) {
-          detailsField.focus();
-        }
-      }
-
-      document.querySelectorAll("[data-provider-form-open]").forEach(function (button) {
-        button.addEventListener("click", function () {
-          setPreferredProviderFromButton(button);
-        });
+      districts.forEach(function (district) {
+        const opt = document.createElement("option");
+        opt.value = district;
+        opt.textContent = district;
+        districtSelect.appendChild(opt);
       });
 
-      if (clearButton) {
-        clearButton.addEventListener("click", function () {
-          preferredProviderInput.value = "";
-          if (indicator) {
-            indicator.setAttribute("data-selected-provider-service-ids", "");
-            indicator.setAttribute("data-selected-provider-service-id", "");
-            indicator.setAttribute("data-selected-provider-city", "");
-            indicator.setAttribute("data-selected-provider-district", "");
-          }
-          clearLocationLock();
-          clearServiceLock();
-          syncIndicator(null);
-        });
-      }
-
-      if (preferredProviderInput.value) {
-        const initialServiceIds = parseServiceIds(indicator ? indicator.getAttribute("data-selected-provider-service-ids") : "");
-        const initialLockedServiceId = String(
-          (indicator ? indicator.getAttribute("data-selected-provider-service-id") : "") ||
-          (lockedServiceInput ? lockedServiceInput.value : "") ||
-          ""
-        ).trim();
-        const initialLockedCity = String(
-          (indicator ? indicator.getAttribute("data-selected-provider-city") : "") ||
-          (lockedCityInput ? lockedCityInput.value : "") ||
-          ""
-        ).trim();
-        const initialLockedDistrict = String(
-          (indicator ? indicator.getAttribute("data-selected-provider-district") : "") ||
-          (lockedDistrictInput ? lockedDistrictInput.value : "") ||
-          ""
-        ).trim();
-        if (initialLockedCity && initialLockedDistrict) {
-          setLocationLock(initialLockedCity, initialLockedDistrict);
-        }
-        if (initialServiceIds.length) {
-          setServiceLock(initialServiceIds, initialLockedServiceId);
-        }
-        syncIndicator({
-          name: indicatorName ? indicatorName.textContent.trim() : "Usta",
-          meta: indicatorMeta ? indicatorMeta.textContent.trim() : "",
-          profileUrl: profileLink && !profileLink.hidden ? profileLink.getAttribute("href") : "",
-          phone: callLink && !callLink.hidden ? (callLink.getAttribute("href") || "").replace(/^tel:/, "") : "",
-        });
+      if ([...districtSelect.options].some(function (opt) { return opt.value === currentDistrict; })) {
+        districtSelect.value = currentDistrict;
       } else {
-        clearLocationLock();
-        clearServiceLock();
-        syncIndicator(null);
+        districtSelect.value = "";
       }
-      }
-      setupPreferredProviderForm();
-
-      function setupRequestDetailsCounter() {
-        const requestForm = document.getElementById("request-form");
-        if (!requestForm) return;
-
-        const detailsField = requestForm.querySelector("textarea[name='details']");
-        const counter = requestForm.querySelector("[data-request-details-counter]");
-        const limitError = requestForm.querySelector("[data-request-details-limit-error]");
-        if (!detailsField || !counter) return;
-
-        const maxLength = Number(detailsField.getAttribute("maxlength") || 0);
-        if (!maxLength) return;
-
-        function syncCounter() {
-          const currentLength = String(detailsField.value || "").length;
-          const remaining = maxLength - currentLength;
-          counter.textContent = currentLength + " / " + maxLength + " karakter";
-          counter.classList.toggle("is-near-limit", remaining <= 120 && remaining >= 0);
-          counter.classList.toggle("is-over-limit", remaining < 0);
-          if (limitError) {
-            limitError.hidden = remaining >= 0;
-          }
-        }
-
-        detailsField.addEventListener("input", syncCounter);
-        syncCounter();
-      }
-      setupRequestDetailsCounter();
-    })();
-</script>
-<script>
-  (function () {
-    const callButtons = document.querySelectorAll("[data-provider-call]");
-    const whatsappButtons = document.querySelectorAll("[data-provider-whatsapp]");
-    if (!callButtons.length && !whatsappButtons.length) return;
-
-    function normalizeDigits(phone) {
-      return String(phone || "").replace(/\D+/g, "");
     }
 
-    function toWhatsappPhone(phone) {
-      const digits = normalizeDigits(phone);
-      if (!digits) return "";
-      if (digits.startsWith("90")) return digits;
-      if (digits.startsWith("0") && digits.length === 11) return "90" + digits.slice(1);
-      return digits;
+    const searchForm = document.getElementById("search-form");
+    if (searchForm) {
+      const searchCity = searchForm.querySelector("select[name='city']");
+      const searchDistrict = searchForm.querySelector("select[name='district']");
+      if (searchCity && searchDistrict) {
+        syncDistrictOptions(searchCity, searchDistrict);
+        searchCity.addEventListener("change", function () {
+          syncDistrictOptions(searchCity, searchDistrict);
+        });
+      }
     }
 
-    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-
-    whatsappButtons.forEach(function (button) {
-      const whatsappPhone = toWhatsappPhone(button.dataset.phone || "");
-      if (!whatsappPhone) {
-        button.classList.add("disabled");
-        button.setAttribute("aria-disabled", "true");
-        button.removeAttribute("href");
-        return;
+    const requestForm = document.getElementById("request-form");
+    if (requestForm) {
+      const requestCity = requestForm.querySelector("select[name='city']");
+      const requestDistrict = requestForm.querySelector("select[name='district']");
+      if (requestCity && requestDistrict) {
+        syncDistrictOptions(requestCity, requestDistrict);
+        requestCity.addEventListener("change", function () {
+          syncDistrictOptions(requestCity, requestDistrict);
+        });
       }
-      button.href = "https://wa.me/" + whatsappPhone;
-    });
-
-    callButtons.forEach(function (button) {
-      button.addEventListener("click", function () {
-        if (isMobile) return;
-        const card = button.closest(".provider-card");
-        const help = card ? card.querySelector("[data-provider-help]") : null;
-        if (!help) return;
-        help.hidden = false;
-        window.setTimeout(function () {
-          help.hidden = true;
-        }, 2400);
-      });
-    });
+    }
   })();
 </script>
 {% endblock %}
