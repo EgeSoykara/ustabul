@@ -18,7 +18,7 @@
 
     <div class="provider-simple-guide mb-3" role="note" aria-label="Basit kullanım rehberi">
       <strong><i class="bi bi-info-circle-fill me-1"></i>Kısa kullanım:</strong>
-      <p class="mb-1">1) Yeni talebi aç. 2) Müşteriyle mesajdan netleştir. 3) Randevuyu onayla ve işi kapat.</p>
+      <p class="mb-1">1) Müşteri seçimi bekleyenleri kontrol et. 2) Yeni talebi kabul/red yap. 3) Mesaj ve randevuyu yönet.</p>
       <p class="mb-0">Sırayı bozma: Yukarıdan aşağıya gitmen yeterli.</p>
     </div>
 
@@ -26,41 +26,58 @@
       <article class="provider-step-card">
         <span class="provider-step-no">1</span>
         <div class="provider-step-body">
+          <div class="provider-step-title">Müşteri Onayı Bekleyenleri Kontrol Et</div>
+          <div class="provider-step-meta">Müşteri seçim aşamasındaki talepleri takip et.</div>
+        </div>
+        <a href="{% if waiting_customer_selection_count %}#waiting-selection{% else %}#pending-offers{% endif %}" class="btn btn-sm btn-main provider-step-link">Git</a>
+      </article>
+      <article class="provider-step-card">
+        <span class="provider-step-no">2</span>
+        <div class="provider-step-body">
           <div class="provider-step-title">Yeni Talepleri Kontrol Et</div>
           <div class="provider-step-meta">Uygunsa kabul et, değilse reddet.</div>
         </div>
         <a href="#pending-offers" class="btn btn-sm btn-main provider-step-link">Git</a>
       </article>
-      <article class="provider-step-card">
-        <span class="provider-step-no">2</span>
-        <div class="provider-step-body">
-          <div class="provider-step-title">Mesajları Takip Et</div>
-          <div class="provider-step-meta">Müşteriyle net konuş, işi netleştir.</div>
-        </div>
-        <a href="#active-threads" class="btn btn-sm btn-main provider-step-link">Git</a>
-      </article>
       {% if calendar_enabled %}
         <article class="provider-step-card">
           <span class="provider-step-no">3</span>
           <div class="provider-step-body">
-            <div class="provider-step-title">Randevu ve Tamamlama</div>
-            <div class="provider-step-meta">Önce onayla, iş bitince tamamlandı yap.</div>
+            <div class="provider-step-title">Mesaj ve Randevu Yönet</div>
+            <div class="provider-step-meta">Mesajları takip et, randevuyu onayla.</div>
           </div>
-          <a href="#pending-appointments" class="btn btn-sm btn-main provider-step-link">Git</a>
+          <a href="#active-threads" class="btn btn-sm btn-main provider-step-link">Git</a>
+        </article>
+        <article class="provider-step-card">
+          <span class="provider-step-no">4</span>
+          <div class="provider-step-body">
+            <div class="provider-step-title">İşi Tamamla</div>
+            <div class="provider-step-meta">Onaylı randevularda işi kapat.</div>
+          </div>
+          <a href="#confirmed-appointments" class="btn btn-sm btn-main provider-step-link">Git</a>
+        </article>
+      {% else %}
+        <article class="provider-step-card">
+          <span class="provider-step-no">3</span>
+          <div class="provider-step-body">
+            <div class="provider-step-title">Mesajları Takip Et</div>
+            <div class="provider-step-meta">Müşteriyle net konuş, işi tamamla.</div>
+          </div>
+          <a href="#active-threads" class="btn btn-sm btn-main provider-step-link">Git</a>
         </article>
       {% endif %}
     </section>
 
     <section class="provider-kpi-grid" aria-label="Panel özeti">
-      <article class="provider-kpi-card">
+      <article class="provider-kpi-card provider-kpi-card-attention">
+        <div class="provider-kpi-title">Müşteri Seçimi Bekleyen</div>
+        <div class="provider-kpi-value">{{ waiting_customer_selection_count }}</div>
+        <div class="provider-kpi-note">Yakından takip et.</div>
+      </article>
+      <article class="provider-kpi-card provider-kpi-card-primary">
         <div class="provider-kpi-title">Yeni Talep</div>
         <div class="provider-kpi-value">{{ pending_offers_count }}</div>
         <div class="provider-kpi-note">Önce bu bölümü bitir.</div>
-      </article>
-      <article class="provider-kpi-card">
-        <div class="provider-kpi-title">Müşteri Seçimi Bekleyen</div>
-        <div class="provider-kpi-value">{{ waiting_customer_selection_count }}</div>
-        <div class="provider-kpi-note">Bilgi amaçlı takip.</div>
       </article>
       <article class="provider-kpi-card">
         <div class="provider-kpi-title">Okunmamış Mesaj</div>
@@ -75,6 +92,7 @@
         </article>
       {% endif %}
     </section>
+
   </div>
 </section>
 
@@ -88,12 +106,31 @@
   data-unread-messages-count="{{ total_unread_messages }}"
 ></div>
 
+{% if waiting_customer_selection_count %}
+<section class="card panel-card provider-requests-section provider-priority-focus shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <div class="provider-priority-head">
+      <span class="provider-priority-badge">
+        <i class="bi bi-hourglass-split me-1"></i>Müşteri Onayı Bekleniyor
+      </span>
+      <h2 class="h5 mb-1">Müşteri seçimi bekleyen teklif sayın: {{ waiting_customer_selection_count }}</h2>
+      <p class="small mb-0">
+        Bu taleplerde müşteri tarafının seçim yapması beklenir. Yeni talep kabul etmeye devam edebilirsin.
+      </p>
+    </div>
+    <div class="provider-priority-actions mt-3">
+      <a href="#waiting-selection" class="btn btn-main btn-sm"><i class="bi bi-list-check me-1"></i>Bekleyenleri Gör</a>
+      <a href="#pending-offers" class="btn btn-outline-secondary btn-sm"><i class="bi bi-inbox-fill me-1"></i>Yeni Taleplere Geç</a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 {% if waiting_customer_selection_offers %}
-<details class="provider-history-collapse mb-4">
-  <summary><i class="bi bi-hourglass-split me-2"></i>Bilgi amaçlı: Müşteri seçimi bekleyen teklifler ({{ waiting_customer_selection_count }})</summary>
-  <section id="waiting-selection" class="card panel-card provider-requests-section shadow-sm reveal-up mt-3 mb-0">
+<section id="waiting-selection" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
     <div class="card-body p-4">
-      <h2 class="h6 mb-3"><i class="bi bi-hourglass-split me-2"></i>Müşteri Seçimi Bekleyen Teklifler</h2>
+      <h2 class="h5 mb-3"><i class="bi bi-hourglass-split me-2"></i>0) Müşteri Onayı Bekleyen Talepler</h2>
+      <p class="small text-muted mb-3">Müşteri seçim aşamasında bekleyen tekliflerin burada görünür.</p>
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
           <thead>
@@ -107,7 +144,7 @@
           <tbody>
             {% for offer in waiting_customer_selection_offers %}
               <tr>
-                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Talep No">{{ offer.service_request.display_code }}</td>
                 <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
                 <td data-label="Müşteri">
                   {{ offer.service_request.customer_name }}
@@ -140,8 +177,7 @@
         </div>
       {% endif %}
     </div>
-  </section>
-</details>
+</section>
 {% endif %}
 
 <section id="pending-offers" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
@@ -164,7 +200,7 @@
           <tbody>
             {% for offer in pending_offers %}
               <tr>
-                <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                <td data-label="Talep No">{{ offer.service_request.display_code }}</td>
                 <td data-label="Tarih">{{ offer.sent_at|date:"d.m.Y H:i" }}</td>
                 <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
                 <td data-label="Konum">{{ offer.service_request.city }} / {{ offer.service_request.district }}</td>
@@ -221,79 +257,57 @@
     {% else %}
       <p class="mb-0 text-muted">Şu anda bekleyen talep yok.</p>
     {% endif %}
-  </div>
-</section>
 
-<section id="active-threads" class="card panel-card provider-requests-section shadow-sm reveal-up mb-4">
-  <div class="card-body p-4">
-    <h2 class="h5 mb-3"><i class="bi bi-chat-dots-fill me-2"></i>2) Aktif Mesajlar</h2>
-    {% if active_threads %}
-      <div class="table-responsive">
-        <table class="table request-table align-middle mb-0">
-          <thead>
-            <tr>
-              <th>Talep No</th>
-              <th>Hizmet</th>
-              <th>Müşteri</th>
-              <th>Durum</th>
-              <th>Süreç</th>
-              <th>Mesaj</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for thread in active_threads %}
-              <tr>
-                <td data-label="Talep No">#{{ thread.id }}</td>
-                <td data-label="Hizmet">{{ thread.service_type.name }}</td>
-                <td data-label="Müşteri">
-                  {{ thread.customer_name }}
-                  <br><span class="small text-muted">{{ thread.customer_phone }}</span>
-                </td>
-                <td data-label="Durum"><span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span></td>
-                <td data-label="Süreç">
-                  <div class="provider-flow-badge provider-flow-{{ thread.appointment_feedback_tone }}">
-                    {{ thread.appointment_feedback_label }}
-                  </div>
-                  <div class="small text-muted mt-1">{{ thread.appointment_feedback_note }}</div>
-                </td>
-                <td data-label="Mesaj">
-                  <a href="{% url 'request_messages' thread.id %}" class="btn btn-sm nav-ghost-btn">
-                    <i class="bi bi-chat-dots me-1"></i>Mesajları Gör
-                    {% if thread.unread_messages %}
-                      <span class="chat-unread-badge">{{ thread.unread_messages }}</span>
-                    {% endif %}
-                  </a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% if active_threads_page_obj.has_other_pages %}
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
-          <span class="small text-muted">
-            Sayfa {{ active_threads_page_obj.number }} / {{ active_threads_page_obj.paginator.num_pages }}
-          </span>
-          <nav aria-label="Aktif mesajlaşmalar sayfalama">
-            <ul class="pagination mb-0">
-              <li class="page-item {% if not active_threads_page_obj.has_previous %}disabled{% endif %}">
-                <a class="page-link" href="?active_thread_page={% if active_threads_page_obj.has_previous %}{{ active_threads_page_obj.previous_page_number }}{% else %}1{% endif %}{{ active_thread_page_query }}" aria-label="Önceki">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              <li class="page-item disabled"><span class="page-link">{{ active_threads_page_obj.number }}</span></li>
-              <li class="page-item {% if not active_threads_page_obj.has_next %}disabled{% endif %}">
-                <a class="page-link" href="?active_thread_page={% if active_threads_page_obj.has_next %}{{ active_threads_page_obj.next_page_number }}{% else %}{{ active_threads_page_obj.paginator.num_pages }}{% endif %}{{ active_thread_page_query }}" aria-label="Sonraki">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
+    <section id="active-threads" class="provider-message-hub provider-message-hub-embedded" aria-label="Aktif mesajlar">
+      <h2 class="h6 mb-2"><i class="bi bi-chat-dots-fill me-2"></i>2) Aktif Mesajlar</h2>
+      <p class="small text-muted mb-2">Ayrı sekme yok: aktif taleplerin mesajlarını burada yönetebilirsin.</p>
+      {% if active_threads %}
+        <div class="provider-message-list">
+          {% for thread in active_threads %}
+            <article class="provider-message-item">
+              <div class="provider-message-main">
+                <div class="provider-message-title">{{ thread.service_type.name }} - Talep {{ thread.display_code }}</div>
+                <div class="provider-message-meta">
+                  {{ thread.customer_name }} - {{ thread.customer_phone }}
+                </div>
+                <div class="provider-message-state">
+                  <span class="status-pill status-{{ thread.status }}">{{ thread.get_status_display }}</span>
+                  <span class="provider-flow-badge provider-flow-{{ thread.appointment_feedback_tone }}">{{ thread.appointment_feedback_label }}</span>
+                </div>
+              </div>
+              <a href="{% url 'request_messages' thread.id %}" class="btn btn-sm nav-ghost-btn provider-message-action">
+                <i class="bi bi-chat-dots me-1"></i>Mesajı Aç
+                {% if thread.unread_messages %}
+                  <span class="chat-unread-badge">{{ thread.unread_messages }}</span>
+                {% endif %}
+              </a>
+            </article>
+          {% endfor %}
         </div>
+        {% if active_threads_page_obj.has_other_pages %}
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+            <span class="small text-muted">Sayfa {{ active_threads_page_obj.number }} / {{ active_threads_page_obj.paginator.num_pages }}</span>
+            <nav aria-label="Mesaj kutusu sayfalama">
+              <ul class="pagination mb-0">
+                <li class="page-item {% if not active_threads_page_obj.has_previous %}disabled{% endif %}">
+                  <a class="page-link" href="?active_thread_page={% if active_threads_page_obj.has_previous %}{{ active_threads_page_obj.previous_page_number }}{% else %}1{% endif %}{{ active_thread_page_query }}" aria-label="Önceki">
+                    <span aria-hidden="true">&laquo;</span>
+                  </a>
+                </li>
+                <li class="page-item disabled"><span class="page-link">{{ active_threads_page_obj.number }}</span></li>
+                <li class="page-item {% if not active_threads_page_obj.has_next %}disabled{% endif %}">
+                  <a class="page-link" href="?active_thread_page={% if active_threads_page_obj.has_next %}{{ active_threads_page_obj.next_page_number }}{% else %}{{ active_threads_page_obj.paginator.num_pages }}{% endif %}{{ active_thread_page_query }}" aria-label="Sonraki">
+                    <span aria-hidden="true">&raquo;</span>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="small text-muted mb-0">Aktif mesaj yok. Eşleşen talepler geldiğinde burada görünür.</p>
       {% endif %}
-    {% else %}
-      <p class="mb-0 text-muted">Aktif mesajlaşma bulunmuyor.</p>
-    {% endif %}
+    </section>
   </div>
 </section>
 
@@ -317,7 +331,7 @@
           <tbody>
             {% for appointment in pending_appointments %}
               <tr>
-                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Talep No">{{ appointment.service_request.display_code }}</td>
                 <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
                 <td data-label="Müşteri">{{ appointment.service_request.customer_name }}<br><span class="small text-muted">{{ appointment.service_request.customer_phone }}</span></td>
                 <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
@@ -391,7 +405,7 @@
           <tbody>
             {% for appointment in confirmed_appointments %}
               <tr>
-                <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                <td data-label="Talep No">{{ appointment.service_request.display_code }}</td>
                 <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
                 <td data-label="Müşteri">
                   {{ appointment.service_request.customer_name }}
@@ -481,7 +495,7 @@
                 <tbody>
                   {% for offer in recent_offers %}
                     <tr>
-                      <td data-label="Talep No">#{{ offer.service_request.id }}</td>
+                      <td data-label="Talep No">{{ offer.service_request.display_code }}</td>
                       <td data-label="Hizmet">{{ offer.service_request.service_type.name }}</td>
                       <td data-label="Not">{{ offer.quote_note|default:"-" }}</td>
                       <td data-label="Durum"><span class="status-pill status-{{ offer.status }}">{{ offer.get_status_display }}</span></td>
@@ -538,7 +552,7 @@
                 <tbody>
                   {% for appointment in recent_appointments %}
                     <tr>
-                      <td data-label="Talep No">#{{ appointment.service_request.id }}</td>
+                      <td data-label="Talep No">{{ appointment.service_request.display_code }}</td>
                       <td data-label="Hizmet">{{ appointment.service_request.service_type.name }}</td>
                       <td data-label="Randevu Saati">{{ appointment.scheduled_for|date:"d.m.Y H:i" }}</td>
                       <td data-label="Durum">

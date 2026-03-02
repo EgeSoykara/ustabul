@@ -205,6 +205,24 @@ class MarketplaceTests(TestCase):
         self.assertTrue(any("1000" in error for error in detail_errors))
         self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 0)
 
+    def test_service_request_generates_professional_request_code(self):
+        customer = User.objects.create_user(username="kodtestmusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Kod Test",
+            customer_phone="05000000000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Talep kodu format kontrolu",
+            customer=customer,
+        )
+        self.assertTrue(service_request.request_code.startswith("TLP-"))
+        parts = service_request.request_code.split("-")
+        self.assertEqual(len(parts), 3)
+        self.assertEqual(len(parts[1]), 8)
+        self.assertEqual(len(parts[2]), 6)
+        self.assertEqual(service_request.display_code, service_request.request_code)
+
     def test_service_request_with_preferred_provider_creates_offer_for_only_selected_provider(self):
         customer = User.objects.create_user(username="ozelustamusteri", password="GucluSifre123!")
         self.client.login(username="ozelustamusteri", password="GucluSifre123!")
@@ -2394,6 +2412,7 @@ class MobileApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["count"], 1)
         self.assertEqual(body["results"][0]["unread_messages"], 1)
+        self.assertEqual(body["results"][0]["request_code"], service_request.request_code)
 
     def test_mobile_register_device_creates_record(self):
         payload = self._login_mobile("mobile_customer", "GucluSifre123!")

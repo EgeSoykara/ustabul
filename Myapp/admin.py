@@ -116,6 +116,7 @@ class ProviderAdmin(admin.ModelAdmin):
 class ServiceRequestAdmin(admin.ModelAdmin):
     form = ServiceRequestAdminForm
     list_display = (
+        "request_code",
         "customer_name",
         "customer",
         "service_type",
@@ -128,7 +129,7 @@ class ServiceRequestAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "service_type", "city")
-    search_fields = ("customer_name", "customer_phone", "city", "district")
+    search_fields = ("request_code", "customer_name", "customer_phone", "city", "district")
 
 
 @admin.register(CustomerProfile)
@@ -142,7 +143,13 @@ class CustomerProfileAdmin(admin.ModelAdmin):
 class ProviderRatingAdmin(admin.ModelAdmin):
     list_display = ("service_request", "provider", "customer", "score", "updated_at")
     list_filter = ("score", "provider__city")
-    search_fields = ("service_request__id", "provider__full_name", "customer__username", "comment")
+    search_fields = (
+        "service_request__id",
+        "service_request__request_code",
+        "provider__full_name",
+        "customer__username",
+        "comment",
+    )
 
 
 @admin.register(ProviderOffer)
@@ -159,14 +166,28 @@ class ProviderOfferAdmin(admin.ModelAdmin):
         "responded_at",
     )
     list_filter = ("status", "provider__city")
-    search_fields = ("service_request__id", "provider__full_name", "token", "last_delivery_detail", "quote_note")
+    search_fields = (
+        "service_request__id",
+        "service_request__request_code",
+        "provider__full_name",
+        "token",
+        "last_delivery_detail",
+        "quote_note",
+    )
 
 
 @admin.register(ServiceAppointment)
 class ServiceAppointmentAdmin(admin.ModelAdmin):
     list_display = ("service_request", "provider", "customer", "scheduled_for", "status", "updated_at")
     list_filter = ("status", "provider__city")
-    search_fields = ("service_request__id", "provider__full_name", "customer__username", "customer_note", "provider_note")
+    search_fields = (
+        "service_request__id",
+        "service_request__request_code",
+        "provider__full_name",
+        "customer__username",
+        "customer_note",
+        "provider_note",
+    )
 
 
 @admin.register(ProviderAvailabilitySlot)
@@ -180,7 +201,7 @@ class ProviderAvailabilitySlotAdmin(admin.ModelAdmin):
 class ServiceMessageAdmin(admin.ModelAdmin):
     list_display = ("service_request", "sender_user", "sender_role", "created_at", "read_at")
     list_filter = ("sender_role",)
-    search_fields = ("service_request__id", "sender_user__username", "body")
+    search_fields = ("service_request__id", "service_request__request_code", "sender_user__username", "body")
 
 
 @admin.register(WorkflowEvent)
@@ -200,6 +221,7 @@ class WorkflowEventAdmin(admin.ModelAdmin):
     list_filter = ("target_type", "actor_role", "source", "from_status", "to_status", "created_at")
     search_fields = (
         "service_request__id",
+        "service_request__request_code",
         "appointment__id",
         "actor_user__username",
         "note",
@@ -247,6 +269,7 @@ class ActivityLogAdmin(admin.ModelAdmin):
     list_filter = ("action_type", "actor_role", "source", "created_at")
     search_fields = (
         "service_request__id",
+        "service_request__request_code",
         "appointment__id",
         "message__id",
         "actor_user__username",

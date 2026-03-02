@@ -45,6 +45,7 @@ class MobileDeviceRegistrationSerializer(serializers.ModelSerializer):
 
 
 class MobileServiceRequestSerializer(serializers.ModelSerializer):
+    request_code = serializers.CharField(read_only=True)
     service_type = serializers.CharField(source="service_type.name", read_only=True)
     matched_provider_name = serializers.SerializerMethodField()
     appointment_status = serializers.SerializerMethodField()
@@ -54,6 +55,7 @@ class MobileServiceRequestSerializer(serializers.ModelSerializer):
         model = ServiceRequest
         fields = (
             "id",
+            "request_code",
             "status",
             "service_type",
             "city",

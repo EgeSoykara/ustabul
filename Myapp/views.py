@@ -118,6 +118,19 @@ def build_page_query_suffix(request, page_param):
     return f"&{encoded}" if encoded else ""
 
 
+def get_request_display_code(service_request):
+    if not service_request:
+        return "-"
+    display_code = getattr(service_request, "display_code", "")
+    if display_code:
+        return display_code
+    request_code = getattr(service_request, "request_code", "")
+    if request_code:
+        return request_code
+    request_id = getattr(service_request, "id", None)
+    return f"TLP-{request_id}" if request_id else "-"
+
+
 def parse_float(value):
     raw = str(value or "").strip()
     if not raw:
@@ -2364,7 +2377,7 @@ def request_messages(request, request_id):
                 actor_user=request.user,
                 actor_role=viewer_role,
                 source="user",
-                summary=f"Talep #{service_request.id} icin yeni mesaj",
+                summary=f"Talep {get_request_display_code(service_request)} icin yeni mesaj",
                 note=message_item.body,
             )
             publish_service_message_event(message_item)
@@ -3471,7 +3484,10 @@ def select_provider_offer(request, request_id, offer_id):
             messages.warning(request, "Talep durumu eşleştirme için uygun değil.")
             return redirect("my_requests")
 
-    messages.success(request, f"Talep #{service_request.id} için {selected_offer.provider.full_name} seçildi.")
+    messages.success(
+        request,
+        f"Talep {get_request_display_code(service_request)} için {selected_offer.provider.full_name} seçildi.",
+    )
     return redirect("my_requests")
 
 @login_required
@@ -3768,7 +3784,10 @@ def provider_confirm_appointment(request, appointment_id):
     ):
         messages.warning(request, "Randevu durumu usta onayı için uygun değil.")
         return redirect("provider_requests")
-    messages.success(request, f"Talep #{appointment.service_request_id} için randevu onaylandı.")
+    messages.success(
+        request,
+        f"Talep {get_request_display_code(appointment.service_request)} için randevu onaylandı.",
+    )
     return redirect("provider_requests")
 
 
@@ -3841,7 +3860,10 @@ def provider_complete_appointment(request, appointment_id):
             )
 
     purge_request_messages(service_request.id)
-    messages.success(request, f"Talep #{service_request.id} randevusu tamamlandı olarak işaretlendi.")
+    messages.success(
+        request,
+        f"Talep {get_request_display_code(service_request)} randevusu tamamlandı olarak işaretlendi.",
+    )
     return redirect("provider_requests")
 
 
@@ -3892,7 +3914,10 @@ def provider_reject_appointment(request, appointment_id):
     ):
         messages.warning(request, "Randevu durumu red için uygun değil.")
         return redirect("provider_requests")
-    messages.info(request, f"Talep #{appointment.service_request_id} randevusu reddedildi.")
+    messages.info(
+        request,
+        f"Talep {get_request_display_code(appointment.service_request)} randevusu reddedildi.",
+    )
     return redirect("provider_requests")
 
 
@@ -3964,7 +3989,10 @@ def provider_accept_offer(request, offer_id):
             messages.warning(request, "Talep durumu teklif sonrası güncellenemedi.")
             return redirect("provider_requests")
 
-    messages.success(request, f"Talep #{service_request.id} iş teklifiniz müşteriye gönderildi.")
+    messages.success(
+        request,
+        f"Talep {get_request_display_code(service_request)} iş teklifiniz müşteriye gönderildi.",
+    )
     return redirect("provider_requests")
 
 
@@ -4016,7 +4044,7 @@ def provider_reject_offer(request, offer_id):
             )
         messages.info(
             request,
-            f"Talep #{service_request.id} reddedildi. Dişer ustalardan gelecek onay bekleniyor.",
+            f"Talep {get_request_display_code(service_request)} reddedildi. Dişer ustalardan gelecek onay bekleniyor.",
         )
         return redirect("provider_requests")
 
@@ -4029,7 +4057,10 @@ def provider_reject_offer(request, offer_id):
             source="user",
             note="Reddedilen teklif sonrası müşteri seçimi bekleniyor",
         )
-        messages.info(request, f"Talep #{service_request.id} reddedildi. Müşterinin teklif seçimi bekleniyor.")
+        messages.info(
+            request,
+            f"Talep {get_request_display_code(service_request)} reddedildi. Müşterinin teklif seçimi bekleniyor.",
+        )
         return redirect("provider_requests")
 
     dispatch_result = dispatch_next_provider_offer(
@@ -4041,12 +4072,15 @@ def provider_reject_offer(request, offer_id):
     )
     if dispatch_result["result"] == "offers-created":
         offer_count = len(dispatch_result["offers"])
-        messages.info(request, f"Talep #{service_request.id} reddedildi. {offer_count} yeni ustaya teklif açıldı.")
+        messages.info(
+            request,
+            f"Talep {get_request_display_code(service_request)} reddedildi. {offer_count} yeni ustaya teklif açıldı.",
+        )
     else:
-        request_id = service_request.id
+        request_code = get_request_display_code(service_request)
         service_request.delete()
         messages.warning(
             request,
-            f"Talep #{request_id} için kabul eden usta bulunamadı, talep silindi.",
+            f"Talep {request_code} için kabul eden usta bulunamadı, talep silindi.",
         )
     return redirect("provider_requests")

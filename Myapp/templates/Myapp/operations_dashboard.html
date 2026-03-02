@@ -235,7 +235,15 @@
               <tr>
                 <td data-label="Zaman">{{ row.created_at|date:"d.m.Y H:i:s" }}</td>
                 <td data-label="Aksiyon">{{ row.get_action_type_display }}</td>
-                <td data-label="Talep">{% if row.service_request_id %}#{{ row.service_request_id }}{% else %}-{% endif %}</td>
+                <td data-label="Talep">
+                  {% if row.service_request %}
+                    {{ row.service_request.display_code }}
+                  {% elif row.service_request_id %}
+                    TLP-{{ row.service_request_id }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
                 <td data-label="Akt&ouml;r">{% if row.actor_user %}{{ row.actor_user.username }}{% else %}-{% endif %}</td>
                 <td data-label="Kaynak">{{ row.get_source_display }}</td>
                 <td data-label="&Ouml;zet">{{ row.summary }}</td>

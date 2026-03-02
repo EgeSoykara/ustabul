@@ -20,6 +20,7 @@ from .views import (
     build_provider_snapshot_payload,
     build_unread_message_map,
     create_activity_log,
+    get_request_display_code,
     get_provider_for_user,
     publish_service_message_event,
     resolve_request_message_access,
@@ -265,7 +266,7 @@ class MobileRequestMessagesView(APIView):
                 actor_user=request.user,
                 actor_role=viewer_role,
                 source="user",
-                summary=f"Talep #{service_request.id} icin yeni mesaj",
+                summary=f"Talep {get_request_display_code(service_request)} icin yeni mesaj",
                 note=body,
             )
         publish_service_message_event(message_item)

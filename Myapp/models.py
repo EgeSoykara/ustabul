@@ -2,7 +2,19 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db.models import Avg
+from django.utils.crypto import get_random_string
 from django.utils import timezone
+
+REQUEST_CODE_PREFIX = "TLP"
+REQUEST_CODE_RANDOM_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+REQUEST_CODE_RANDOM_LENGTH = 6
+
+
+def build_service_request_code(created_at=None):
+    reference_date = created_at or timezone.now()
+    date_part = reference_date.strftime("%Y%m%d")
+    random_part = get_random_string(REQUEST_CODE_RANDOM_LENGTH, allowed_chars=REQUEST_CODE_RANDOM_CHARS)
+    return f"{REQUEST_CODE_PREFIX}-{date_part}-{random_part}"
 
 
 class ServiceType(models.Model):
@@ -71,6 +83,7 @@ class ServiceRequest(models.Model):
     district = models.CharField(max_length=80)
     service_type = models.ForeignKey(ServiceType, on_delete=models.PROTECT, related_name="requests")
     details = models.TextField(max_length=1000)
+    request_code = models.CharField(max_length=24, unique=True, db_index=True, editable=False)
     created_ip = models.CharField(max_length=64, blank=True, default="", db_index=True)
     request_fingerprint = models.CharField(max_length=64, blank=True, default="", db_index=True)
     matched_provider = models.ForeignKey(
@@ -101,8 +114,28 @@ class ServiceRequest(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    @property
+    def display_code(self):
+        if self.request_code:
+            return self.request_code
+        if self.id:
+            return f"{REQUEST_CODE_PREFIX}-{self.id}"
+        return REQUEST_CODE_PREFIX
+
+    def _generate_unique_request_code(self):
+        for _ in range(8):
+            candidate = build_service_request_code(self.created_at)
+            if not ServiceRequest.objects.filter(request_code=candidate).exists():
+                return candidate
+        raise ValidationError("Talep kodu üretilemedi. Lütfen tekrar deneyin.")
+
+    def save(self, *args, **kwargs):
+        if not self.request_code:
+            self.request_code = self._generate_unique_request_code()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.customer_name} - {self.service_type.name}"
+        return f"{self.display_code} - {self.customer_name} - {self.service_type.name}"
 
 
 class ServiceAppointment(models.Model):
@@ -143,7 +176,8 @@ class ServiceAppointment(models.Model):
         ordering = ["scheduled_for"]
 
     def __str__(self):
-        return f"Randevu #{self.id} Talep {self.service_request_id} ({self.status})"
+        request_label = self.service_request.display_code if self.service_request_id else "-"
+        return f"Randevu #{self.id} Talep {request_label} ({self.status})"
 
 
 class ProviderOffer(models.Model):
@@ -173,7 +207,8 @@ class ProviderOffer(models.Model):
         unique_together = ("service_request", "provider")
 
     def __str__(self):
-        return f"Talep {self.service_request_id} -> {self.provider.full_name} ({self.status})"
+        request_label = self.service_request.display_code if self.service_request_id else "-"
+        return f"Talep {request_label} -> {self.provider.full_name} ({self.status})"
 
 
 
@@ -217,7 +252,7 @@ class ProviderRating(models.Model):
         ordering = ["-updated_at"]
 
     def __str__(self):
-        request_label = self.service_request_id if self.service_request_id else "N/A"
+        request_label = self.service_request.display_code if self.service_request_id else "N/A"
         return f"{self.customer.username} -> {self.provider.full_name} / Talep {request_label}: {self.score}"
 
     @staticmethod
@@ -263,7 +298,8 @@ class ServiceMessage(models.Model):
         ordering = ["created_at"]
 
     def __str__(self):
-        return f"Mesaj #{self.id} Talep {self.service_request_id} ({self.sender_role})"
+        request_label = self.service_request.display_code if self.service_request_id else "-"
+        return f"Mesaj #{self.id} Talep {request_label} ({self.sender_role})"
 
 
 class WorkflowEvent(models.Model):

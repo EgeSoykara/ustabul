@@ -148,12 +148,13 @@ def build_notification_entries(user, *, limit=180):
         .order_by("-created_at")[:limit]
     )
     for item in messages:
+        request_code = item.service_request.display_code if item.service_request_id else "-"
         entries.append(
             {
                 "entry_id": f"msg-{item.id}",
                 "kind": "message",
                 "category": "Mesaj",
-                "title": f"Talep #{item.service_request_id} için yeni mesaj",
+                "title": f"Talep {request_code} için yeni mesaj",
                 "body": _truncate(item.body, 220),
                 "link": reverse("request_messages", args=[item.service_request_id]),
                 "created_at": item.created_at,

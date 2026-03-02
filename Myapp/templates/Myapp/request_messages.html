@@ -3,7 +3,7 @@
 <section class="card panel-card request-messages-section shadow-sm reveal-up mb-4">
   <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-2 request-messages-toolbar">
     <div>
-      <h1 class="h4 mb-1"><i class="bi bi-chat-dots-fill me-2"></i>Talep #{{ service_request.id }} Mesajlar&#305;</h1>
+      <h1 class="h4 mb-1"><i class="bi bi-chat-dots-fill me-2"></i>Talep {{ service_request.display_code }} Mesajlar&#305;</h1>
       <p class="mb-0 text-muted">{{ service_request.service_type.name }} | {{ service_request.city }} / {{ service_request.district }}</p>
     </div>
     <a href="{% url back_url %}" class="btn nav-ghost-btn"><i class="bi bi-arrow-left me-1"></i>Panele D&#246;n</a>
