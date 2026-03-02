@@ -1933,7 +1933,7 @@ def create_request(request):
             actor_user=request.user,
             actor_role=actor_role,
             source="user",
-            note="Talep secilen ustaya oncelikli olarak iletildi",
+            note="Talep seçilen ustaya öncelikli olarak iletildi",
         )
     else:
         dispatch_result = dispatch_next_provider_offer(
@@ -1949,7 +1949,7 @@ def create_request(request):
         if preferred_provider:
             messages.success(
                 request,
-                f"Talebiniz alındı. Oncelikli olarak {preferred_provider.full_name} ustasina iletildi.",
+                f"Talebiniz alındı. Öncelikli olarak {preferred_provider.full_name} ustasına iletildi.",
             )
         else:
             messages.success(
@@ -1960,7 +1960,7 @@ def create_request(request):
         if preferred_provider:
             messages.info(
                 request,
-                "Talebiniz alindi ancak secilen usta su an bu kriterlerde musait degil.",
+                "Talebiniz alındı ancak seçilen usta şu an bu kriterlerde müsait değil.",
             )
         else:
             messages.info(
