@@ -1,19 +1,56 @@
 ﻿{% extends "base.html" %}
 {% block content %}
 {% if not form_only_mode %}
+<section class="home-v2-top mb-4">
+  <div class="home-v2-top-grid">
+    <article class="home-v2-hero-panel">
+      <div class="home-v2-hero-shell">
+        <div class="home-v2-hero-main">
+          <span class="home-v2-badge"><i class="bi bi-lightning-charge-fill"></i>Hızlı Usta Eşleşmesi</span>
+          <h1>Arızanı yaz, doğru ustayı kısa sürede bul.</h1>
+          <p>
+            Talep aç, teklifleri karşılaştır, en uygun ustayı seç. Süreç sade ve adım adım ilerler.
+          </p>
+          <div class="home-v2-hero-actions">
+            {% if request.user.is_authenticated and not is_provider_user %}
+              <a href="#talep-form" class="btn btn-main"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+            {% elif request.user.is_authenticated and is_provider_user %}
+              <a href="{% url 'provider_requests' %}" class="btn btn-main"><i class="bi bi-briefcase-fill me-1"></i>Usta Paneli</a>
+            {% else %}
+              <a href="{% url 'customer_login' %}" class="btn btn-main"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
+            {% endif %}
+          </div>
+          <div class="home-v2-hero-points">
+            <span><i class="bi bi-shield-check"></i>Doğrulanmış Ustalar</span>
+            <span><i class="bi bi-chat-dots"></i>Anlık Süreç Takibi</span>
+            <span><i class="bi bi-check2-circle"></i>Kolay Usta Seçimi</span>
+          </div>
+        </div>
+        <aside class="home-v2-hero-side">
+          <article class="home-v2-hero-stat">
+            <div class="home-v2-hero-stat-label">Aktif Usta</div>
+            <div class="home-v2-hero-stat-value">{{ provider_total_count }}</div>
+            <div class="home-v2-hero-stat-note">Şu an listelenen doğrulanmış usta</div>
+          </article>
+          <article class="home-v2-hero-flow">
+            <h3 class="home-v2-hero-flow-title">Nasıl Çalışır?</h3>
+            <div class="home-v2-hero-flow-row">
+              <span><strong>1</strong>Talep oluştur</span>
+              <span><strong>2</strong>Teklifleri gör</span>
+              <span><strong>3</strong>Ustanı seç</span>
+            </div>
+          </article>
+        </aside>
+      </div>
+    </article>
+  </div>
+</section>
+
 <section class="card panel-card shadow-sm mb-4">
   <div class="card-body p-4">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-      <h1 class="h4 mb-0">Mahallendeki en iyi ustaları bul</h1>
-      <div class="d-flex align-items-center gap-2">
-        {% if request.user.is_authenticated and not is_provider_user %}
-          <a href="#talep-form" class="btn btn-main"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
-        {% elif request.user.is_authenticated and is_provider_user %}
-          <a href="{% url 'provider_requests' %}" class="btn btn-main"><i class="bi bi-briefcase-fill me-1"></i>Usta Paneli</a>
-        {% else %}
-          <a href="{% url 'customer_login' %}" class="btn btn-main"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
-        {% endif %}
-      </div>
+    <div class="home-v2-card-head">
+      <h2 class="h5 mb-0">Usta Ara</h2>
+      <span class="home-v2-card-head-note">Şehir, ilçe ve hizmete göre filtreleyin.</span>
     </div>
 
     <form method="get" class="row g-2" id="search-form">

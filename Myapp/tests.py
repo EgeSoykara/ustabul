@@ -111,7 +111,7 @@ class MarketplaceTests(TestCase):
     def test_home_page_loads(self):
         response = self.client.get(reverse("index"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Mahallendeki en iyi")
+        self.assertContains(response, "Aktif Usta")
 
     def test_index_provider_pagination_links_include_query_prefix(self):
         for idx in range(4, 15):
@@ -575,7 +575,7 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Mahallendeki en iyi")
+        self.assertContains(response, "Aktif Usta")
         self.assertNotIn("phone_verify", self.client.session)
 
     def test_provider_can_signup(self):
