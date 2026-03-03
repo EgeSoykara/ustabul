@@ -103,6 +103,9 @@
                   Hizmet bilgisi yok
                 {% endfor %}
               </div>
+              {% if provider.phone %}
+                <div class="small"><strong>Telefon:</strong> {{ provider.phone }}</div>
+              {% endif %}
               <div class="provider-list-actions d-flex align-items-center gap-2 mt-auto">
                 {% if request.user.is_authenticated and not is_provider_user %}
                   <a href="{% url 'request_form_page' %}?preferred_provider_id={{ provider.id }}" class="btn btn-sm btn-main">Bu Ustaya Talep Aç</a>
