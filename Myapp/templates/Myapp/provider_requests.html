@@ -37,13 +37,20 @@
               </div>
               <span class="badge text-bg-secondary">{{ offer.service_request.get_status_display }}</span>
             </div>
-            <div class="small mt-2">{{ offer.service_request.details|truncatechars:180 }}</div>
+            <div class="small mt-2 request-detail-preview">{{ offer.service_request.details|truncatechars:180 }}</div>
+            {% if offer.service_request.details|length > 180 %}
+              <details class="mt-2 border rounded p-2">
+                <summary class="small fw-semibold">Talep detayını aç</summary>
+                <div class="small mt-2 request-detail-preview">{{ offer.service_request.details|linebreaksbr }}</div>
+              </details>
+            {% endif %}
             <div class="d-flex flex-column gap-2 mt-3">
               <input
                 type="text"
                 name="quote_note"
                 form="accept-offer-pending-{{ offer.id }}"
                 class="form-control form-control-sm provider-note-input-inline"
+                maxlength="100"
                 placeholder="Kısa not (opsiyonel)"
               >
               <div class="provider-inline-actions">
@@ -113,6 +120,12 @@
 
             {% if calendar_enabled %}
               <div class="small text-muted mt-2">{{ thread.appointment_feedback_label }} - {{ thread.appointment_feedback_note }}</div>
+              {% if thread.appointment_entry and thread.appointment_entry.customer_note %}
+                <div class="small mt-1 request-detail-preview"><strong>Müşteri notu:</strong> {{ thread.appointment_entry.customer_note|linebreaksbr }}</div>
+              {% endif %}
+              {% if thread.appointment_entry and thread.appointment_entry.provider_note %}
+                <div class="small mt-1 request-detail-preview"><strong>Usta notunuz:</strong> {{ thread.appointment_entry.provider_note|linebreaksbr }}</div>
+              {% endif %}
 
               {% if thread.appointment_entry and thread.appointment_entry.status == "pending" %}
                 <div class="d-flex flex-column gap-2 mt-2">
@@ -121,6 +134,7 @@
                     name="provider_note"
                     form="confirm-thread-appointment-{{ thread.appointment_entry.id }}"
                     class="form-control form-control-sm provider-note-input-inline"
+                    maxlength="100"
                     placeholder="Not (opsiyonel)"
                   >
                   <div class="provider-inline-actions">
@@ -167,6 +181,9 @@
                 <i class="bi bi-telephone me-1"></i>
                 <a href="tel:{{ appointment.service_request.customer_phone }}">{{ appointment.service_request.customer_phone }}</a>
               </div>
+            {% endif %}
+            {% if appointment.customer_note %}
+              <div class="small mt-1 request-detail-preview"><strong>Müşteri notu:</strong> {{ appointment.customer_note|linebreaksbr }}</div>
             {% endif %}
           </div>
           <div class="provider-inline-actions">

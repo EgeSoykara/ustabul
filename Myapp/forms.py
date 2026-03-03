@@ -46,6 +46,7 @@ MIN_REVIEW_CHOICES = [
 
 
 SERVICE_REQUEST_DETAILS_MAX_LENGTH = 1000
+SHORT_NOTE_MAX_LENGTH = 100
 
 
 def phone_widget_attrs():
@@ -814,16 +815,25 @@ class AppointmentCreateForm(forms.ModelForm):
             "customer_note": "Randevu Notu",
         }
         widgets = {
-            "customer_note": forms.Textarea(attrs={"rows": 2, "placeholder": "Istege bagli kisa not"}),
+            "customer_note": forms.Textarea(
+                attrs={
+                    "rows": 2,
+                    "maxlength": str(SHORT_NOTE_MAX_LENGTH),
+                    "placeholder": "Istege bagli kisa not",
+                }
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         self.provider = kwargs.pop("provider", None)
         self.current_appointment_id = kwargs.pop("current_appointment_id", None)
         super().__init__(*args, **kwargs)
+        configured_max_note = int(getattr(settings, "SHORT_NOTE_MAX_CHARS", SHORT_NOTE_MAX_LENGTH))
+        self.short_note_max_length = max(20, min(240, configured_max_note))
         self.min_lead_minutes = max(1, int(getattr(settings, "APPOINTMENT_MIN_LEAD_MINUTES", 5)))
         min_dt = timezone.localtime(timezone.now() + timedelta(minutes=self.min_lead_minutes)).strftime("%Y-%m-%dT%H:%M")
         self.fields["scheduled_for"].widget.attrs["min"] = min_dt
+        self.fields["customer_note"].widget.attrs["maxlength"] = str(self.short_note_max_length)
 
     def _validate_provider_availability(self, scheduled_for):
         if not self.provider:
@@ -874,6 +884,14 @@ class AppointmentCreateForm(forms.ModelForm):
             raise ValidationError(f"Randevu zamani en az {min_lead_minutes} dakika sonrasinda olmali.")
         self._validate_provider_availability(scheduled_for)
         return scheduled_for
+
+    def clean_customer_note(self):
+        customer_note = (self.cleaned_data.get("customer_note") or "").strip()
+        if len(customer_note) > self.short_note_max_length:
+            raise ValidationError(
+                f"Randevu notu en fazla {self.short_note_max_length} karakter olabilir."
+            )
+        return customer_note
 
 
 class ServiceMessageForm(forms.ModelForm):

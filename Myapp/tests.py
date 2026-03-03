@@ -825,6 +825,33 @@ class MarketplaceTests(TestCase):
         self.assertEqual(appointment.provider, self.provider_ali)
         self.assertEqual(appointment.customer, user)
 
+    def test_customer_appointment_note_rejects_text_over_100_chars(self):
+        user = User.objects.create_user(username="randevunotlimit", password="GucluSifre123!")
+        self.client.login(username="randevunotlimit", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Randevu Not Limit Musteri",
+            customer_phone="05005550001",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Randevu not limiti testi",
+            matched_provider=self.provider_ali,
+            customer=user,
+            status="matched",
+        )
+
+        response = self.client.post(
+            reverse("create_appointment", args=[service_request.id]),
+            data={
+                "scheduled_for": self._future_datetime_local(days=2),
+                "customer_note": "N" * 101,
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Randevu notu en fazla 100 karakter olabilir.")
+        self.assertFalse(ServiceAppointment.objects.filter(service_request=service_request).exists())
+
     def test_customer_can_create_appointment_with_quick_preset(self):
         user = User.objects.create_user(username="hizlirandevu", password="GucluSifre123!")
         self.client.login(username="hizlirandevu", password="GucluSifre123!")
@@ -939,6 +966,75 @@ class MarketplaceTests(TestCase):
         appointment.refresh_from_db()
         self.assertEqual(appointment.status, "confirmed")
         self.assertEqual(appointment.provider_note, "Saat uygundur.")
+
+    def test_provider_confirm_appointment_rejects_note_over_100_chars(self):
+        customer = User.objects.create_user(username="providernotlimit", password="GucluSifre123!")
+        appointment_request = ServiceRequest.objects.create(
+            customer_name="Provider Not Limit Musteri",
+            customer_phone="05001119997",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Provider not limit testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        appointment = ServiceAppointment.objects.create(
+            service_request=appointment_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="pending",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("provider_confirm_appointment", args=[appointment.id]),
+            data={"provider_note": "P" * 101},
+            follow=True,
+        )
+
+        self.assertContains(response, "Usta notu en fazla 100 karakter olabilir.")
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, "pending")
+        self.assertEqual(appointment.provider_note, "")
+
+    def test_provider_requests_shows_customer_appointment_note(self):
+        customer = User.objects.create_user(username="gorunurnotmusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Not Gorunurluk Musteri",
+            customer_phone="05001116666",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Musteri notu gorunurluk testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="NOTESEEN1",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = offer
+        service_request.save(update_fields=["matched_offer"])
+        ServiceAppointment.objects.create(
+            service_request=service_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="pending",
+            customer_note="Musteri notu panelde gorunsun.",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_requests"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Musteri notu panelde gorunsun.")
 
     @override_settings(APPOINTMENT_PROVIDER_CONFIRM_MINUTES=5)
     def test_pending_appointment_auto_cancels_after_provider_timeout(self):
@@ -1589,6 +1685,121 @@ class MarketplaceTests(TestCase):
         self.assertEqual(offer.status, "accepted")
         self.assertEqual(offer.quote_note, "Ayni gun gelebilirim.")
         self.assertEqual(sibling_offer.status, "pending")
+
+    def test_provider_accept_offer_rejects_quote_note_over_100_chars(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Teklif Not Limit Musteri",
+            customer_phone="05000000223",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Teklif not limit testi",
+            status="pending_provider",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="NOTLIMIT1",
+            sequence=1,
+            status="pending",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("provider_accept_offer", args=[offer.id]),
+            data={"quote_note": "Q" * 101},
+            follow=True,
+        )
+
+        self.assertContains(response, "Teklif notu en fazla 100 karakter olabilir.")
+        offer.refresh_from_db()
+        service_request.refresh_from_db()
+        self.assertEqual(offer.status, "pending")
+        self.assertEqual(offer.quote_note, "")
+        self.assertEqual(service_request.status, "pending_provider")
+
+    def test_provider_requests_shows_expandable_long_request_details(self):
+        customer = User.objects.create_user(username="uzundetaymusteri", password="GucluSifre123!")
+        long_details = ("A" * 220) + "DETAYSON"
+        service_request = ServiceRequest.objects.create(
+            customer_name="Uzun Detay Musteri",
+            customer_phone="05000000999",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details=long_details,
+            customer=customer,
+            status="pending_provider",
+        )
+        ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="DETAIL001",
+            sequence=1,
+            status="pending",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_requests"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Talep detayını aç")
+        self.assertContains(response, "DETAYSON")
+
+    def test_my_requests_shows_provider_notes_from_offer_and_appointment(self):
+        customer = User.objects.create_user(username="notgorenmusteri", password="GucluSifre123!")
+        offer_request = ServiceRequest.objects.create(
+            customer_name="Teklif Notu Musteri",
+            customer_phone="05001235555",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Teklif notu gorunurluk testi",
+            customer=customer,
+            status="pending_customer",
+        )
+        ProviderOffer.objects.create(
+            service_request=offer_request,
+            provider=self.provider_ali,
+            token="QUOTEN01",
+            sequence=1,
+            status="accepted",
+            quote_note="Teklif notu gorunsun.",
+        )
+        matched_request = ServiceRequest.objects.create(
+            customer_name="Randevu Notu Musteri",
+            customer_phone="05001236666",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Randevu notu gorunurluk testi",
+            customer=customer,
+            matched_provider=self.provider_ali,
+            status="matched",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=matched_request,
+            provider=self.provider_ali,
+            token="QUOTEN02",
+            sequence=1,
+            status="accepted",
+            quote_note="Eslesen teklif notu gorunsun.",
+        )
+        matched_request.matched_offer = matched_offer
+        matched_request.save(update_fields=["matched_offer"])
+        ServiceAppointment.objects.create(
+            service_request=matched_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="confirmed",
+            provider_note="Usta randevu notu gorunsun.",
+        )
+
+        self.client.login(username="notgorenmusteri", password="GucluSifre123!")
+        response = self.client.get(reverse("my_requests"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Teklif notu gorunsun.")
+        self.assertContains(response, "Usta randevu notu gorunsun.")
 
     def test_provider_accepts_preferred_request_and_auto_matches(self):
         customer = User.objects.create_user(username="ozelmusteri_panel", password="GucluSifre123!")

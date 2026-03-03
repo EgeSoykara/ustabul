@@ -389,6 +389,11 @@ def get_no_show_grace_minutes():
     return max(0, int(getattr(settings, "APPOINTMENT_NO_SHOW_GRACE_MINUTES", 30)))
 
 
+def get_short_note_max_chars():
+    configured = int(getattr(settings, "SHORT_NOTE_MAX_CHARS", 100))
+    return max(20, min(240, configured))
+
+
 def evaluate_appointment_cancel_policy(appointment, *, now=None):
     reference_time = now or timezone.now()
     if not appointment or not appointment.scheduled_for:
@@ -4005,7 +4010,11 @@ def provider_confirm_appointment(request, appointment_id):
         messages.warning(request, "Bu randevu talebi artık açık değil.")
         return redirect("provider_requests")
 
+    max_short_note_chars = get_short_note_max_chars()
     provider_note = (request.POST.get("provider_note") or "").strip()
+    if len(provider_note) > max_short_note_chars:
+        messages.warning(request, f"Usta notu en fazla {max_short_note_chars} karakter olabilir.")
+        return redirect("provider_requests")
     appointment.provider_note = provider_note
     if not transition_appointment_status(
         appointment,
@@ -4135,7 +4144,11 @@ def provider_reject_appointment(request, appointment_id):
         messages.warning(request, "Bu randevu talebi artık açık değil.")
         return redirect("provider_requests")
 
+    max_short_note_chars = get_short_note_max_chars()
     provider_note = (request.POST.get("provider_note") or "").strip()
+    if len(provider_note) > max_short_note_chars:
+        messages.warning(request, f"Usta notu en fazla {max_short_note_chars} karakter olabilir.")
+        return redirect("provider_requests")
     appointment.provider_note = provider_note
     if not transition_appointment_status(
         appointment,
@@ -4204,7 +4217,11 @@ def provider_accept_offer(request, offer_id):
             messages.warning(request, "Bu talep artık açık değil.")
             return redirect("provider_requests")
 
-        quote_note = (request.POST.get("quote_note") or "").strip()[:240]
+        max_short_note_chars = get_short_note_max_chars()
+        quote_note = (request.POST.get("quote_note") or "").strip()
+        if len(quote_note) > max_short_note_chars:
+            messages.warning(request, f"Teklif notu en fazla {max_short_note_chars} karakter olabilir.")
+            return redirect("provider_requests")
 
         now = timezone.now()
         offer.status = "accepted"

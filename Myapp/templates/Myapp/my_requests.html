@@ -28,10 +28,15 @@
                 {% for offer in item.accepted_offers %}
                   <form method="post" action="{% url 'select_provider_offer' item.id offer.id %}" class="border rounded p-2 d-flex align-items-center justify-content-between flex-wrap gap-2" data-offer-select-form>
                     {% csrf_token %}
-                    <div class="d-flex align-items-center gap-2">
-                      <strong>{{ offer.provider.full_name }}</strong>
-                      {% if item.recommended_offer_id == offer.id %}
-                        <span class="badge text-bg-info">Önerilen</span>
+                    <div class="d-flex flex-column gap-1">
+                      <div class="d-flex align-items-center gap-2">
+                        <strong>{{ offer.provider.full_name }}</strong>
+                        {% if item.recommended_offer_id == offer.id %}
+                          <span class="badge text-bg-info">Önerilen</span>
+                        {% endif %}
+                      </div>
+                      {% if offer.quote_note %}
+                        <div class="small text-muted request-detail-preview"><strong>Usta notu:</strong> {{ offer.quote_note|linebreaksbr }}</div>
                       {% endif %}
                     </div>
                     <div class="d-flex align-items-center gap-2">
@@ -79,6 +84,15 @@
                   - {{ item.appointment_entry.scheduled_for|date:"d.m.Y H:i" }}
                 {% endif %}
               </div>
+            {% endif %}
+            {% if item.matched_offer and item.matched_offer.quote_note %}
+              <div class="small mt-1 request-detail-preview"><strong>Usta notu:</strong> {{ item.matched_offer.quote_note|linebreaksbr }}</div>
+            {% endif %}
+            {% if calendar_enabled and item.appointment_entry and item.appointment_entry.customer_note %}
+              <div class="small mt-1 request-detail-preview"><strong>Sizin randevu notunuz:</strong> {{ item.appointment_entry.customer_note|linebreaksbr }}</div>
+            {% endif %}
+            {% if calendar_enabled and item.appointment_entry and item.appointment_entry.provider_note %}
+              <div class="small mt-1 request-detail-preview"><strong>Usta randevu notu:</strong> {{ item.appointment_entry.provider_note|linebreaksbr }}</div>
             {% endif %}
 
             <div class="request-card-actions d-flex align-items-center gap-2 flex-wrap mt-3">
@@ -129,7 +143,7 @@
                         <button type="button" class="btn btn-sm btn-outline-secondary" data-appointment-offset-minutes="120">+120 dk</button>
                       </div>
                       <input type="datetime-local" name="scheduled_for" class="form-control form-control-sm" required>
-                      <input type="text" name="customer_note" class="form-control form-control-sm" placeholder="Randevu notu (opsiyonel)">
+                      <input type="text" name="customer_note" class="form-control form-control-sm" maxlength="100" placeholder="Randevu notu (opsiyonel)">
                       <button type="submit" class="btn btn-sm btn-main">Randevu Oluştur</button>
                     </form>
                   {% endif %}
