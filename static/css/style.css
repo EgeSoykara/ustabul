@@ -3932,6 +3932,18 @@ body {
   gap: 6px;
 }
 
+.provider-list-actions {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+
+.provider-list-actions .btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 .provider-whatsapp-btn {
   border-radius: 10px;
   font-weight: 700;
