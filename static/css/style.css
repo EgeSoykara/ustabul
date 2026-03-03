@@ -1231,6 +1231,53 @@ h3,
   gap: 0.55rem;
 }
 
+.my-requests-toolbar-actions .btn {
+  min-height: 38px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.my-requests-toolbar-actions form {
+  margin: 0;
+}
+
+.request-card-actions {
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+}
+
+.request-card-actions .btn {
+  min-height: 36px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.request-card-actions form {
+  margin: 0;
+}
+
+.request-card-form-inline {
+  padding: 0.4rem;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
+}
+
+.request-card-form-inline .form-control,
+.request-card-form-inline .form-select {
+  min-height: 36px;
+  border-radius: 9px;
+}
+
+.appointment-quick-actions {
+  width: 100%;
+}
+
+.appointment-quick-actions .btn {
+  border-radius: 999px;
+  padding-inline: 0.65rem;
+}
+
 .request-details-counter {
   margin-top: 0.25rem;
   margin-left: auto;
@@ -4339,6 +4386,31 @@ body {
 }
 
 @media (max-width: 767px) {
+  .my-requests-toolbar-actions {
+    width: 100%;
+  }
+
+  .my-requests-toolbar-actions .btn,
+  .my-requests-toolbar-actions form {
+    width: 100%;
+  }
+
+  .request-card-actions {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .request-card-actions .btn,
+  .request-card-actions form {
+    width: 100%;
+  }
+
+  .request-card-form-inline {
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+
   .operations-day-nav {
     grid-template-columns: 1fr;
   }

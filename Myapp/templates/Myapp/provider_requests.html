@@ -51,7 +51,7 @@
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-main"><i class="bi bi-check2 me-1"></i>Onayla</button>
                 </form>
-                <form method="post" action="{% url 'provider_reject_offer' offer.id %}" class="m-0">
+                <form method="post" action="{% url 'provider_reject_offer' offer.id %}" class="m-0" data-confirm-message="Bu teklifi reddetmek istediğinize emin misiniz?">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle me-1"></i>Reddet</button>
                 </form>
@@ -96,6 +96,12 @@
               <div>
                 <h3 class="h6 mb-1">{{ thread.service_type.name }}</h3>
                 <div class="small text-muted">{{ thread.customer_name }} · {{ thread.city }} / {{ thread.district }}</div>
+                {% if thread.customer_phone %}
+                  <div class="small mt-1">
+                    <i class="bi bi-telephone me-1"></i>
+                    <a href="tel:{{ thread.customer_phone }}">{{ thread.customer_phone }}</a>
+                  </div>
+                {% endif %}
               </div>
               <a href="{% url 'request_messages' thread.id %}" class="btn btn-sm btn-outline-secondary">
                 Mesajlar
@@ -122,7 +128,7 @@
                       {% csrf_token %}
                       <button type="submit" class="btn btn-sm btn-main">Onayla</button>
                     </form>
-                    <form method="post" action="{% url 'provider_reject_appointment' thread.appointment_entry.id %}" class="m-0">
+                    <form method="post" action="{% url 'provider_reject_appointment' thread.appointment_entry.id %}" class="m-0" data-confirm-message="Bu randevu talebini reddetmek istediğinize emin misiniz?">
                       {% csrf_token %}
                       <button type="submit" class="btn btn-sm btn-outline-danger">Reddet</button>
                     </form>
@@ -130,7 +136,7 @@
                 </div>
               {% elif thread.appointment_entry %}
                 {% if thread.appointment_entry.status == "confirmed" or thread.appointment_entry.status == "pending_customer" %}
-                  <form method="post" action="{% url 'provider_complete_appointment' thread.appointment_entry.id %}" class="m-0 mt-2">
+                  <form method="post" action="{% url 'provider_complete_appointment' thread.appointment_entry.id %}" class="m-0 mt-2" data-confirm-message="Bu işi tamamlandı olarak işaretlemek istediğinize emin misiniz?">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-success">İşi Tamamla</button>
                   </form>
@@ -156,13 +162,19 @@
           <div>
             <strong>{{ appointment.service_request.service_type.name }}</strong>
             <div class="small text-muted">{{ appointment.service_request.customer_name }} · {{ appointment.scheduled_for|date:"d.m.Y H:i" }}</div>
+            {% if appointment.service_request.customer_phone %}
+              <div class="small mt-1">
+                <i class="bi bi-telephone me-1"></i>
+                <a href="tel:{{ appointment.service_request.customer_phone }}">{{ appointment.service_request.customer_phone }}</a>
+              </div>
+            {% endif %}
           </div>
           <div class="provider-inline-actions">
             <form method="post" action="{% url 'provider_confirm_appointment' appointment.id %}" class="m-0">
               {% csrf_token %}
               <button type="submit" class="btn btn-sm btn-main">Onayla</button>
             </form>
-            <form method="post" action="{% url 'provider_reject_appointment' appointment.id %}" class="m-0">
+            <form method="post" action="{% url 'provider_reject_appointment' appointment.id %}" class="m-0" data-confirm-message="Bu randevu talebini reddetmek istediğinize emin misiniz?">
               {% csrf_token %}
               <button type="submit" class="btn btn-sm btn-outline-danger">Reddet</button>
             </form>

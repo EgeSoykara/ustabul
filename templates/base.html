@@ -115,6 +115,23 @@
 <button id="pwa-install-btn" class="pwa-install-btn" type="button" hidden>
   <i class="bi bi-phone-fill me-1"></i>Uygulamayı Yükle
 </button>
+<div class="modal fade" id="app-confirm-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h6 mb-0">İşlemi Onayla</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+      </div>
+      <div class="modal-body">
+        <p id="app-confirm-modal-message" class="mb-0">Bu işlemi yapmak istediğinize emin misiniz?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="button" class="btn btn-danger" id="app-confirm-modal-approve">Evet, devam et</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   (function () {
@@ -245,6 +262,7 @@
       : "{% url 'customer_requests_snapshot' %}";
     const notificationsCountUrl = "{% url 'notifications_unread_count' %}";
     const notificationsPath = "{% url 'notifications' %}";
+    const panelPath = isProvider ? "{% url 'provider_requests' %}" : "{% url 'my_requests' %}";
     const streamUrl = "{% url 'nav_live_stream' %}";
     const navSelector = isProvider ? "[data-live-provider-nav]" : "[data-live-customer-nav]";
     const notificationSelector = "[data-live-notification-nav]";
@@ -305,6 +323,11 @@
         void error;
       }
       renderNavBadge(safeValue);
+    }
+
+    function shouldResetNavBadge() {
+      const currentPath = window.location.pathname || "";
+      return currentPath === notificationsPath || currentPath === panelPath;
     }
 
     function readSnapshot() {
@@ -422,7 +445,9 @@
         ? getProviderIncrement(previousSnapshot, nextSnapshot)
         : getCustomerIncrement(previousSnapshot, nextSnapshot);
       const unreadNotificationsCount = Number(payload.unread_notifications_count || 0);
-      if (increment > 0) {
+      if (shouldResetNavBadge()) {
+        writeBadgeCount(0);
+      } else if (increment > 0) {
         writeBadgeCount(readBadgeCount() + increment);
       }
       if (Number.isFinite(unreadNotificationsCount) && unreadNotificationsCount >= 0) {
@@ -549,7 +574,7 @@
       writeBadgeCount(0);
     });
 
-    if (window.location.pathname === notificationsPath) {
+    if (shouldResetNavBadge()) {
       renderNotificationBadge(0);
       writeBadgeCount(0);
     }
@@ -557,6 +582,76 @@
     syncNotificationBadge();
     notificationPollingTimerId = window.setInterval(syncNotificationBadge, 8000);
     connectLiveStream();
+  })();
+</script>
+<script>
+  (function () {
+    const modalElement = document.getElementById("app-confirm-modal");
+    const messageElement = document.getElementById("app-confirm-modal-message");
+    const approveButton = document.getElementById("app-confirm-modal-approve");
+    if (!modalElement || !messageElement || !approveButton) return;
+
+    let modalInstance = null;
+    let pendingForm = null;
+
+    function getModalInstance() {
+      if (modalInstance) return modalInstance;
+      if (!window.bootstrap || !window.bootstrap.Modal) return null;
+      modalInstance = new window.bootstrap.Modal(modalElement, {
+        backdrop: "static",
+        keyboard: false,
+      });
+      return modalInstance;
+    }
+
+    approveButton.addEventListener("click", function () {
+      if (!pendingForm) return;
+      const form = pendingForm;
+      pendingForm = null;
+      form.dataset.confirmApproved = "1";
+      const instance = getModalInstance();
+      if (instance) {
+        instance.hide();
+      }
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.submit();
+      }
+    });
+
+    modalElement.addEventListener("hidden.bs.modal", function () {
+      pendingForm = null;
+    });
+
+    document.addEventListener("submit", function (event) {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (form.dataset.confirmApproved === "1") {
+        delete form.dataset.confirmApproved;
+        return;
+      }
+      const confirmMessage = form.getAttribute("data-confirm-message");
+      if (!confirmMessage) return;
+      event.preventDefault();
+
+      const instance = getModalInstance();
+      if (!instance) {
+        if (window.confirm(confirmMessage)) {
+          form.dataset.confirmApproved = "1";
+          if (typeof form.requestSubmit === "function") {
+            form.requestSubmit();
+          } else {
+            form.submit();
+          }
+        }
+        return;
+      }
+
+      pendingForm = form;
+      messageElement.textContent = confirmMessage;
+      instance.show();
+    }, true);
   })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>

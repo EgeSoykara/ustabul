@@ -2256,6 +2256,80 @@ class MarketplaceTests(TestCase):
         self.assertEqual(snapshot_response.status_code, 200)
         self.assertEqual(snapshot_response.json().get("unread_notifications_count"), 0)
 
+    def test_my_requests_marks_customer_notifications_as_read(self):
+        customer = User.objects.create_user(username="okundumusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Okundu Musteri",
+            customer_phone="05006667788",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Taleplerim sayfası bildirim okundu testi",
+            customer=customer,
+            status="pending_customer",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="READCUST1",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_provider = self.provider_ali
+        service_request.matched_offer = offer
+        service_request.status = "matched"
+        service_request.save(update_fields=["matched_provider", "matched_offer", "status"])
+        ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=self.provider_user_ali,
+            sender_role="provider",
+            body="Musteri icin okunmamis mesaj",
+        )
+
+        self.assertGreater(get_total_unread_notifications_count(customer), 0)
+
+        self.client.login(username="okundumusteri", password="GucluSifre123!")
+        response = self.client.get(reverse("my_requests"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(get_total_unread_notifications_count(customer), 0)
+
+    def test_provider_requests_marks_provider_notifications_as_read(self):
+        customer = User.objects.create_user(username="okunduustamusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Okundu Usta Musteri",
+            customer_phone="05003334455",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Usta paneli bildirim okundu testi",
+            customer=customer,
+            status="pending_provider",
+        )
+        ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="READPROV1",
+            sequence=1,
+            status="pending",
+        )
+        WorkflowEvent.objects.create(
+            target_type="request",
+            service_request=service_request,
+            from_status="new",
+            to_status="pending_provider",
+            actor_user=customer,
+            actor_role="customer",
+            source="user",
+            note="Usta paneli bildirim okundu testi olayı",
+        )
+
+        self.assertGreater(get_total_unread_notifications_count(self.provider_user_ali), 0)
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_requests"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(get_total_unread_notifications_count(self.provider_user_ali), 0)
+
     def test_notifications_unread_count_endpoint_reflects_read_state(self):
         customer = User.objects.create_user(username="sayacmusteri", password="GucluSifre123!")
         service_request = ServiceRequest.objects.create(
@@ -2714,4 +2788,3 @@ class MobileApiTests(TestCase):
                 device_id="android-device-001",
             ).exists()
         )
-

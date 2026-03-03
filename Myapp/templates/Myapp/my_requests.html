@@ -1,15 +1,15 @@
 ﻿{% extends "base.html" %}
 {% block content %}
-<section class="card panel-card shadow-sm mb-4">
+<section class="card panel-card shadow-sm mb-4 my-requests-section">
   <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 class="h4 mb-0"><i class="bi bi-kanban me-2"></i>Taleplerim</h1>
-      <div class="d-flex align-items-center gap-2 flex-wrap">
+      <div class="my-requests-toolbar-actions d-flex align-items-center gap-2 flex-wrap">
         <a class="btn btn-main" href="{% url 'request_form_page' %}"><i class="bi bi-plus-circle me-1"></i>Yeni Talep</a>
         <a class="btn btn-outline-secondary" href="{% url 'agreement_history' %}"><i class="bi bi-journal-check me-1"></i>Anlaşmalar</a>
         <a class="btn btn-outline-secondary" href="{% url 'account_settings' %}"><i class="bi bi-gear me-1"></i>Hesap</a>
         {% if cancelled_count %}
-          <form method="post" action="{% url 'delete_all_cancelled_requests' %}" class="m-0">
+          <form method="post" action="{% url 'delete_all_cancelled_requests' %}" class="m-0" data-confirm-message="Tüm iptal edilmiş talepleri kalıcı olarak silmek istediğinize emin misiniz?">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash3 me-1"></i>İptalleri Sil ({{ cancelled_count }})</button>
           </form>
@@ -42,7 +42,7 @@
                 {% empty %}
                   <span class="small text-muted">Henüz seçilebilir teklif yok.</span>
                 {% endfor %}
-                <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
+                <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0" data-confirm-message="Bu talebi iptal etmek istediğinize emin misiniz?">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle me-1"></i>Talebi İptal Et</button>
                 </form>
@@ -81,15 +81,15 @@
               </div>
             {% endif %}
 
-            <div class="d-flex align-items-center gap-2 flex-wrap mt-3">
+            <div class="request-card-actions d-flex align-items-center gap-2 flex-wrap mt-3">
               {% if item.status == "new" or item.status == "pending_provider" %}
-                <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
+                <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0" data-confirm-message="Bu talebi iptal etmek istediğinize emin misiniz?">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline-danger">Talebi İptal Et</button>
                 </form>
               {% elif item.status == "pending_customer" %}
                 <a href="#customer-selection-hub" class="btn btn-sm btn-main">Usta Seçimine Git</a>
-                <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0">
+                <form method="post" action="{% url 'cancel_request' item.id %}" class="m-0" data-confirm-message="Bu talebi iptal etmek istediğinize emin misiniz?">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline-danger">Talebi İptal Et</button>
                 </form>
@@ -111,7 +111,7 @@
 
                   {% if item.appointment_entry %}
                     {% if item.appointment_entry.status == "pending" or item.appointment_entry.status == "pending_customer" or item.appointment_entry.status == "confirmed" %}
-                      <form method="post" action="{% url 'cancel_appointment' item.id %}" class="m-0">
+                      <form method="post" action="{% url 'cancel_appointment' item.id %}" class="m-0" data-confirm-message="Bu randevuyu iptal etmek istediğinize emin misiniz?">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-sm btn-outline-danger">Randevuyu İptal Et</button>
                       </form>
@@ -119,8 +119,15 @@
                   {% endif %}
 
                   {% if not item.appointment_entry or item.appointment_entry.status == "rejected" or item.appointment_entry.status == "cancelled" %}
-                    <form method="post" action="{% url 'create_appointment' item.id %}" class="m-0 d-flex align-items-center gap-2 flex-wrap">
+                    <form method="post" action="{% url 'create_appointment' item.id %}" class="m-0 d-flex align-items-center gap-2 flex-wrap request-card-form-inline">
                       {% csrf_token %}
+                      <div class="appointment-quick-actions d-flex align-items-center gap-2 flex-wrap">
+                        <span class="small text-muted">Hızlı Saat:</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-appointment-offset-minutes="0">Şimdi</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-appointment-offset-minutes="30">+30 dk</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-appointment-offset-minutes="60">+60 dk</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-appointment-offset-minutes="120">+120 dk</button>
+                      </div>
                       <input type="datetime-local" name="scheduled_for" class="form-control form-control-sm" required>
                       <input type="text" name="customer_note" class="form-control form-control-sm" placeholder="Randevu notu (opsiyonel)">
                       <button type="submit" class="btn btn-sm btn-main">Randevu Oluştur</button>
@@ -129,7 +136,7 @@
                 {% endif %}
 
                 {% if item.can_complete_now %}
-                  <form method="post" action="{% url 'complete_request' item.id %}" class="m-0">
+                  <form method="post" action="{% url 'complete_request' item.id %}" class="m-0" data-confirm-message="Bu işi tamamlandı olarak işaretlemek istediğinize emin misiniz?">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-success">İşi Tamamla</button>
                   </form>
@@ -138,7 +145,7 @@
                 {% endif %}
               {% elif item.status == "completed" %}
                 {% if item.can_rate %}
-                  <form method="post" action="{% url 'rate_request' item.id %}" class="m-0 d-flex align-items-center gap-2 flex-wrap">
+                  <form method="post" action="{% url 'rate_request' item.id %}" class="m-0 d-flex align-items-center gap-2 flex-wrap request-card-form-inline">
                     {% csrf_token %}
                     <select name="score" class="form-select form-select-sm" required>
                       <option value="">Puan</option>
@@ -155,7 +162,7 @@
                   <span class="small text-muted">{{ item.rate_block_reason|default:"Bu kayıt için puanlama açık değil." }}</span>
                 {% endif %}
               {% elif item.status == "cancelled" %}
-                <form method="post" action="{% url 'delete_cancelled_request' item.id %}" class="m-0">
+                <form method="post" action="{% url 'delete_cancelled_request' item.id %}" class="m-0" data-confirm-message="Bu iptal edilmiş talebi silmek istediğinize emin misiniz?">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline-danger">Sil</button>
                 </form>
@@ -187,31 +194,55 @@
 <script>
   (function () {
     const offerForms = document.querySelectorAll("form[data-offer-select-form]");
-    if (!offerForms.length) return;
+    if (offerForms.length) {
+      let selectionLocked = false;
 
-    let selectionLocked = false;
+      function lockSelection(selectedForm) {
+        offerForms.forEach(function (form) {
+          const submitButton = form.querySelector("[data-offer-select-submit]");
+          if (!submitButton) return;
+          submitButton.disabled = true;
+          if (form === selectedForm) {
+            submitButton.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Seçiliyor...';
+          } else {
+            submitButton.textContent = "Seçim kilitlendi";
+          }
+        });
+      }
 
-    function lockSelection(selectedForm) {
       offerForms.forEach(function (form) {
-        const submitButton = form.querySelector("[data-offer-select-submit]");
-        if (!submitButton) return;
-        submitButton.disabled = true;
-        if (form === selectedForm) {
-          submitButton.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Seçiliyor...';
-        } else {
-          submitButton.textContent = "Seçim kilitlendi";
-        }
+        form.addEventListener("submit", function (event) {
+          if (selectionLocked) {
+            event.preventDefault();
+            return;
+          }
+          selectionLocked = true;
+          lockSelection(form);
+        });
       });
     }
 
-    offerForms.forEach(function (form) {
-      form.addEventListener("submit", function (event) {
-        if (selectionLocked) {
-          event.preventDefault();
-          return;
-        }
-        selectionLocked = true;
-        lockSelection(form);
+    function toDateTimeLocalValue(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      return year + "-" + month + "-" + day + "T" + hours + ":" + minutes;
+    }
+
+    const appointmentQuickButtons = document.querySelectorAll("button[data-appointment-offset-minutes]");
+    appointmentQuickButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const form = button.closest("form");
+        if (!form) return;
+        const input = form.querySelector("input[name='scheduled_for']");
+        if (!input) return;
+        const offset = Number(button.getAttribute("data-appointment-offset-minutes") || 0);
+        const targetDate = new Date(Date.now() + Math.max(0, offset) * 60 * 1000);
+        input.value = toDateTimeLocalValue(targetDate);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
       });
     });
   })();

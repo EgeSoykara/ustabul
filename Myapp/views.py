@@ -2810,6 +2810,8 @@ def my_requests(request):
     if get_provider_for_user(request.user):
         messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
         return redirect("provider_requests")
+    # Treat opening the customer request panel as acknowledgment of incoming notifications.
+    mark_all_notifications_read(request.user)
     calendar_enabled = is_calendar_enabled()
 
     requests_qs = request.user.service_requests.select_related(
@@ -3673,6 +3675,8 @@ def provider_requests(request):
     provider, blocked_response = get_verified_provider_or_redirect(request)
     if blocked_response:
         return blocked_response
+    # Treat opening the provider panel as acknowledgment of incoming notifications.
+    mark_all_notifications_read(request.user)
     calendar_enabled = is_calendar_enabled()
 
     pending_offers_qs = (
