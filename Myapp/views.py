@@ -1285,6 +1285,48 @@ def build_customer_requests_signature(user):
     return hashlib.sha1(encoded).hexdigest()
 
 
+def build_provider_panel_signature(provider):
+    if not provider:
+        return "empty"
+
+    offer_rows = list(
+        ProviderOffer.objects.filter(provider=provider)
+        .values_list("id", "service_request_id", "status", "responded_at", "sent_at")
+        .order_by("id")
+    )
+    request_rows = list(
+        ServiceRequest.objects.filter(provider_offers__provider=provider)
+        .values_list("id", "status", "matched_provider_id", "matched_offer_id", "matched_at")
+        .distinct()
+        .order_by("id")
+    )
+    appointment_rows = []
+    if is_calendar_enabled():
+        appointment_rows = list(
+            ServiceAppointment.objects.filter(provider=provider)
+            .values_list("id", "service_request_id", "status", "scheduled_for", "updated_at")
+            .order_by("id")
+        )
+    unread_rows = list(
+        ServiceMessage.objects.filter(
+            service_request__matched_provider=provider,
+            service_request__status="matched",
+            read_at__isnull=True,
+        )
+        .exclude(sender_role="provider")
+        .values_list("service_request_id", "id")
+        .order_by("service_request_id", "id")
+    )
+    payload = {
+        "offers": offer_rows,
+        "requests": request_rows,
+        "appointments": appointment_rows,
+        "unread": unread_rows,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    return hashlib.sha1(encoded).hexdigest()
+
+
 def build_customer_snapshot_payload(user):
     snapshot = {
         "signature": "empty",
@@ -1339,6 +1381,7 @@ def build_customer_snapshot_payload(user):
 
 def build_provider_snapshot_payload(provider, *, user=None):
     snapshot = {
+        "signature": "empty",
         "pending_offers_count": 0,
         "latest_pending_offer_id": 0,
         "waiting_customer_selection_count": 0,
@@ -1386,6 +1429,7 @@ def build_provider_snapshot_payload(provider, *, user=None):
         service_request__status="matched",
         read_at__isnull=True,
     ).exclude(sender_role="provider").count()
+    snapshot["signature"] = build_provider_panel_signature(provider)
     if provider_user and getattr(provider_user, "is_authenticated", True):
         snapshot["unread_notifications_count"] = get_total_unread_notifications_count(provider_user)
     cache.set(cache_key, snapshot, timeout=get_provider_snapshot_cache_seconds())
@@ -3845,6 +3889,15 @@ def provider_requests(request):
         confirmed_appointment_page_query = build_page_query_suffix(request, "confirmed_appointment_page")
         recent_appointment_page_query = build_page_query_suffix(request, "recent_appointment_page")
 
+    provider_live_snapshot = {
+        "signature": build_provider_panel_signature(provider),
+        "pending_offers_count": pending_offers_count,
+        "latest_pending_offer_id": latest_pending_offer_id,
+        "waiting_customer_selection_count": waiting_customer_selection_count,
+        "pending_appointments_count": pending_appointments_count,
+        "unread_messages_count": total_unread_messages,
+    }
+
     return render(
         request,
         "Myapp/provider_requests.html",
@@ -3877,6 +3930,7 @@ def provider_requests(request):
             "confirmed_appointment_page_query": confirmed_appointment_page_query,
             "recent_offer_page_query": recent_offer_page_query,
             "recent_appointment_page_query": recent_appointment_page_query,
+            "provider_live_snapshot": provider_live_snapshot,
             "calendar_enabled": calendar_enabled,
         },
     )

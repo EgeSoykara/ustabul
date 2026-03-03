@@ -2163,11 +2163,82 @@ class MarketplaceTests(TestCase):
         response = self.client.get(reverse("provider_panel_snapshot"))
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertIn("signature", payload)
+        self.assertTrue(payload["signature"])
         self.assertEqual(payload["pending_offers_count"], 1)
         self.assertEqual(payload["latest_pending_offer_id"], pending_offer.id)
         self.assertEqual(payload["unread_messages_count"], 1)
         self.assertIn("unread_notifications_count", payload)
         self.assertGreaterEqual(payload["unread_notifications_count"], 0)
+
+    def test_provider_panel_snapshot_signature_changes_when_offer_mix_changes_with_same_counts(self):
+        customer = User.objects.create_user(username="provider-signature-customer", password="GucluSifre123!")
+
+        request_a = ServiceRequest.objects.create(
+            customer_name="Musteri A",
+            customer_phone="05001110001",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Imza test A",
+            customer=customer,
+            status="pending_customer",
+        )
+        request_b = ServiceRequest.objects.create(
+            customer_name="Musteri B",
+            customer_phone="05001110002",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Imza test B",
+            customer=customer,
+            status="pending_customer",
+        )
+        offer_a = ProviderOffer.objects.create(
+            service_request=request_a,
+            provider=self.provider_ali,
+            token="SIGMIX001",
+            sequence=1,
+            status="accepted",
+        )
+        ProviderOffer.objects.create(
+            service_request=request_b,
+            provider=self.provider_ali,
+            token="SIGMIX002",
+            sequence=1,
+            status="accepted",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        before_payload = self.client.get(reverse("provider_panel_snapshot")).json()
+
+        request_a.status = "matched"
+        request_a.matched_provider = self.provider_ali
+        request_a.matched_offer = offer_a
+        request_a.matched_at = timezone.now()
+        request_a.save(update_fields=["status", "matched_provider", "matched_offer", "matched_at"])
+        request_c = ServiceRequest.objects.create(
+            customer_name="Musteri C",
+            customer_phone="05001110003",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Imza test C",
+            customer=customer,
+            status="pending_customer",
+        )
+        ProviderOffer.objects.create(
+            service_request=request_c,
+            provider=self.provider_ali,
+            token="SIGMIX003",
+            sequence=1,
+            status="accepted",
+        )
+
+        cache.clear()
+        after_payload = self.client.get(reverse("provider_panel_snapshot")).json()
+        self.assertEqual(before_payload["waiting_customer_selection_count"], after_payload["waiting_customer_selection_count"])
+        self.assertNotEqual(before_payload["signature"], after_payload["signature"])
 
     def test_provider_panel_snapshot_forbidden_for_non_provider(self):
         User.objects.create_user(username="normaluser", password="GucluSifre123!")

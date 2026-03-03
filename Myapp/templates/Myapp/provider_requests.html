@@ -185,4 +185,78 @@
   </div>
 </section>
 {% endif %}
+<script>
+  (function () {
+    const snapshotUrl = "{% url 'provider_panel_snapshot' %}";
+    const fallbackPollMs = 5000;
+    const fallbackAfterMs = 15000;
+    let reloadScheduled = false;
+    let lastSnapshotAt = Date.now();
+    let stateToken = [
+      "{{ provider_live_snapshot.signature|escapejs }}",
+      Number("{{ provider_live_snapshot.pending_offers_count|default:0 }}"),
+      Number("{{ provider_live_snapshot.latest_pending_offer_id|default:0 }}"),
+      Number("{{ provider_live_snapshot.waiting_customer_selection_count|default:0 }}"),
+      Number("{{ provider_live_snapshot.pending_appointments_count|default:0 }}"),
+      Number("{{ provider_live_snapshot.unread_messages_count|default:0 }}")
+    ].join("|");
+
+    function buildToken(payload) {
+      if (!payload || typeof payload !== "object") return "";
+      return [
+        String(payload.signature || ""),
+        Number(payload.pending_offers_count || 0),
+        Number(payload.latest_pending_offer_id || 0),
+        Number(payload.waiting_customer_selection_count || 0),
+        Number(payload.pending_appointments_count || 0),
+        Number(payload.unread_messages_count || 0)
+      ].join("|");
+    }
+
+    function scheduleReload() {
+      if (reloadScheduled) return;
+      reloadScheduled = true;
+      window.setTimeout(function () {
+        window.location.reload();
+      }, 350);
+    }
+
+    function applySnapshot(payload) {
+      const nextToken = buildToken(payload);
+      if (!nextToken) return;
+      if (stateToken && nextToken !== stateToken) {
+        scheduleReload();
+      }
+      stateToken = nextToken;
+    }
+
+    window.addEventListener("ustabul:nav-snapshot", function (event) {
+      const detail = event && event.detail ? event.detail : {};
+      if (detail.role !== "provider" || !detail.payload) return;
+      lastSnapshotAt = Date.now();
+      applySnapshot(detail.payload);
+    });
+
+    async function pollFallback() {
+      if (reloadScheduled || document.hidden) return;
+      if (Date.now() - lastSnapshotAt < fallbackAfterMs) return;
+      try {
+        const response = await fetch(snapshotUrl, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        lastSnapshotAt = Date.now();
+        applySnapshot(payload);
+      } catch (error) {
+        void error;
+      }
+    }
+
+    window.setInterval(pollFallback, fallbackPollMs);
+  })();
+</script>
 {% endblock %}
