@@ -285,11 +285,11 @@ class MarketplaceTests(TestCase):
         self.assertIn("Secili usta icin uygun hizmetler listeleniyor.", request_form.fields["service_type"].help_text)
         self.assertEqual(request_form.initial.get("preferred_provider_locked_city"), self.provider_ali.city)
         self.assertEqual(request_form.initial.get("preferred_provider_locked_district"), self.provider_ali.district)
-        self.assertEqual(request_form.fields["service_type"].widget.attrs.get("data-preferred-locked"), "1")
+        self.assertIsNone(request_form.fields["service_type"].widget.attrs.get("data-preferred-locked"))
         self.assertEqual(request_form.fields["city"].widget.attrs.get("data-preferred-locked"), "1")
         self.assertEqual(request_form.fields["district"].widget.attrs.get("data-preferred-locked"), "1")
 
-    def test_preferred_provider_locked_service_rejects_manual_service_change(self):
+    def test_preferred_provider_allows_service_choice_within_provider_services(self):
         elektrik = ServiceType.objects.create(name="Elektrik", slug="elektrik")
         self.provider_ali.service_types.add(elektrik)
         customer = User.objects.create_user(username="kilitbozma", password="GucluSifre123!")
@@ -311,8 +311,10 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Ozel usta modunda hizmet degistirilemez")
-        self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 0)
+        self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 1)
+        created_request = ServiceRequest.objects.get(customer=customer)
+        self.assertEqual(created_request.preferred_provider_id, self.provider_ali.id)
+        self.assertEqual(created_request.service_type_id, elektrik.id)
 
     def test_preferred_provider_locked_location_rejects_manual_city_change(self):
         customer = User.objects.create_user(username="kilitsehir", password="GucluSifre123!")

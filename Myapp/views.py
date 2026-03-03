@@ -108,7 +108,6 @@ def build_service_request_form(request, *, preferred_provider, is_provider_user)
             if selected_service_id not in provider_service_ids:
                 selected_service_id = provider_service_ids[0]
             request_form_initial["service_type"] = selected_service_id
-            request_form_initial["preferred_provider_locked_service_id"] = selected_service_id
     return ServiceRequestForm(initial=request_form_initial, preferred_provider=preferred_provider)
 
 

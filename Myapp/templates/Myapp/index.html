@@ -191,7 +191,7 @@
             <div class="alert alert-info mb-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
               <div>
                 <strong>Özel Usta:</strong> {{ preferred_provider.full_name }} ({{ preferred_provider.city }} / {{ preferred_provider.district }})
-                <div class="small mt-1 mb-0">Bu modda hizmet, şehir ve ilçe sabittir. Sadece isim, telefon ve arıza/iş detayı düzenlenebilir.</div>
+                <div class="small mt-1 mb-0">Bu modda şehir ve ilçe sabittir. Hizmeti, bu ustanın sunduğu seçeneklerden seçebilirsiniz.</div>
               </div>
               <a href="{% url 'request_form_page' %}" class="btn btn-sm btn-outline-secondary">Genel Forma Dön</a>
             </div>
@@ -356,11 +356,9 @@
 
     const requestForm = document.getElementById("request-form");
     if (requestForm) {
-      const requestService = requestForm.querySelector("select[name='service_type']");
       const requestCity = requestForm.querySelector("select[name='city']");
       const requestDistrict = requestForm.querySelector("select[name='district']");
       const preferredProviderIdInput = requestForm.querySelector("input[name='preferred_provider_id']");
-      const lockedServiceIdInput = requestForm.querySelector("input[name='preferred_provider_locked_service_id']");
       const lockedCityInput = requestForm.querySelector("input[name='preferred_provider_locked_city']");
       const lockedDistrictInput = requestForm.querySelector("input[name='preferred_provider_locked_district']");
       const isPreferredProviderMode = Boolean((preferredProviderIdInput && preferredProviderIdInput.value) || "");
@@ -400,7 +398,6 @@
       }
 
       if (isPreferredProviderMode) {
-        lockSelectField(requestService, lockedServiceIdInput ? lockedServiceIdInput.value : "");
         lockSelectField(requestCity, lockedCityInput ? lockedCityInput.value : "");
         lockSelectField(requestDistrict, lockedDistrictInput ? lockedDistrictInput.value : "");
       }
