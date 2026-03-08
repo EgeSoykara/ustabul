@@ -1514,16 +1514,7 @@ def build_customer_flow_state(service_request, appointment, *, has_accepted_offe
                     "tone": "waiting",
                 }
             )
-        elif appointment_status == "pending_customer":
-            flow.update(
-                {
-                    "title": "Randevu son onay aşamasında",
-                    "hint": "Randevu kaydı müşteri onayı bekliyor.",
-                    "next_action": "Randevu bölümünden onaylayın veya güncelleyin.",
-                    "tone": "action",
-                }
-            )
-        elif appointment_status == "confirmed":
+        elif appointment_status in {"pending_customer", "confirmed"}:
             is_future = bool(appointment.scheduled_for and appointment.scheduled_for > reference_time)
             if is_future:
                 flow.update(
@@ -2937,11 +2928,11 @@ def my_requests(request):
 
         if item.status == "matched" and calendar_enabled:
             appointment = item.appointment_entry
-            if appointment and appointment.status in {"pending", "pending_customer"}:
+            if appointment and appointment.status == "pending":
                 item.complete_block_reason = "Bekleyen randevu talebi varken tamamlanamaz."
             elif (
                 appointment
-                and appointment.status == "confirmed"
+                and appointment.status in {"confirmed", "pending_customer"}
                 and appointment.scheduled_for
                 and appointment.scheduled_for > now
             ):
@@ -3314,13 +3305,13 @@ def complete_request(request, request_id):
 
     calendar_enabled = is_calendar_enabled()
     appointment = ServiceAppointment.objects.filter(service_request=service_request).first()
-    if calendar_enabled and appointment and appointment.status in {"pending", "pending_customer"}:
+    if calendar_enabled and appointment and appointment.status == "pending":
         messages.warning(request, "Bekleyen randevu talebi varken talep tamamlanamaz.")
         return redirect("my_requests")
     if (
         calendar_enabled
         and appointment
-        and appointment.status == "confirmed"
+        and appointment.status in {"confirmed", "pending_customer"}
         and appointment.scheduled_for > timezone.now()
     ):
         messages.warning(request, "Onayli randevu zamani gelmeden talep tamamlanamaz.")
@@ -3337,7 +3328,17 @@ def complete_request(request, request_id):
         messages.warning(request, "Talep durumu güncellenemedi.")
         return redirect("my_requests")
 
-    if calendar_enabled and appointment and appointment.status == "confirmed":
+    if calendar_enabled and appointment and appointment.status in {"confirmed", "pending_customer"}:
+        if appointment.status == "pending_customer":
+            transition_appointment_status(
+                appointment,
+                "confirmed",
+                extra_update_fields=["updated_at"],
+                actor_user=request.user,
+                actor_role=actor_role,
+                source="user",
+                note="Bekleyen eski randevu kaydı tamamlanmadan önce onaylandı",
+            )
         transition_appointment_status(
             appointment,
             "completed",
@@ -3506,53 +3507,6 @@ def cancel_appointment(request, request_id):
         messages.warning(request, cancel_policy["result_message"])
     else:
         messages.success(request, cancel_policy["result_message"])
-    return redirect("my_requests")
-
-
-@login_required
-@require_POST
-def customer_confirm_appointment(request, request_id):
-    if get_provider_for_user(request.user):
-        messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
-        return redirect("provider_requests")
-    if not is_calendar_enabled():
-        return calendar_disabled_redirect(request, "my_requests")
-
-    rate_limit_response = reject_rate_limited_request(
-        request,
-        "confirm-appointment",
-        "my_requests",
-        max_attempts=get_action_rate_limit_max_attempts(),
-        window_seconds=get_action_rate_limit_window_seconds(),
-    )
-    if rate_limit_response:
-        return rate_limit_response
-
-    duplicate_response = reject_duplicate_submission(request, "confirm-appointment", "my_requests")
-    if duplicate_response:
-        return duplicate_response
-
-    actor_role = infer_actor_role(request.user)
-    refresh_appointment_lifecycle()
-    service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
-    appointment = get_object_or_404(ServiceAppointment, service_request=service_request)
-    if not appointment.provider.is_verified:
-        messages.warning(request, "Bu usta henüz admin onaylı olmadığı için randevu onaylanamaz.")
-        return redirect("my_requests")
-    if appointment.status != "pending_customer":
-        messages.warning(request, "Onay bekleyen bir randevu bulunamadı.")
-        return redirect("my_requests")
-
-    transition_appointment_status(
-        appointment,
-        "confirmed",
-        extra_update_fields=["updated_at"],
-        actor_user=request.user,
-        actor_role=actor_role,
-        source="user",
-        note="Müşteri randevuyu onayladİ",
-    )
-    messages.success(request, "Randevuyu onayladınız.")
     return redirect("my_requests")
 
 
@@ -3855,16 +3809,12 @@ def provider_requests(request):
         if appointment_status in {"rejected", "cancelled"}:
             thread.appointment_feedback_tone = "warning"
             thread.appointment_feedback_label = "Yeni randevu saati bekleniyor"
-            thread.appointment_feedback_note = "Müşterinin yeni bir randevu oluşturmasİ gerekiyor."
+            thread.appointment_feedback_note = "Müşterinin yeni bir randevu oluşturması gerekiyor."
         elif appointment_status == "pending":
             thread.appointment_feedback_tone = "action"
             thread.appointment_feedback_label = "Randevu onayınız bekleniyor"
             thread.appointment_feedback_note = "Müşteri saat seçimini yaptı. Bekleyen Randevu Talepleri bölümünü kontrol edin."
-        elif appointment_status == "pending_customer":
-            thread.appointment_feedback_tone = "info"
-            thread.appointment_feedback_label = "Müşteri son onayı bekleniyor"
-            thread.appointment_feedback_note = "Randevu ustadan onaylandı, son adım müşteri onayı."
-        elif appointment_status == "confirmed":
+        elif appointment_status in {"pending_customer", "confirmed"}:
             thread.appointment_feedback_tone = "success"
             thread.appointment_feedback_label = "Randevu onaylandı"
             thread.appointment_feedback_note = "Planlanan saat: " + timezone.localtime(appointment.scheduled_for).strftime(
@@ -4066,6 +4016,17 @@ def provider_complete_appointment(request, appointment_id):
     if appointment.status not in {"confirmed", "pending_customer"}:
         messages.warning(request, "Sadece onaylı randevular tamamlanabilir.")
         return redirect("provider_requests")
+
+    if appointment.status == "pending_customer":
+        transition_appointment_status(
+            appointment,
+            "confirmed",
+            extra_update_fields=["updated_at"],
+            actor_user=request.user,
+            actor_role=actor_role,
+            source="user",
+            note="Bekleyen eski randevu kaydı tamamlanmadan önce onaylandı",
+        )
 
     if not transition_appointment_status(
         appointment,
@@ -4327,7 +4288,7 @@ def provider_reject_offer(request, offer_id):
             )
         messages.info(
             request,
-            f"Talep {get_request_display_code(service_request)} reddedildi. Dişer ustalardan gelecek onay bekleniyor.",
+            f"Talep {get_request_display_code(service_request)} reddedildi. Diğer ustalardan gelecek onay bekleniyor.",
         )
         return redirect("provider_requests")
 
@@ -4360,10 +4321,8 @@ def provider_reject_offer(request, offer_id):
             f"Talep {get_request_display_code(service_request)} reddedildi. {offer_count} yeni ustaya teklif açıldı.",
         )
     else:
-        request_code = get_request_display_code(service_request)
-        service_request.delete()
         messages.warning(
             request,
-            f"Talep {request_code} için kabul eden usta bulunamadı, talep silindi.",
+            f"Talep {get_request_display_code(service_request)} için yeni aday bulunamadı. Kayıt korunuyor.",
         )
     return redirect("provider_requests")

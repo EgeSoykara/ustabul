@@ -27,7 +27,6 @@ urlpatterns = [
     path('hesap/sil/', views.delete_account, name='delete_account'),
     path('talep/<int:request_id>/tamamla/', views.complete_request, name='complete_request'),
     path('talep/<int:request_id>/randevu/olustur/', views.create_appointment, name='create_appointment'),
-    path('talep/<int:request_id>/randevu/onayla/', views.customer_confirm_appointment, name='customer_confirm_appointment'),
     path('talep/<int:request_id>/randevu/iptal/', views.cancel_appointment, name='cancel_appointment'),
     path('talep/<int:request_id>/mesajlar/', views.request_messages, name='request_messages'),
     path('api/talep/<int:request_id>/mesajlar/', views.request_messages_snapshot, name='request_messages_snapshot'),

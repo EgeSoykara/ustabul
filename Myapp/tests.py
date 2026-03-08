@@ -935,7 +935,7 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, "Randevu zamani en az 5 dakika sonrasinda olmali.")
         self.assertFalse(ServiceAppointment.objects.filter(service_request=service_request).exists())
 
-    def test_provider_can_confirm_appointment_without_customer_reconfirm(self):
+    def test_provider_confirm_marks_appointment_confirmed(self):
         customer = User.objects.create_user(username="randevumusteri", password="GucluSifre123!")
         appointment_request = ServiceRequest.objects.create(
             customer_name="Randevu Musteri",
@@ -1110,32 +1110,6 @@ class MarketplaceTests(TestCase):
         self.assertIsNone(service_request.matched_offer)
         self.assertIn(service_request.status, {"new", "pending_provider", "pending_customer"})
         self.assertEqual(blocked_offer.status, "expired")
-
-    def test_customer_can_confirm_provider_approved_appointment(self):
-        customer = User.objects.create_user(username="sononaymusteri", password="GucluSifre123!")
-        appointment_request = ServiceRequest.objects.create(
-            customer_name="Son Onay Musteri",
-            customer_phone="05001118888",
-            city="Lefkosa",
-            district="Ortakoy",
-            service_type=self.service,
-            details="Iki tarafli onay testi",
-            matched_provider=self.provider_ali,
-            customer=customer,
-            status="matched",
-        )
-        appointment = ServiceAppointment.objects.create(
-            service_request=appointment_request,
-            customer=customer,
-            provider=self.provider_ali,
-            scheduled_for=timezone.now() + timedelta(days=1),
-            status="pending_customer",
-        )
-        self.client.login(username="sononaymusteri", password="GucluSifre123!")
-        self.client.post(reverse("customer_confirm_appointment", args=[appointment_request.id]), follow=True)
-
-        appointment.refresh_from_db()
-        self.assertEqual(appointment.status, "confirmed")
 
     @override_settings(APPOINTMENT_CUSTOMER_CONFIRM_MINUTES=5)
     def test_pending_customer_appointment_auto_cancels_after_customer_timeout(self):
@@ -1478,6 +1452,43 @@ class MarketplaceTests(TestCase):
         self.assertEqual(appointment.status, "completed")
         self.assertEqual(appointment_request.status, "completed")
         self.assertEqual(ServiceMessage.objects.filter(service_request=appointment_request).count(), 0)
+
+    def test_provider_can_complete_legacy_pending_customer_appointment(self):
+        customer = User.objects.create_user(username="erken_tamamla", password="GucluSifre123!")
+        appointment_request = ServiceRequest.objects.create(
+            customer_name="Erken Tamamla Musteri",
+            customer_phone="05006667789",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Pending customer tamamla testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        appointment = ServiceAppointment.objects.create(
+            service_request=appointment_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(hours=2),
+            status="pending_customer",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.post(reverse("provider_complete_appointment", args=[appointment.id]), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        appointment.refresh_from_db()
+        appointment_request.refresh_from_db()
+        self.assertEqual(appointment.status, "completed")
+        self.assertEqual(appointment_request.status, "completed")
+        self.assertTrue(
+            WorkflowEvent.objects.filter(
+                target_type="appointment",
+                appointment=appointment,
+                to_status="confirmed",
+            ).exists()
+        )
 
     def test_customer_can_cancel_request_before_match(self):
         user = User.objects.create_user(username="iptaleden", password="GucluSifre123!")
@@ -2279,7 +2290,7 @@ class MarketplaceTests(TestCase):
         )
         self.assertGreater(get_total_unread_notifications_count(self.provider_user_hasan), 0)
 
-    def test_provider_reject_deletes_request_when_no_provider_left(self):
+    def test_provider_reject_keeps_request_when_no_provider_left(self):
         User.objects.create_user(username="tekredmusteri", password="GucluSifre123!")
         self.client.login(username="tekredmusteri", password="GucluSifre123!")
         self.client.post(
@@ -2300,7 +2311,11 @@ class MarketplaceTests(TestCase):
         self.client.login(username="mehmetusta", password="GucluSifre123!")
         self.client.post(reverse("provider_reject_offer", args=[only_offer.id]), follow=True)
 
-        self.assertFalse(ServiceRequest.objects.filter(id=service_request.id).exists())
+        service_request.refresh_from_db()
+        only_offer.refresh_from_db()
+        self.assertTrue(ServiceRequest.objects.filter(id=service_request.id).exists())
+        self.assertEqual(service_request.status, "new")
+        self.assertEqual(only_offer.status, "rejected")
 
     def test_customer_login_rejects_provider_account(self):
         response = self.client.post(

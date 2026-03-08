@@ -116,13 +116,6 @@
                 </a>
 
                 {% if calendar_enabled %}
-                  {% if item.appointment_entry and item.appointment_entry.status == "pending_customer" %}
-                    <form method="post" action="{% url 'customer_confirm_appointment' item.id %}" class="m-0">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-sm btn-main">Randevuyu Onayla</button>
-                    </form>
-                  {% endif %}
-
                   {% if item.appointment_entry %}
                     {% if item.appointment_entry.status == "pending" or item.appointment_entry.status == "pending_customer" or item.appointment_entry.status == "confirmed" %}
                       <form method="post" action="{% url 'cancel_appointment' item.id %}" class="m-0" data-confirm-message="Bu randevuyu iptal etmek istediğinize emin misiniz?">
