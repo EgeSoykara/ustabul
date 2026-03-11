@@ -6,6 +6,7 @@
 2. Worker surekli calismali (lifecycle scheduler).
 3. Veritabani kalici olmali (PostgreSQL / `DATABASE_URL`).
 4. Health endpoint takip edilmeli (`/health/lifecycle/`).
+5. Admin hesabi deploy sirasinda otomatik olusmali.
 
 ## Render deployment (recommended)
 
@@ -15,6 +16,7 @@ Bu repo artik `render.yaml` icerir. Render'da:
 2. Repo'yu bagla.
 3. Render, `ustabul-web`, `ustabul-lifecycle-worker` ve `ustabul-db` kaynaklarini olusturur.
 4. Deploy tamamlaninca migration otomatik calisir.
+5. Web service build asamasinda sabit admin hesabi da otomatik senkronize edilir.
 
 ## Required environment variables
 
@@ -35,7 +37,21 @@ MOBILE_LOGIN_RATE_LIMIT=20/minute
 LIFECYCLE_HEALTH_TOKEN=<long-random-token>
 LIFECYCLE_LOCK_TTL_SECONDS=120
 APPOINTMENT_SLOT_BUFFER_MINUTES=45
+AUTO_SUPERUSER_ENABLED=1
+AUTO_SUPERUSER_USERNAME=ustabul-admin
+AUTO_SUPERUSER_PASSWORD=<strong-admin-password>
+AUTO_SUPERUSER_SYNC_PASSWORD=1
 ```
+
+## Automatic admin account
+
+Render blueprint artik `python scripts/ensure_superuser.py` komutunu web deploy sirasinda calistirir.
+
+- Admin URL: `/admin/`
+- Varsayilan kullanici adi: `ustabul-admin`
+- Sifre: Render dashboard icindeki `AUTO_SUPERUSER_PASSWORD`
+
+`AUTO_SUPERUSER_SYNC_PASSWORD=1` oldugu surece deploy sonrasi sifre tekrar env degerine cekilir. Admin panelinden sifreyi kalici olarak degistirmek istersen bu degiskeni `0` yap.
 
 ## Health check
 
