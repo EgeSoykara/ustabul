@@ -377,7 +377,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus {
   z-index: 2;
   margin-top: 22px;
   padding: 28px 0 26px;
-  background: #0e7490;
+  background: #050505;
   color: #f8fafc;
 }
 
