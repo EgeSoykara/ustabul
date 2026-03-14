@@ -4,8 +4,6 @@
   <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap gap-2">
     <div>
       <h1 class="h4 mb-1"><i class="bi bi-bell-fill me-2"></i>Bildirim Merkezi</h1>
-      <p class="mb-0 text-muted">Mesajlar ve durum güncellemeleri burada kategori bazlı listelenir.</p>
-      <p class="small text-muted mb-0 mt-1">Bildirimler son {{ notifications_retention_days }} gün için gösterilir.</p>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap notifications-toolbar">
       <span
@@ -23,14 +21,9 @@
           id="notifications-mark-all-button"
           {% if not notifications_unread_count %}disabled{% endif %}
         >
-          <i class="bi bi-check2-all me-1"></i>Tümünü Okundu İşaretle
+          <i class="bi bi-check2-all me-1"></i>Tümünü okundu işaretle
         </button>
       </form>
-      {% if request.session.role == "provider" %}
-        <a href="{% url 'provider_requests' %}" class="btn btn-sm btn-main"><i class="bi bi-briefcase me-1"></i>Usta Paneli</a>
-      {% else %}
-        <a href="{% url 'my_requests' %}" class="btn btn-sm btn-main"><i class="bi bi-kanban me-1"></i>Taleplerim</a>
-      {% endif %}
     </div>
   </div>
 </section>
@@ -49,17 +42,8 @@
           </a>
         {% endfor %}
       </div>
-      <form method="get" class="d-flex align-items-end gap-2 flex-wrap notification-filter-form">
+      <form method="get" class="d-flex align-items-end gap-2 flex-wrap notification-filter-form" id="notifications-filter-form">
         <input type="hidden" name="category" value="{{ selected_notification_category }}">
-        <div>
-          <label class="form-label small mb-1" for="notifications-days-filter">Gecmis</label>
-          <select class="form-select form-select-sm" id="notifications-days-filter" name="days">
-            <option value="30" {% if selected_notification_days == "30" %}selected{% endif %}>Son 30 gun</option>
-            <option value="60" {% if selected_notification_days == "60" %}selected{% endif %}>Son 60 gun</option>
-            <option value="90" {% if selected_notification_days == "90" %}selected{% endif %}>Son 90 gun</option>
-            <option value="all" {% if selected_notification_days == "all" %}selected{% endif %}>Tum gecmis</option>
-          </select>
-        </div>
         <div class="form-check form-switch notification-unread-toggle">
           <input
             class="form-check-input"
@@ -72,8 +56,6 @@
           >
           <label class="form-check-label small" for="notifications-unread-filter">Sadece okunmamışlar</label>
         </div>
-        <button type="submit" class="btn btn-sm btn-outline-secondary">Uygula</button>
-        <a href="{% url 'notifications' %}" class="btn btn-sm btn-outline-secondary">Sıfırla</a>
       </form>
     </div>
 
@@ -123,7 +105,7 @@
                   <p class="small text-muted mb-2">{{ item.body }}</p>
                   <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap" data-notification-footer>
                     <a href="{{ item.open_link }}" class="btn btn-sm nav-ghost-btn">
-                      <i class="bi bi-box-arrow-up-right me-1"></i>Detayı Aç
+                      <i class="bi bi-box-arrow-up-right me-1"></i>Detayı aç
                     </a>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                       {% if item.is_unread %}
@@ -131,7 +113,7 @@
                         <form method="post" action="{{ item.mark_read_url }}" class="m-0 notification-mark-read-form" data-notification-mark-form>
                           {% csrf_token %}
                           <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <button type="submit" class="btn btn-sm btn-outline-secondary">Okundu İşaretle</button>
+                          <button type="submit" class="btn btn-sm btn-outline-secondary">Okundu işaretle</button>
                         </form>
                       {% else %}
                         <span class="notification-read-mark">Okundu</span>
@@ -144,29 +126,6 @@
           </section>
         {% endfor %}
       </div>
-
-      {% if notifications_page_obj.has_other_pages %}
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
-          <span class="small text-muted">
-            Sayfa {{ notifications_page_obj.number }} / {{ notifications_page_obj.paginator.num_pages }}
-          </span>
-          <nav aria-label="Bildirim sayfalama">
-            <ul class="pagination pagination-sm mb-0">
-              <li class="page-item {% if not notifications_page_obj.has_previous %}disabled{% endif %}">
-                <a class="page-link" href="?page={% if notifications_page_obj.has_previous %}{{ notifications_page_obj.previous_page_number }}{% else %}1{% endif %}{{ notifications_page_query }}" aria-label="Önceki">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              <li class="page-item disabled"><span class="page-link">{{ notifications_page_obj.number }}</span></li>
-              <li class="page-item {% if not notifications_page_obj.has_next %}disabled{% endif %}">
-                <a class="page-link" href="?page={% if notifications_page_obj.has_next %}{{ notifications_page_obj.next_page_number }}{% else %}{{ notifications_page_obj.paginator.num_pages }}{% endif %}{{ notifications_page_query }}" aria-label="Sonraki">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
-        </div>
-      {% endif %}
     {% else %}
       <p class="mb-0 text-muted">Henüz bildiriminiz yok.</p>
     {% endif %}
@@ -179,6 +138,8 @@
     const markAllForm = document.getElementById("notifications-mark-read-form");
     const unreadPill = document.getElementById("notifications-unread-pill");
     const markAllButton = document.getElementById("notifications-mark-all-button");
+    const filterForm = document.getElementById("notifications-filter-form");
+    const unreadFilter = document.getElementById("notifications-unread-filter");
     if (!center || !markAllForm || !unreadPill || !markAllButton) return;
 
     function getUnreadCount() {
@@ -288,6 +249,12 @@
         form.submit();
       }
     });
+
+    if (filterForm && unreadFilter) {
+      unreadFilter.addEventListener("change", function () {
+        filterForm.submit();
+      });
+    }
 
     setUnreadCount(getUnreadCount());
   })();

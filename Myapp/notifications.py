@@ -22,6 +22,7 @@ from .models import (
 REQUEST_STATUS_LABELS = dict(ServiceRequest.STATUS_CHOICES)
 APPOINTMENT_STATUS_LABELS = dict(ServiceAppointment.STATUS_CHOICES)
 PROVIDER_CACHE_ATTR = "_provider_profile_cache"
+NOTIFICATION_CENTER_LIMIT = 50
 NOTIFICATION_CATEGORY_ORDER = ("message", "request", "appointment")
 NOTIFICATION_CATEGORY_META = {
     "message": {
@@ -472,7 +473,7 @@ def mark_notification_entry_read(user, entry_id):
     return resolved
 
 
-def build_notification_entries(user, *, limit=180, days=None, include_all=False):
+def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=None, include_all=False):
     if not user or not getattr(user, "is_authenticated", False):
         return []
 

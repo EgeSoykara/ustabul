@@ -71,6 +71,20 @@ Uygulama token kaydi endpoint'i:
 
 - `POST /mobile/api/v1/devices/register/`
 
+Backend push gonderimi icin gerekli environment variable'lar:
+
+- `MOBILE_PUSH_ENABLED=1`
+- `FCM_PROJECT_ID=...`
+- `FCM_SERVICE_ACCOUNT_JSON=...`
+  JSON olarak ya da base64 encode edilmis service account icerigi kullanilabilir.
+- alternatif olarak `FCM_SERVICE_ACCOUNT_FILE=/path/to/service-account.json`
+
+WebView shell icinde site oturumu ile eslesen cihaz kaydi endpoint'leri:
+
+- `GET /api/mobile-shell/context/`
+- `POST /api/mobile-shell/devices/register/`
+- `POST /api/mobile-shell/devices/unregister/`
+
 ## GitHub Actions
 
 Repo icine iki workflow eklendi:

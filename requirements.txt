@@ -8,3 +8,5 @@ gunicorn==23.0.0
 uvicorn==0.35.0
 psycopg[binary]==3.2.13
 whitenoise==6.9.0
+google-auth==2.39.0
+requests==2.32.3

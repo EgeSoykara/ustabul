@@ -1,5 +1,6 @@
 from datetime import time, timedelta
 import json
+from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.core.management import call_command
@@ -1037,6 +1038,81 @@ class MarketplaceTests(TestCase):
         response = self.client.get(reverse("provider_requests"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Musteri notu panelde gorunsun.")
+
+    def test_request_messages_queues_mobile_push_activity(self):
+        customer = User.objects.create_user(username="mesajpushmusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Mesaj Push Musteri",
+            customer_phone="05001116667",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Mesaj push queue testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="MSGPUSH01",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = offer
+        service_request.save(update_fields=["matched_offer"])
+
+        self.client.login(username="mesajpushmusteri", password="GucluSifre123!")
+        with patch("Myapp.views.queue_mobile_push_for_activity") as queue_mock:
+            response = self.client.post(
+                reverse("request_messages", args=[service_request.id]),
+                data={"body": "Push icin yeni mesaj"},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        queue_mock.assert_called_once()
+
+    def test_provider_confirm_appointment_queues_mobile_push_activity(self):
+        customer = User.objects.create_user(username="randevupushmusteri", password="GucluSifre123!")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Randevu Push Musteri",
+            customer_phone="05001116668",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Randevu push queue testi",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="APPTPUSH1",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = offer
+        service_request.save(update_fields=["matched_offer"])
+        appointment = ServiceAppointment.objects.create(
+            service_request=service_request,
+            customer=customer,
+            provider=self.provider_ali,
+            scheduled_for=timezone.now() + timedelta(days=1),
+            status="pending",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        with patch("Myapp.views.queue_mobile_push_for_activity") as queue_mock:
+            response = self.client.post(
+                reverse("provider_confirm_appointment", args=[appointment.id]),
+                data={"provider_note": "Uygundur"},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        queue_mock.assert_called_once()
 
     def test_provider_requests_shows_pending_appointment_action_only_once(self):
         customer = User.objects.create_user(username="tekaksiyonmusteri", password="GucluSifre123!")
@@ -2873,44 +2949,46 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, "Kategori filtre mesaji")
         self.assertNotContains(response, "Workflow filtre bildirimi")
 
-    def test_notifications_view_supports_history_filters(self):
-        customer = User.objects.create_user(username="gecmisfiltre", password="GucluSifre123!")
+    def test_notifications_view_limits_entries_to_latest_fifty(self):
+        customer = User.objects.create_user(username="minimalbildirimmusteri", password="GucluSifre123!")
         service_request = ServiceRequest.objects.create(
-            customer_name="Gecmis Filtre Musteri",
+            customer_name="Minimal Bildirim Musteri",
             customer_phone="05005554436",
             city="Lefkosa",
             district="Ortakoy",
             service_type=self.service,
-            details="Gecmis filtre testi",
+            details="Bildirim limiti testi",
             customer=customer,
-            status="pending_provider",
+            matched_provider=self.provider_ali,
+            status="matched",
         )
-        ProviderOffer.objects.create(
+        matched_offer = ProviderOffer.objects.create(
             service_request=service_request,
             provider=self.provider_ali,
-            token="FILTERDAY1",
+            token="NOTIF50A",
             sequence=1,
-            status="pending",
+            status="accepted",
         )
-        old_event = WorkflowEvent.objects.create(
-            target_type="request",
-            service_request=service_request,
-            from_status="new",
-            to_status="pending_provider",
-            actor_user=customer,
-            actor_role="customer",
-            source="user",
-            note="Kirk bes gun onceki bildirim",
-        )
-        WorkflowEvent.objects.filter(id=old_event.id).update(created_at=timezone.now() - timedelta(days=45))
+        service_request.matched_offer = matched_offer
+        service_request.save(update_fields=["matched_offer"])
+
+        base_time = timezone.now() - timedelta(minutes=55)
+        for index in range(55):
+            message = ServiceMessage.objects.create(
+                service_request=service_request,
+                sender_user=customer,
+                sender_role="customer",
+                body=f"Minimal bildirim {index:02d}",
+            )
+            ServiceMessage.objects.filter(id=message.id).update(created_at=base_time + timedelta(minutes=index))
 
         self.client.login(username="aliusta", password="GucluSifre123!")
-        thirty_day_response = self.client.get(reverse("notifications"), data={"days": "30"})
-        all_response = self.client.get(reverse("notifications"), data={"days": "all"})
+        response = self.client.get(reverse("notifications"))
 
-        self.assertEqual(thirty_day_response.status_code, 200)
-        self.assertNotContains(thirty_day_response, "Kirk bes gun onceki bildirim")
-        self.assertContains(all_response, "Kirk bes gun onceki bildirim")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-entry-id="msg-', count=50)
+        self.assertContains(response, "Minimal bildirim 54")
+        self.assertNotContains(response, "Minimal bildirim 00")
 
     def test_notifications_view_respects_disabled_categories(self):
         customer = User.objects.create_user(username="tercihbildirimi", password="GucluSifre123!")
@@ -3745,3 +3823,51 @@ class MobileApiTests(TestCase):
                 device_id="android-device-001",
             ).exists()
         )
+
+    def test_mobile_shell_context_reports_auth_state(self):
+        anonymous_response = self.client.get("/api/mobile-shell/context/")
+        self.assertEqual(anonymous_response.status_code, 200)
+        self.assertFalse(anonymous_response.json()["authenticated"])
+
+        self.client.login(username="mobile_customer", password="GucluSifre123!")
+        response = self.client.get("/api/mobile-shell/context/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["authenticated"])
+        self.assertEqual(body["role"], "customer")
+        self.assertEqual(body["user_id"], self.customer_user.id)
+
+    def test_mobile_shell_register_and_unregister_device(self):
+        self.client.login(username="mobile_customer", password="GucluSifre123!")
+        payload = {
+            "platform": "android",
+            "device_id": "webview-shell-001",
+            "push_token": "token_1234567890123456789012345678901234567",
+            "app_version": "1.0.0",
+            "locale": "tr_TR",
+            "timezone": "Europe/Istanbul",
+        }
+
+        register_response = self.client.post(
+            "/api/mobile-shell/devices/register/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(register_response.status_code, 201)
+        self.assertTrue(
+            MobileDevice.objects.filter(
+                user=self.customer_user,
+                platform="android",
+                device_id="webview-shell-001",
+                push_token=payload["push_token"],
+            ).exists()
+        )
+
+        self.client.logout()
+        unregister_response = self.client.post(
+            "/api/mobile-shell/devices/unregister/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(unregister_response.status_code, 200)
+        self.assertFalse(MobileDevice.objects.filter(push_token=payload["push_token"]).exists())

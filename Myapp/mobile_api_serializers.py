@@ -28,6 +28,9 @@ class MobileDeviceRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = MobileDevice
         fields = ("platform", "device_id", "push_token", "app_version", "locale", "timezone")
+        extra_kwargs = {
+            "push_token": {"validators": []},
+        }
 
     def validate_push_token(self, value):
         token = (value or "").strip()

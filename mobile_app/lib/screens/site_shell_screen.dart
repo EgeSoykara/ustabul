@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../config/app_config.dart';
 import '../config/brand_config.dart';
+import '../services/push_service.dart';
 
 class SiteShellScreen extends StatefulWidget {
   const SiteShellScreen({super.key});
@@ -15,12 +18,16 @@ class SiteShellScreen extends StatefulWidget {
 
 class _SiteShellScreenState extends State<SiteShellScreen> {
   late final WebViewController _controller;
+  final PushService _pushService = PushService();
   int _loadingProgress = 0;
   bool _canGoBack = false;
   bool _hasRenderedFirstPage = false;
+  bool _pushSyncInProgress = false;
   String? _loadError;
   DateTime? _lastExitAttemptAt;
   Uri _currentUri = AppConfig.siteUri;
+  PushRegistration? _pushRegistration;
+  String? _lastPushSyncSignature;
 
   @override
   void initState() {
@@ -51,6 +58,7 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
           onPageFinished: (url) async {
             _updateCurrentUri(url);
             await _syncCanGoBack();
+            await _syncPushRegistrationWithSite();
             if (!mounted) {
               return;
             }
@@ -86,11 +94,25 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
         ),
       );
     _bootstrapController();
+    _bootstrapPushBridge();
   }
 
   Future<void> _bootstrapController() async {
     await _controller.setUserAgent(AppConfig.userAgent);
     await _controller.loadRequest(AppConfig.siteUri);
+  }
+
+  Future<void> _bootstrapPushBridge() async {
+    final registration = await _pushService.initialize(
+      onRegistrationChanged: (registration) async {
+        _pushRegistration = registration;
+        await _syncPushRegistrationWithSite(force: true);
+      },
+    );
+    if (registration != null) {
+      _pushRegistration = registration;
+      await _syncPushRegistrationWithSite(force: true);
+    }
   }
 
   Future<NavigationDecision> _handleNavigationRequest(
@@ -136,6 +158,144 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
       return;
     }
     _currentUri = parsed;
+  }
+
+  Future<void> _syncPushRegistrationWithSite({bool force = false}) async {
+    if (_pushSyncInProgress || _pushRegistration == null) {
+      return;
+    }
+    if (!_isInternalHttpUri(_currentUri)) {
+      return;
+    }
+
+    _pushSyncInProgress = true;
+    try {
+      final contextPayload = await _runJsonRequest(
+        '''
+        async function () {
+          const response = await fetch('/api/mobile-shell/context/', {
+            credentials: 'include',
+            cache: 'no-store'
+          });
+          return await response.json();
+        }
+        ''',
+      );
+      if (contextPayload == null) {
+        return;
+      }
+
+      final isAuthenticated = contextPayload['authenticated'] == true;
+      if (!isAuthenticated) {
+        if (_lastPushSyncSignature != null) {
+          await _postPushPayload(
+            '/api/mobile-shell/devices/unregister/',
+            _pushRegistration!.toJson(),
+          );
+          _lastPushSyncSignature = null;
+        }
+        return;
+      }
+
+      final userId = (contextPayload['user_id'] ?? '').toString();
+      if (userId.isEmpty) {
+        return;
+      }
+      final nextSignature = '$userId|${_pushRegistration!.pushToken}';
+      if (!force && _lastPushSyncSignature == nextSignature) {
+        return;
+      }
+
+      final registerPayload = await _postPushPayload(
+        '/api/mobile-shell/devices/register/',
+        _pushRegistration!.toJson(),
+      );
+      if (registerPayload != null && registerPayload['ok'] == true) {
+        _lastPushSyncSignature = nextSignature;
+      }
+    } finally {
+      _pushSyncInProgress = false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _postPushPayload(
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
+    final jsonPayload = jsonEncode(payload);
+    return _runJsonRequest(
+      '''
+      async function () {
+        const response = await fetch('$path', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify($jsonPayload)
+        });
+        const text = await response.text();
+        let body = {};
+        try {
+          body = text ? JSON.parse(text) : {};
+        } catch (_) {
+          body = {};
+        }
+        return {
+          ok: response.ok,
+          status: response.status,
+          body: body
+        };
+      }
+      ''',
+    );
+  }
+
+  Future<Map<String, dynamic>?> _runJsonRequest(String asyncFunctionSource) async {
+    try {
+      final rawResult = await _controller.runJavaScriptReturningResult(
+        '''
+        (async () => {
+          try {
+            const payload = await ($asyncFunctionSource)();
+            return JSON.stringify(payload);
+          } catch (error) {
+            return JSON.stringify({
+              ok: false,
+              error: String(error)
+            });
+          }
+        })();
+        ''',
+      );
+      return _decodeJavaScriptMap(rawResult);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic>? _decodeJavaScriptMap(Object? rawResult) {
+    if (rawResult == null) {
+      return null;
+    }
+
+    String text = rawResult.toString().trim();
+    if (text.startsWith('"') && text.endsWith('"')) {
+      text = text.substring(1, text.length - 1);
+      text = text.replaceAll(r'\"', '"').replaceAll(r'\n', '\n');
+    }
+    if (text.isEmpty) {
+      return null;
+    }
+
+    final decoded = jsonDecode(text);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    if (decoded is Map) {
+      return decoded.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return null;
   }
 
   Future<bool> _openExternally(
@@ -319,6 +479,12 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _pushService.dispose();
+    super.dispose();
   }
 }
 

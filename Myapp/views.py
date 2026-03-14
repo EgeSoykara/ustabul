@@ -21,7 +21,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from .constants import NC_CITY_DISTRICT_MAP
@@ -43,7 +43,9 @@ from .forms import (
     ServiceSearchForm,
     ServiceMessageForm,
 )
+from .mobile_api_serializers import MobileDeviceRegistrationSerializer
 from .notifications import (
+    NOTIFICATION_CENTER_LIMIT,
     build_notification_sections,
     build_notification_entries,
     get_notification_cursor,
@@ -56,11 +58,13 @@ from .notifications import (
     normalize_notification_category,
     resolve_notification_entry,
 )
+from .mobile_push import queue_mobile_push_for_activity
 from .models import (
     ActivityLog,
     CustomerProfile,
     ErrorLog,
     IdempotencyRecord,
+    MobileDevice,
     Provider,
     ProviderAvailabilitySlot,
     ProviderOffer,
@@ -824,7 +828,7 @@ def create_activity_log(
     summary="",
     note="",
 ):
-    ActivityLog.objects.create(
+    activity_log = ActivityLog.objects.create(
         action_type=action_type,
         service_request=service_request,
         appointment=appointment,
@@ -835,6 +839,8 @@ def create_activity_log(
         summary=(summary or "")[:240],
         note=(note or "")[:240],
     )
+    queue_mobile_push_for_activity(activity_log.id)
+    return activity_log
 
 
 def maybe_run_housekeeping(*, now=None, force=False):
@@ -2940,21 +2946,12 @@ def request_messages_snapshot(request, request_id):
 @login_required
 @never_cache
 def notifications_view(request):
-    retention_days = get_notification_retention_days()
     selected_category = normalize_notification_category(request.GET.get("category"))
     unread_only = str(request.GET.get("unread") or "").strip().lower() in {"1", "true", "on", "yes"}
-    selected_days = str(request.GET.get("days") or "").strip().lower()
-    default_days_key = str(retention_days) if str(retention_days) in {"30", "60", "90"} else "all"
-    if selected_days not in {"30", "60", "90", "all"}:
-        selected_days = default_days_key
-
-    include_all = selected_days == "all"
-    filter_days = None if include_all else int(selected_days)
     entries = build_notification_entries(
         request.user,
-        limit=500,
-        days=filter_days,
-        include_all=include_all,
+        limit=NOTIFICATION_CENTER_LIMIT,
+        include_all=True,
     )
     category_filtered_entries = entries
     if selected_category != "all":
@@ -2983,13 +2980,10 @@ def notifications_view(request):
                 "label": label,
                 "count": category_counts.get(category_key, 0),
                 "is_active": selected_category == category_key,
-                "url": build_query_url(request, updates={"category": category_key}),
+                "url": build_query_url(request, updates={"category": category_key}, remove=["page"]),
             }
         )
 
-    notifications_page_query = build_page_query_suffix(request, "page")
-    page_obj = paginate_items(request, category_filtered_entries, per_page=20, page_param="page")
-    page_entries = list(page_obj.object_list)
     unread_count = get_total_unread_notifications_count(request.user)
     notification_cursor = get_notification_cursor(request.user, create=True)
     notification_preferences = get_notification_preferences(cursor=notification_cursor)
@@ -3003,16 +2997,12 @@ def notifications_view(request):
         request,
         "Myapp/notifications.html",
         {
-            "notifications_page_obj": page_obj,
-            "notification_entries": page_entries,
-            "notification_sections": build_notification_sections(page_entries),
+            "notification_entries": category_filtered_entries,
+            "notification_sections": build_notification_sections(category_filtered_entries),
             "notifications_unread_count": unread_count,
-            "notifications_retention_days": retention_days,
-            "notifications_page_query": notifications_page_query,
             "notification_category_filters": notification_category_filters,
             "selected_notification_category": selected_category,
             "notifications_unread_only": unread_only,
-            "selected_notification_days": selected_days,
             "disabled_notification_categories": disabled_categories,
         },
     )
@@ -3078,6 +3068,105 @@ def notifications_unread_count(request):
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
+
+
+@never_cache
+@ensure_csrf_cookie
+def mobile_shell_context(request):
+    if not request.user.is_authenticated:
+        response = JsonResponse({"authenticated": False, "user_id": None, "role": None})
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
+
+    provider = get_provider_for_user(request.user)
+    role = "provider" if provider else "customer"
+    response = JsonResponse(
+        {
+            "authenticated": True,
+            "user_id": request.user.id,
+            "role": role,
+        }
+    )
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
+@csrf_exempt
+@require_POST
+def mobile_shell_register_device(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False, "detail": "auth-required"}, status=401)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"ok": False, "detail": "invalid-json"}, status=400)
+
+    serializer = MobileDeviceRegistrationSerializer(data=payload)
+    if not serializer.is_valid():
+        return JsonResponse({"ok": False, "errors": serializer.errors}, status=400)
+
+    validated = serializer.validated_data
+    platform = validated["platform"]
+    device_id = validated["device_id"]
+    push_token = validated.get("push_token")
+    app_version = (validated.get("app_version") or "").strip()
+    locale = (validated.get("locale") or "").strip()
+    timezone_value = (validated.get("timezone") or "").strip()
+
+    with transaction.atomic():
+        if push_token:
+            MobileDevice.objects.filter(push_token=push_token).exclude(
+                user=request.user,
+                platform=platform,
+                device_id=device_id,
+            ).update(push_token=None)
+
+        device, created = MobileDevice.objects.update_or_create(
+            user=request.user,
+            platform=platform,
+            device_id=device_id,
+            defaults={
+                "push_token": push_token,
+                "app_version": app_version,
+                "locale": locale,
+                "timezone": timezone_value,
+            },
+        )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": created,
+            "device_id": device.id,
+        },
+        status=201 if created else 200,
+    )
+
+
+@csrf_exempt
+@require_POST
+def mobile_shell_unregister_device(request):
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"ok": False, "detail": "invalid-json"}, status=400)
+
+    serializer = MobileDeviceRegistrationSerializer(data=payload)
+    if not serializer.is_valid():
+        return JsonResponse({"ok": False, "errors": serializer.errors}, status=400)
+
+    validated = serializer.validated_data
+    filters = {
+        "platform": validated["platform"],
+        "device_id": validated["device_id"],
+    }
+    push_token = validated.get("push_token")
+    if push_token:
+        filters["push_token"] = push_token
+
+    deleted_count, _details = MobileDevice.objects.filter(**filters).delete()
+    return JsonResponse({"ok": True, "deleted_count": deleted_count})
 
 
 @login_required
