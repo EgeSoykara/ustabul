@@ -21,7 +21,7 @@
           id="notifications-mark-all-button"
           {% if not notifications_unread_count %}disabled{% endif %}
         >
-          <i class="bi bi-check2-all me-1"></i>Tümünü okundu işaretle
+          <i class="bi bi-check2-all me-1"></i>Tümünü temizle
         </button>
       </form>
     </div>
@@ -42,21 +42,7 @@
           </a>
         {% endfor %}
       </div>
-      <form method="get" class="d-flex align-items-end gap-2 flex-wrap notification-filter-form" id="notifications-filter-form">
-        <input type="hidden" name="category" value="{{ selected_notification_category }}">
-        <div class="form-check form-switch notification-unread-toggle">
-          <input
-            class="form-check-input"
-            type="checkbox"
-            role="switch"
-            id="notifications-unread-filter"
-            name="unread"
-            value="1"
-            {% if notifications_unread_only %}checked{% endif %}
-          >
-          <label class="form-check-label small" for="notifications-unread-filter">Sadece okunmamışlar</label>
-        </div>
-      </form>
+      <p class="small text-muted mb-0">Okundu olarak işaretlenen bildirimler listeden kaldırılır.</p>
     </div>
 
     {% if disabled_notification_categories %}
@@ -77,23 +63,13 @@
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span class="notification-section-count">{{ section.items|length }} kayıt</span>
-                <span
-                  class="notification-section-unread {% if not section.unread_count %}is-empty{% endif %}"
-                  data-notification-section-unread
-                >
-                  {% if section.unread_count %}
-                    Okunmamış: <strong>{{ section.unread_count }}</strong>
-                  {% else %}
-                    Tümü okundu
-                  {% endif %}
-                </span>
               </div>
             </div>
 
             <div class="notification-list">
               {% for item in section.items %}
                 <article
-                  class="notification-item {% if item.is_unread %}is-unread{% endif %}"
+                  class="notification-item"
                   data-notification-item
                   data-entry-id="{{ item.entry_id }}"
                 >
@@ -107,18 +83,11 @@
                     <a href="{{ item.open_link }}" class="btn btn-sm nav-ghost-btn">
                       <i class="bi bi-box-arrow-up-right me-1"></i>Detayı aç
                     </a>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                      {% if item.is_unread %}
-                        <span class="notification-unread-mark"><i class="bi bi-circle-fill"></i>Okunmamış</span>
-                        <form method="post" action="{{ item.mark_read_url }}" class="m-0 notification-mark-read-form" data-notification-mark-form>
-                          {% csrf_token %}
-                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <button type="submit" class="btn btn-sm btn-outline-secondary">Okundu işaretle</button>
-                        </form>
-                      {% else %}
-                        <span class="notification-read-mark">Okundu</span>
-                      {% endif %}
-                    </div>
+                    <form method="post" action="{{ item.mark_read_url }}" class="m-0 notification-mark-read-form" data-notification-mark-form>
+                      {% csrf_token %}
+                      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                      <button type="submit" class="btn btn-sm btn-outline-secondary">Okundu olarak kaldır</button>
+                    </form>
                   </div>
                 </article>
               {% endfor %}
@@ -127,7 +96,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <p class="mb-0 text-muted">Henüz bildiriminiz yok.</p>
+      <p class="mb-0 text-muted" data-notifications-empty>Henüz bildiriminiz yok.</p>
     {% endif %}
   </div>
 </section>
@@ -138,8 +107,6 @@
     const markAllForm = document.getElementById("notifications-mark-read-form");
     const unreadPill = document.getElementById("notifications-unread-pill");
     const markAllButton = document.getElementById("notifications-mark-all-button");
-    const filterForm = document.getElementById("notifications-filter-form");
-    const unreadFilter = document.getElementById("notifications-unread-filter");
     if (!center || !markAllForm || !unreadPill || !markAllButton) return;
 
     function getUnreadCount() {
@@ -161,43 +128,45 @@
       }
     }
 
-    function ensureReadMark(footer) {
-      if (!footer || footer.querySelector(".notification-read-mark")) return;
-      const mark = document.createElement("span");
-      mark.className = "notification-read-mark";
-      mark.textContent = "Okundu";
-      footer.appendChild(mark);
+    function ensureEmptyState() {
+      const body = center.querySelector(".card-body");
+      if (!body) return;
+      const hasItems = center.querySelector("[data-notification-item]");
+      const emptyState = center.querySelector("[data-notifications-empty]");
+      if (hasItems) {
+        if (emptyState) emptyState.remove();
+        return;
+      }
+      if (emptyState) return;
+      const paragraph = document.createElement("p");
+      paragraph.className = "mb-0 text-muted";
+      paragraph.setAttribute("data-notifications-empty", "1");
+      paragraph.textContent = "Henüz bildiriminiz yok.";
+      body.appendChild(paragraph);
     }
 
     function syncSection(section) {
-      if (!section) return;
-      const unreadBadge = section.querySelector("[data-notification-section-unread]");
-      if (!unreadBadge) return;
-      const unreadCount = section.querySelectorAll(".notification-item.is-unread").length;
-      if (unreadCount > 0) {
-        unreadBadge.classList.remove("is-empty");
-        unreadBadge.innerHTML = "Okunmamış: <strong>" + String(unreadCount) + "</strong>";
-      } else {
-        unreadBadge.classList.add("is-empty");
-        unreadBadge.textContent = "Tümü okundu";
+      if (!section) {
+        ensureEmptyState();
+        return;
+      }
+      const items = section.querySelectorAll("[data-notification-item]");
+      if (items.length === 0) {
+        section.remove();
+        ensureEmptyState();
+        return;
+      }
+      const count = section.querySelector(".notification-section-count");
+      if (count) {
+        count.textContent = String(items.length) + " kayıt";
       }
     }
 
-    function markItemAsRead(article) {
-      if (!article || !article.classList.contains("is-unread")) return false;
-      article.classList.remove("is-unread");
-
-      const unreadMark = article.querySelector(".notification-unread-mark");
-      if (unreadMark) unreadMark.remove();
-
-      const form = article.querySelector("[data-notification-mark-form]");
-      if (form) {
-        const footerActions = form.parentElement;
-        form.remove();
-        ensureReadMark(footerActions);
-      }
-
-      syncSection(article.closest("[data-notification-section]"));
+    function removeItem(article) {
+      if (!article) return false;
+      const section = article.closest("[data-notification-section]");
+      article.remove();
+      syncSection(section);
       return true;
     }
 
@@ -220,9 +189,13 @@
       if (markAllButton.disabled) return;
       try {
         const payload = await submitForm(markAllForm);
-        center.querySelectorAll(".notification-item.is-unread").forEach(function (article) {
-          markItemAsRead(article);
+        center.querySelectorAll("[data-notification-item]").forEach(function (article) {
+          article.remove();
         });
+        center.querySelectorAll("[data-notification-section]").forEach(function (section) {
+          section.remove();
+        });
+        ensureEmptyState();
         setUnreadCount(Number(payload.unread_notifications_count || 0));
       } catch (error) {
         void error;
@@ -239,7 +212,7 @@
 
       try {
         const payload = await submitForm(form);
-        const changed = markItemAsRead(article);
+        const changed = removeItem(article);
         const nextCount = Number(payload.unread_notifications_count || 0);
         if (changed || nextCount >= 0) {
           setUnreadCount(nextCount);
@@ -249,12 +222,6 @@
         form.submit();
       }
     });
-
-    if (filterForm && unreadFilter) {
-      unreadFilter.addEventListener("change", function () {
-        filterForm.submit();
-      });
-    }
 
     setUnreadCount(getUnreadCount());
   })();

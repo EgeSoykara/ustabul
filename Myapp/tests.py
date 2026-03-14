@@ -3254,6 +3254,10 @@ class MarketplaceTests(TestCase):
         self.assertTrue(
             WorkflowEventRead.objects.filter(user=self.provider_user_ali, workflow_event=first_event).exists()
         )
+        view_response = self.client.get(reverse("notifications"))
+        self.assertEqual(view_response.status_code, 200)
+        self.assertNotContains(view_response, "Ilk workflow bildirimi")
+        self.assertContains(view_response, "Ikinci workflow bildirimi")
 
     def test_my_requests_partial_returns_html_without_marking_notifications_read(self):
         customer = User.objects.create_user(username="partialmusteri", password="GucluSifre123!")

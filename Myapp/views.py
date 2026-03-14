@@ -2947,19 +2947,17 @@ def request_messages_snapshot(request, request_id):
 @never_cache
 def notifications_view(request):
     selected_category = normalize_notification_category(request.GET.get("category"))
-    unread_only = str(request.GET.get("unread") or "").strip().lower() in {"1", "true", "on", "yes"}
     entries = build_notification_entries(
         request.user,
         limit=NOTIFICATION_CENTER_LIMIT,
         include_all=True,
+        unread_only=True,
     )
     category_filtered_entries = entries
     if selected_category != "all":
         category_filtered_entries = [item for item in category_filtered_entries if item.get("category_key") == selected_category]
-    if unread_only:
-        category_filtered_entries = [item for item in category_filtered_entries if item.get("is_unread")]
 
-    category_count_source = entries if not unread_only else [item for item in entries if item.get("is_unread")]
+    category_count_source = entries
     category_counts = {
         "all": len(category_count_source),
         "message": sum(1 for item in category_count_source if item.get("category_key") == "message"),
@@ -2980,7 +2978,7 @@ def notifications_view(request):
                 "label": label,
                 "count": category_counts.get(category_key, 0),
                 "is_active": selected_category == category_key,
-                "url": build_query_url(request, updates={"category": category_key}, remove=["page"]),
+                "url": build_query_url(request, updates={"category": category_key}, remove=["page", "unread"]),
             }
         )
 
@@ -3002,7 +3000,6 @@ def notifications_view(request):
             "notifications_unread_count": unread_count,
             "notification_category_filters": notification_category_filters,
             "selected_notification_category": selected_category,
-            "notifications_unread_only": unread_only,
             "disabled_notification_categories": disabled_categories,
         },
     )

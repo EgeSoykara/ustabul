@@ -473,7 +473,7 @@ def mark_notification_entry_read(user, entry_id):
     return resolved
 
 
-def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=None, include_all=False):
+def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=None, include_all=False, unread_only=False):
     if not user or not getattr(user, "is_authenticated", False):
         return []
 
@@ -487,7 +487,7 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
 
     if preferences["message"]:
         message_category = get_notification_category_meta("message")
-        messages = list(
+        message_queryset = (
             get_incoming_message_queryset(
                 user,
                 provider=provider,
@@ -496,8 +496,11 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
                 include_all=include_all,
             )
             .select_related("service_request")
-            .order_by("-created_at")[:limit]
+            .order_by("-created_at")
         )
+        if unread_only:
+            message_queryset = message_queryset.filter(read_at__isnull=True)
+        messages = list(message_queryset[:limit])
         for item in messages:
             request_code = item.service_request.display_code if item.service_request_id else "-"
             entries.append(
@@ -521,13 +524,16 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
         user,
         provider=provider,
         now=now,
-        limit=limit,
+        limit=None if unread_only else limit,
         days=days,
         include_all=include_all,
         preferences=preferences,
     )
     read_workflow_event_ids = get_read_workflow_event_ids(user, [event.id for event in deduped_events])
     for event in deduped_events:
+        is_unread = is_workflow_event_unread(event, read_workflow_event_ids, workflow_seen_at)
+        if unread_only and not is_unread:
+            continue
         to_label = _event_status_label(event, event.to_status)
         from_label = _event_status_label(event, event.from_status)
         target_label = "Randevu" if event.target_type == "appointment" else "Talep"
@@ -550,7 +556,7 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
                 "open_link": reverse("notifications_open_entry", args=[f"wf-{event.id}"]),
                 "mark_read_url": reverse("notifications_mark_entry_read", args=[f"wf-{event.id}"]),
                 "created_at": event.created_at,
-                "is_unread": is_workflow_event_unread(event, read_workflow_event_ids, workflow_seen_at),
+                "is_unread": is_unread,
             }
         )
 
