@@ -49,11 +49,18 @@ jobs:
         if: ${{ secrets.ANDROID_KEY_PROPERTIES_BASE64 != '' }}
         run: echo "${{ secrets.ANDROID_KEY_PROPERTIES_BASE64 }}" | base64 --decode > android/key.properties
 
+      - name: Validate Android release signing secrets
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ] || [ -z "${{ secrets.ANDROID_KEY_PROPERTIES_BASE64 }}" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 and ANDROID_KEY_PROPERTIES_BASE64 secrets are required for release builds."
+            exit 1
+          fi
+
       - name: Build Android App Bundle
         env:
           MOBILE_SITE_URL: ${{ secrets.MOBILE_SITE_URL }}
         run: |
-          SITE_URL="${MOBILE_SITE_URL:-https://example.com}"
+          SITE_URL="${MOBILE_SITE_URL:-https://ustabul.onrender.com}"
           flutter build appbundle --release --dart-define=SITE_URL=$SITE_URL
 
       - name: Upload AAB artifact

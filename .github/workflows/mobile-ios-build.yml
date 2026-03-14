@@ -37,7 +37,7 @@ jobs:
         env:
           MOBILE_SITE_URL: ${{ secrets.MOBILE_SITE_URL }}
         run: |
-          SITE_URL="${MOBILE_SITE_URL:-https://example.com}"
+          SITE_URL="${MOBILE_SITE_URL:-https://ustabul.onrender.com}"
           flutter build ios --release --no-codesign --dart-define=SITE_URL=$SITE_URL
 
       - name: Zip Runner.app

@@ -21,3 +21,9 @@ mobile_app/android/.gradle/
 mobile_app/ios/Flutter/ephemeral/
 mobile_app/ios/Flutter/Generated.xcconfig
 mobile_app/ios/Flutter/flutter_export_environment.sh
+
+# Mobile signing secrets
+mobile_app/android/key.properties
+mobile_app/android/*.jks
+mobile_app/android/*.keystore
+mobile_app/android/keystore/
