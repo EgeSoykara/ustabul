@@ -291,6 +291,9 @@ EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Ustabul <noreply@ustabul.local>")
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+BREVO_API_BASE_URL = os.getenv("BREVO_API_BASE_URL", "https://api.brevo.com/v3").strip()
+BREVO_API_TIMEOUT = int(os.getenv("BREVO_API_TIMEOUT", str(EMAIL_TIMEOUT)))
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
     "django.core.mail.backends.smtp.EmailBackend" if EMAIL_HOST else "django.core.mail.backends.console.EmailBackend",

@@ -1,6 +1,7 @@
 ﻿import json
 import hashlib
 import logging
+import requests
 import smtplib
 import socket
 import time
@@ -540,11 +541,62 @@ def extract_client_ip(request):
     return request.META.get("REMOTE_ADDR", "")[:64]
 
 
+def send_brevo_transactional_email(*, subject, body, recipient_email):
+    api_key = str(getattr(settings, "BREVO_API_KEY", "") or "").strip()
+    if not api_key:
+        raise RuntimeError("BREVO_API_KEY ayari eksik.")
+
+    sender_name, sender_email = parseaddr(settings.DEFAULT_FROM_EMAIL or "")
+    if not sender_email:
+        raise RuntimeError("DEFAULT_FROM_EMAIL ayari gecersiz.")
+
+    api_base_url = str(getattr(settings, "BREVO_API_BASE_URL", "https://api.brevo.com/v3") or "").rstrip("/")
+    timeout_seconds = max(5, int(getattr(settings, "BREVO_API_TIMEOUT", getattr(settings, "EMAIL_TIMEOUT", 15))))
+    payload = {
+        "sender": {
+            "email": sender_email,
+            "name": sender_name or "Ustabul",
+        },
+        "to": [{"email": normalize_signup_email(recipient_email)}],
+        "subject": subject,
+        "textContent": body,
+    }
+    response = requests.post(
+        f"{api_base_url}/smtp/email",
+        headers={
+            "accept": "application/json",
+            "api-key": api_key,
+            "content-type": "application/json",
+        },
+        json=payload,
+        timeout=timeout_seconds,
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        response_body = (response.text or "").strip()
+        if response_body:
+            raise RuntimeError(f"Brevo API hatasi ({response.status_code}): {response_body[:300]}") from exc
+        raise
+
+
 def send_signup_verification_email(email, code, *, purpose):
     meta = get_signup_verification_meta(purpose)
     ttl_minutes = get_email_verification_code_ttl_minutes()
     sender_email = parseaddr(settings.DEFAULT_FROM_EMAIL or "")[1]
+    brevo_api_key = str(getattr(settings, "BREVO_API_KEY", "") or "").strip()
     smtp_backend = str(getattr(settings, "EMAIL_BACKEND", "") or "").endswith("smtp.EmailBackend")
+    subject = f"Ustabul {meta['mail_subject']}"
+    body = (
+        f"Merhaba,\n\n"
+        f"Kaydi tamamlamak icin dogrulama kodunuz: {code}\n\n"
+        f"Bu kod {ttl_minutes} dakika boyunca gecerlidir.\n"
+        f"Eger bu islemi siz yapmadiysaniz bu e-postayi dikkate almayin.\n\n"
+        f"Ustabul"
+    )
+    if brevo_api_key:
+        send_brevo_transactional_email(subject=subject, body=body, recipient_email=email)
+        return
     if smtp_backend:
         missing_fields = [
             field_name
@@ -555,14 +607,6 @@ def send_signup_verification_email(email, code, *, purpose):
             raise RuntimeError(f"SMTP ayarlari eksik: {', '.join(missing_fields)}")
     if not sender_email:
         raise RuntimeError("DEFAULT_FROM_EMAIL ayari gecersiz.")
-    subject = f"Ustabul {meta['mail_subject']}"
-    body = (
-        f"Merhaba,\n\n"
-        f"Kaydi tamamlamak icin dogrulama kodunuz: {code}\n\n"
-        f"Bu kod {ttl_minutes} dakika boyunca gecerlidir.\n"
-        f"Eger bu islemi siz yapmadiysaniz bu e-postayi dikkate almayin.\n\n"
-        f"Ustabul"
-    )
     send_mail(
         subject,
         body,
@@ -574,13 +618,21 @@ def send_signup_verification_email(email, code, *, purpose):
 
 def get_signup_email_delivery_error_message(exc):
     reason = f"{type(exc).__name__}: {exc}".strip().lower()
+    if "brevo_api_key ayari eksik" in reason:
+        return "Doğrulama e-postası gönderilemedi. Brevo API anahtarı eksik."
+    if "brevo api hatasi" in reason and "401" in reason:
+        return "Doğrulama e-postası gönderilemedi. Brevo API anahtarı geçersiz görünüyor."
+    if "brevo api hatasi" in reason and "sender" in reason:
+        return "Doğrulama e-postası gönderilemedi. Gönderen e-posta adresi Brevo içinde doğrulanmamış görünüyor."
     if "smtp ayarlari eksik" in reason or "default_from_email ayari gecersiz" in reason:
         return "Doğrulama e-postası gönderilemedi. Sunucudaki e-posta ayarları eksik veya hatalı."
     if isinstance(exc, smtplib.SMTPAuthenticationError) or "authentication" in reason or "535" in reason:
         return "Doğrulama e-postası gönderilemedi. SMTP giriş bilgileri hatalı görünüyor."
     if isinstance(exc, smtplib.SMTPSenderRefused) or "sender" in reason or "from address" in reason:
         return "Doğrulama e-postası gönderilemedi. Gönderen e-posta adresi henüz doğrulanmamış görünüyor."
-    if isinstance(exc, (socket.timeout, TimeoutError, smtplib.SMTPConnectError)) or "timed out" in reason:
+    if isinstance(exc, (socket.timeout, TimeoutError, smtplib.SMTPConnectError, requests.Timeout)) or "timed out" in reason:
+        if getattr(settings, "RENDER_EXTERNAL_HOSTNAME", "") and not str(getattr(settings, "BREVO_API_KEY", "") or "").strip():
+            return "Doğrulama e-postası gönderilemedi. Render üzerinde SMTP bağlantısı zaman aşımına uğradı. Brevo API anahtarı ekleyip HTTPS üzerinden gönderim yapın."
         return "Doğrulama e-postası gönderilemedi. E-posta sunucusuna bağlanılamadı."
     if settings.DEBUG:
         return f"Doğrulama e-postası gönderilemedi. Teknik neden: {type(exc).__name__}: {exc}"

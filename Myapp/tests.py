@@ -593,6 +593,34 @@ class MarketplaceTests(TestCase):
         error_log = ErrorLog.objects.latest("id")
         self.assertIn("SMTPSenderRefused", error_log.message)
 
+    @override_settings(DEBUG=False, BREVO_API_KEY="brevo-api-test-key")
+    def test_customer_signup_uses_brevo_api_when_key_is_configured(self):
+        with patch("Myapp.views.requests.post") as post_mock, patch("Myapp.views.send_mail") as send_mail_mock:
+            post_mock.return_value.raise_for_status.return_value = None
+            response = self.client.post(
+                reverse("signup"),
+                data={
+                    "username": "musteri_api",
+                    "first_name": "Ayse",
+                    "last_name": "Yilmaz",
+                    "email": "api@example.com",
+                    "phone": "05000000000",
+                    "city": "Lefkosa",
+                    "district": "Ortakoy",
+                    "password1": "GucluSifre123!",
+                    "password2": "GucluSifre123!",
+                },
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Kodunu Gir")
+        send_mail_mock.assert_not_called()
+        post_mock.assert_called_once()
+        self.assertIn("/smtp/email", post_mock.call_args.args[0])
+        self.assertEqual(post_mock.call_args.kwargs["headers"]["api-key"], "brevo-api-test-key")
+        self.assertEqual(post_mock.call_args.kwargs["json"]["to"][0]["email"], "api@example.com")
+
     @override_settings(
         DEBUG=False,
         EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
@@ -618,6 +646,38 @@ class MarketplaceTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sunucudaki e-posta ayarları eksik veya hatalı.")
+
+    @override_settings(
+        DEBUG=False,
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp-relay.brevo.com",
+        EMAIL_HOST_USER="smtp-user",
+        EMAIL_HOST_PASSWORD="smtp-pass",
+        RENDER_EXTERNAL_HOSTNAME="ustabul.onrender.com",
+        BREVO_API_KEY="",
+    )
+    def test_customer_signup_shows_render_guidance_when_smtp_times_out(self):
+        with patch("Myapp.views.send_mail", side_effect=TimeoutError("timed out")):
+            response = self.client.post(
+                reverse("signup"),
+                data={
+                    "username": "musteri_timeout",
+                    "first_name": "Ayse",
+                    "last_name": "Yilmaz",
+                    "email": "timeout@example.com",
+                    "phone": "05000000000",
+                    "city": "Lefkosa",
+                    "district": "Ortakoy",
+                    "password1": "GucluSifre123!",
+                    "password2": "GucluSifre123!",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Render üzerinde SMTP bağlantısı zaman aşımına uğradı. Brevo API anahtarı ekleyip HTTPS üzerinden gönderim yapın.",
+        )
 
     def test_customer_signup_verification_creates_account_and_logs_in(self):
         self.client.post(
