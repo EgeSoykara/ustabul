@@ -1,8 +1,13 @@
 ﻿import json
 import hashlib
+import logging
+import smtplib
+import socket
 import time
+import traceback
 import unicodedata
 from datetime import datetime, timedelta
+from email.utils import parseaddr
 from secrets import randbelow
 from uuid import uuid4
 from asgiref.sync import async_to_sync
@@ -82,6 +87,8 @@ from .models import (
     ServiceType,
     WorkflowEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 PROVIDER_PENDING_APPROVAL_MESSAGE = "Usta hesabınız admin onayı bekliyor."
 PROVIDER_PENDING_APPROVAL_FLASH_FLAG = "_provider_pending_approval_warned"
@@ -526,9 +533,28 @@ def get_signup_resend_available_in(email, purpose):
     return max(0, get_email_verification_resend_cooldown_seconds() - elapsed_seconds)
 
 
+def extract_client_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()[:64]
+    return request.META.get("REMOTE_ADDR", "")[:64]
+
+
 def send_signup_verification_email(email, code, *, purpose):
     meta = get_signup_verification_meta(purpose)
     ttl_minutes = get_email_verification_code_ttl_minutes()
+    sender_email = parseaddr(settings.DEFAULT_FROM_EMAIL or "")[1]
+    smtp_backend = str(getattr(settings, "EMAIL_BACKEND", "") or "").endswith("smtp.EmailBackend")
+    if smtp_backend:
+        missing_fields = [
+            field_name
+            for field_name in ("EMAIL_HOST", "EMAIL_HOST_USER", "EMAIL_HOST_PASSWORD")
+            if not str(getattr(settings, field_name, "") or "").strip()
+        ]
+        if missing_fields:
+            raise RuntimeError(f"SMTP ayarlari eksik: {', '.join(missing_fields)}")
+    if not sender_email:
+        raise RuntimeError("DEFAULT_FROM_EMAIL ayari gecersiz.")
     subject = f"Ustabul {meta['mail_subject']}"
     body = (
         f"Merhaba,\n\n"
@@ -544,6 +570,58 @@ def send_signup_verification_email(email, code, *, purpose):
         [normalize_signup_email(email)],
         fail_silently=False,
     )
+
+
+def get_signup_email_delivery_error_message(exc):
+    reason = f"{type(exc).__name__}: {exc}".strip().lower()
+    if "smtp ayarlari eksik" in reason or "default_from_email ayari gecersiz" in reason:
+        return "Doğrulama e-postası gönderilemedi. Sunucudaki e-posta ayarları eksik veya hatalı."
+    if isinstance(exc, smtplib.SMTPAuthenticationError) or "authentication" in reason or "535" in reason:
+        return "Doğrulama e-postası gönderilemedi. SMTP giriş bilgileri hatalı görünüyor."
+    if isinstance(exc, smtplib.SMTPSenderRefused) or "sender" in reason or "from address" in reason:
+        return "Doğrulama e-postası gönderilemedi. Gönderen e-posta adresi henüz doğrulanmamış görünüyor."
+    if isinstance(exc, (socket.timeout, TimeoutError, smtplib.SMTPConnectError)) or "timed out" in reason:
+        return "Doğrulama e-postası gönderilemedi. E-posta sunucusuna bağlanılamadı."
+    if settings.DEBUG:
+        return f"Doğrulama e-postası gönderilemedi. Teknik neden: {type(exc).__name__}: {exc}"
+    return "Doğrulama e-postası gönderilemedi. Lütfen daha sonra tekrar deneyin."
+
+
+def log_signup_email_delivery_failure(request, *, email, purpose, exc):
+    logger.exception(
+        "Signup verification email could not be sent",
+        extra={
+            "signup_email": normalize_signup_email(email),
+            "signup_purpose": purpose,
+            "request_path": getattr(request, "path", ""),
+        },
+    )
+    if not getattr(settings, "ERROR_LOGGING_ENABLED", True):
+        return
+
+    try:
+        traceback_max_chars = max(500, int(getattr(settings, "ERROR_LOG_TRACEBACK_MAX_CHARS", 12000)))
+        message_max_chars = max(80, int(getattr(settings, "ERROR_LOG_MESSAGE_MAX_CHARS", 500)))
+        raw_traceback = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+        request_id = request.headers.get("X-Request-ID", "")[:120]
+        detail = (
+            f"Kayit dogrulama e-postasi gonderilemedi "
+            f"({purpose}, {normalize_signup_email(email)}): {type(exc).__name__}: {exc}"
+        )
+        ErrorLog.objects.create(
+            path=(request.path or "")[:300],
+            method=(request.method or "")[:10],
+            status_code=500,
+            message=detail[:message_max_chars],
+            traceback=raw_traceback[:traceback_max_chars],
+            request_id=request_id,
+            ip_address=extract_client_ip(request),
+            user_agent=request.META.get("HTTP_USER_AGENT", "")[:255],
+            user=user,
+        )
+    except Exception:
+        logger.exception("Signup email failure could not be persisted to ErrorLog")
 
 
 def issue_signup_verification_code(email, purpose):
@@ -2814,12 +2892,18 @@ def signup_view(request):
             pending_payload = form.build_pending_verification_payload()
             try:
                 verification = begin_signup_verification(request, pending_payload)
-            except Exception:
-                form.add_error(None, "Dogrulama e-postasi gonderilemedi. Lutfen daha sonra tekrar deneyin.")
+            except Exception as exc:
+                log_signup_email_delivery_failure(
+                    request,
+                    email=pending_payload.get("email"),
+                    purpose=pending_payload.get("purpose"),
+                    exc=exc,
+                )
+                form.add_error(None, get_signup_email_delivery_error_message(exc))
             else:
                 messages.success(
                     request,
-                    f"{pending_payload['email']} adresine dogrulama kodu gonderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar gecerli.",
+                    f"{pending_payload['email']} adresine doğrulama kodu gönderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar geçerli.",
                 )
                 return redirect("signup_email_verify")
     else:
@@ -2847,12 +2931,18 @@ def provider_signup_view(request):
             pending_payload = form.build_pending_verification_payload()
             try:
                 verification = begin_signup_verification(request, pending_payload)
-            except Exception:
-                form.add_error(None, "Dogrulama e-postasi gonderilemedi. Lutfen daha sonra tekrar deneyin.")
+            except Exception as exc:
+                log_signup_email_delivery_failure(
+                    request,
+                    email=pending_payload.get("email"),
+                    purpose=pending_payload.get("purpose"),
+                    exc=exc,
+                )
+                form.add_error(None, get_signup_email_delivery_error_message(exc))
             else:
                 messages.success(
                     request,
-                    f"{pending_payload['email']} adresine dogrulama kodu gonderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar gecerli.",
+                    f"{pending_payload['email']} adresine doğrulama kodu gönderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar geçerli.",
                 )
                 return redirect("signup_email_verify")
     else:
@@ -2876,7 +2966,7 @@ def signup_email_verify_view(request):
 
     pending_payload = get_pending_signup_payload(request)
     if not pending_payload:
-        messages.info(request, "Dogrulama oturumu bulunamadi. Lutfen yeniden kayit olun.")
+        messages.info(request, "Doğrulama oturumu bulunamadı. Lütfen yeniden kayıt olun.")
         return redirect("customer_signup")
 
     purpose = pending_payload["purpose"]
@@ -2893,13 +2983,14 @@ def signup_email_verify_view(request):
             else:
                 try:
                     verification = issue_signup_verification_code(email, purpose)
-                except Exception:
-                    messages.error(request, "Dogrulama e-postasi gonderilemedi. Lutfen tekrar deneyin.")
+                except Exception as exc:
+                    log_signup_email_delivery_failure(request, email=email, purpose=purpose, exc=exc)
+                    messages.error(request, get_signup_email_delivery_error_message(exc))
                 else:
                     set_pending_signup_payload(request, pending_payload)
                     messages.success(
                         request,
-                        f"Yeni kod gonderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar gecerli.",
+                        f"Yeni kod gönderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar geçerli.",
                     )
         else:
             form = EmailVerificationCodeForm(request.POST)
@@ -2908,11 +2999,11 @@ def signup_email_verify_view(request):
                 now = timezone.now()
                 max_attempts = get_email_verification_max_attempts()
                 if not verification or verification.consumed_at:
-                    form.add_error(None, "Aktif dogrulama kodu bulunamadi. Yeni kod isteyin.")
+                    form.add_error(None, "Aktif doğrulama kodu bulunamadı. Yeni kod isteyin.")
                 elif verification.expires_at <= now:
-                    form.add_error(None, "Kodun suresi doldu. Yeni kod isteyin.")
+                    form.add_error(None, "Kodun süresi doldu. Yeni kod isteyin.")
                 elif verification.attempt_count >= max_attempts:
-                    form.add_error(None, "Cok fazla hatali deneme oldu. Yeni kod isteyin.")
+                    form.add_error(None, "Çok fazla hatalı deneme oldu. Yeni kod isteyin.")
                 else:
                     submitted_hash = hash_email_verification_code(email, purpose, form.cleaned_data["code"])
                     if verification.code_hash != submitted_hash:
@@ -2920,9 +3011,9 @@ def signup_email_verify_view(request):
                         verification.save(update_fields=["attempt_count"])
                         remaining_attempts = max(0, max_attempts - verification.attempt_count)
                         if remaining_attempts:
-                            form.add_error("code", f"Kod hatali. Kalan deneme: {remaining_attempts}.")
+                            form.add_error("code", f"Kod hatalı. Kalan deneme: {remaining_attempts}.")
                         else:
-                            form.add_error(None, "Cok fazla hatali deneme oldu. Yeni kod isteyin.")
+                            form.add_error(None, "Çok fazla hatalı deneme oldu. Yeni kod isteyin.")
                     else:
                         verification.consumed_at = now
                         verification.save(update_fields=["consumed_at"])

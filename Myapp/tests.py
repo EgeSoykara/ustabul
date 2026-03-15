@@ -1,6 +1,7 @@
 from datetime import time, timedelta
 import json
 import re
+import smtplib
 from unittest.mock import patch
 
 from django.core import mail
@@ -15,6 +16,7 @@ from io import StringIO
 from .models import (
     CustomerProfile,
     EmailVerificationCode,
+    ErrorLog,
     IdempotencyRecord,
     MobileDevice,
     NotificationCursor,
@@ -563,6 +565,59 @@ class MarketplaceTests(TestCase):
         self.assertTrue(EmailVerificationCode.objects.filter(email="ayse@example.com", purpose="customer-signup").exists())
         self.assertEqual(len(mail.outbox), 1)
         self.assertNotIn("phone_verify", self.client.session)
+
+    @override_settings(DEBUG=False)
+    def test_customer_signup_shows_sender_verification_error_when_mail_sender_is_rejected(self):
+        with patch(
+            "Myapp.views.send_mail",
+            side_effect=smtplib.SMTPSenderRefused(550, b"Sender not allowed", "ustabulcyprus@gmail.com"),
+        ):
+            response = self.client.post(
+                reverse("signup"),
+                data={
+                    "username": "musteri_sender",
+                    "first_name": "Ayse",
+                    "last_name": "Yilmaz",
+                    "email": "sender@example.com",
+                    "phone": "05000000000",
+                    "city": "Lefkosa",
+                    "district": "Ortakoy",
+                    "password1": "GucluSifre123!",
+                    "password2": "GucluSifre123!",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Gönderen e-posta adresi henüz doğrulanmamış görünüyor.")
+        self.assertFalse(EmailVerificationCode.objects.filter(email="sender@example.com").exists())
+        error_log = ErrorLog.objects.latest("id")
+        self.assertIn("SMTPSenderRefused", error_log.message)
+
+    @override_settings(
+        DEBUG=False,
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp-relay.brevo.com",
+        EMAIL_HOST_USER="",
+        EMAIL_HOST_PASSWORD="",
+    )
+    def test_customer_signup_shows_config_error_when_smtp_settings_are_missing(self):
+        response = self.client.post(
+            reverse("signup"),
+            data={
+                "username": "musteri_smtp",
+                "first_name": "Ayse",
+                "last_name": "Yilmaz",
+                "email": "smtp@example.com",
+                "phone": "05000000000",
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "password1": "GucluSifre123!",
+                "password2": "GucluSifre123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunucudaki e-posta ayarları eksik veya hatalı.")
 
     def test_customer_signup_verification_creates_account_and_logs_in(self):
         self.client.post(
