@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="operations-dashboard">
 <section class="card panel-card shadow-sm reveal-up mb-4 operations-toolbar-section">
   <div class="card-body p-4">
     <div class="operations-toolbar">
@@ -198,7 +199,7 @@
               <th>Usta</th>
               <th>Durum</th>
               <th>Kalan Süre</th>
-              <th>Bitiş Tarihi</th>
+              <th>Üyelik Takvimi</th>
               <th>Son Tahsilat</th>
               <th>İşlem</th>
             </tr>
@@ -228,14 +229,22 @@
                     <div class="small text-muted mt-1">Not: {{ provider.membership_ui.note }}</div>
                   {% endif %}
                 </td>
-                <td data-label="Bitiş Tarihi">
+                <td data-label="Üyelik Takvimi">
                   {% if provider.membership_expires_at %}
-                    {{ provider.membership_expires_at|date:"d.m.Y H:i" }}
+                    <div class="operations-membership-timeline">
+                      <div class="operations-membership-timeline-item">
+                        <span class="operations-membership-timeline-label">Esas bitiş</span>
+                        <strong class="operations-membership-timeline-value">{{ provider.membership_expires_at|date:"d.m.Y H:i" }}</strong>
+                      </div>
+                      {% if provider.membership_ui.grace_until %}
+                        <div class="operations-membership-timeline-item is-secondary">
+                          <span class="operations-membership-timeline-label">Ek süre biter</span>
+                          <strong class="operations-membership-timeline-value">{{ provider.membership_ui.grace_until|date:"d.m.Y H:i" }}</strong>
+                        </div>
+                      {% endif %}
+                    </div>
                   {% else %}
-                    -
-                  {% endif %}
-                  {% if provider.membership_ui.grace_until %}
-                    <div class="small text-muted mt-1">Ek süre sonu: {{ provider.membership_ui.grace_until|date:"d.m.Y H:i" }}</div>
+                    <span class="text-muted">Tarih tanımlı değil</span>
                   {% endif %}
                 </td>
                 <td data-label="Son Tahsilat">
@@ -538,6 +547,7 @@
     {% endif %}
   </div>
 </section>
+ </div>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const actionConfig = {

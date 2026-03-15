@@ -926,6 +926,7 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Usta \u00dcyelik Y\u00f6netimi")
         self.assertContains(response, "Ali Usta")
+        self.assertContains(response, "\u00dcyelik Takvimi")
         self.assertContains(response, "gün kaldı")
 
     def test_operations_dashboard_can_filter_memberships(self):
@@ -950,6 +951,23 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, "Mehmet Usta")
         self.assertNotContains(response, "Ali Usta")
         self.assertContains(response, "1 usta listeleniyor")
+
+    def test_operations_dashboard_shows_membership_and_grace_dates_separately(self):
+        User.objects.create_user(
+            username="operasyontakvim",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_ali.membership_status = "active"
+        self.provider_ali.membership_expires_at = timezone.now() - timedelta(days=1)
+        self.provider_ali.save(update_fields=["membership_status", "membership_expires_at"])
+        self.client.login(username="operasyontakvim", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Esas bitiş")
+        self.assertContains(response, "Ek süre biter")
 
     def test_operations_dashboard_can_renew_provider_membership(self):
         staff_user = User.objects.create_user(
