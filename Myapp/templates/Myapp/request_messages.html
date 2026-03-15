@@ -62,7 +62,13 @@
             <button type="submit" class="btn btn-main w-100"><i class="bi bi-send-fill me-1"></i>G&#246;nder</button>
           </div>
         </form>
-        <div id="chat-form-status" class="small mt-2 d-none"></div>
+        <div class="chat-form-feedback mt-3">
+          <div id="chat-form-status" class="chat-form-status small d-none" aria-live="polite"></div>
+          <div id="chat-connection-status" class="chat-connection-status small d-none" aria-live="polite"></div>
+          <button type="button" id="chat-form-retry" class="btn btn-sm btn-outline-secondary d-none">
+            <i class="bi bi-arrow-repeat me-1"></i>Tekrar dene
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -79,6 +85,8 @@
     const snapshotUrl = thread.dataset.snapshotUrl || "";
     const emptyState = document.getElementById("chat-empty-state");
     const statusBox = document.getElementById("chat-form-status");
+    const connectionStatusBox = document.getElementById("chat-connection-status");
+    const retryButton = document.getElementById("chat-form-retry");
     const textarea = form.querySelector("textarea[name='body']");
     const submitButton = form.querySelector("button[type='submit']");
     const wsSupported = typeof window.WebSocket !== "undefined";
@@ -88,12 +96,18 @@
     let pollingStopped = false;
     let socket = null;
     let reconnectTimer = null;
+    let pingTimer = null;
     let pollTimer = null;
     let pollInFlight = false;
     let websocketHealthy = false;
+    let websocketOpenedAtLeastOnce = false;
+    let websocketReconnectCount = 0;
+    let retryBodyText = "";
 
     const fallbackPollIntervalMs = Number(thread.dataset.fallbackPollMs || 5000);
     const reconnectDelayMs = 3000;
+    const reconnectFallbackDelayMs = 15000;
+    const pingIntervalMs = 25000;
 
     function buildSnapshotUrl(afterId) {
       if (!snapshotUrl) return "";
@@ -124,6 +138,42 @@
       } else {
         statusBox.classList.add("text-muted");
       }
+    }
+
+    function setConnectionStatus(text, tone) {
+      if (!connectionStatusBox) return;
+      if (!text) {
+        connectionStatusBox.classList.add("d-none");
+        connectionStatusBox.textContent = "";
+        connectionStatusBox.classList.remove("is-warning", "is-success");
+        return;
+      }
+      connectionStatusBox.textContent = text;
+      connectionStatusBox.classList.remove("d-none", "is-warning", "is-success");
+      if (tone === "success") {
+        connectionStatusBox.classList.add("is-success");
+      } else {
+        connectionStatusBox.classList.add("is-warning");
+      }
+    }
+
+    function setRetryVisible(isVisible, bodyText) {
+      retryBodyText = isVisible ? String(bodyText || "") : "";
+      if (!retryButton) return;
+      retryButton.classList.toggle("d-none", !isVisible);
+      retryButton.disabled = !isVisible || pollingStopped || sending;
+    }
+
+    function updateSubmitState() {
+      if (retryButton && !retryButton.classList.contains("d-none")) {
+        retryButton.disabled = pollingStopped || sending;
+      }
+      if (!submitButton || !textarea) return;
+      if (pollingStopped || textarea.disabled || sending) {
+        submitButton.disabled = true;
+        return;
+      }
+      submitButton.disabled = String(textarea.value || "").trim().length < 2;
     }
 
     function escapeHtml(value) {
@@ -187,6 +237,7 @@
     function disableComposer(reasonText) {
       pollingStopped = true;
       websocketHealthy = false;
+      stopPing();
       if (socket) {
         try {
           socket.close();
@@ -200,8 +251,32 @@
       }
       stopPolling();
       if (textarea) textarea.disabled = true;
-      if (submitButton) submitButton.disabled = true;
+      setRetryVisible(false, "");
+      updateSubmitState();
+      setConnectionStatus("", "");
       setStatus(reasonText || "Mesajla\u015fma \u015fu anda kapal\u0131.", true);
+    }
+
+    function stopPing() {
+      if (!pingTimer) return;
+      window.clearInterval(pingTimer);
+      pingTimer = null;
+    }
+
+    function startPing() {
+      stopPing();
+      if (!socket || socket.readyState !== window.WebSocket.OPEN) return;
+      pingTimer = window.setInterval(function () {
+        if (!socket || socket.readyState !== window.WebSocket.OPEN) {
+          stopPing();
+          return;
+        }
+        try {
+          socket.send(JSON.stringify({ type: "ping" }));
+        } catch (error) {
+          stopPing();
+        }
+      }, pingIntervalMs);
     }
 
     function stopPolling() {
@@ -257,14 +332,25 @@
 
       socket.addEventListener("open", function () {
         websocketHealthy = true;
+        websocketOpenedAtLeastOnce = true;
+        websocketReconnectCount = 0;
+        if (reconnectTimer) {
+          window.clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
         setStatus("", null);
+        setConnectionStatus("", "");
         stopPolling();
+        startPing();
         pollMessages();
       });
 
       socket.addEventListener("message", function (event) {
         try {
           const payload = JSON.parse(event.data || "{}");
+          if (payload.type === "pong") {
+            return;
+          }
           if (payload.type === "message.created" && payload.message) {
             appendMessages([payload.message], false);
           }
@@ -276,17 +362,26 @@
       socket.addEventListener("close", function (event) {
         socket = null;
         websocketHealthy = false;
+        stopPing();
         if (pollingStopped) return;
         if ([4401, 4403, 4404, 4409].indexOf(event.code) >= 0) {
           disableComposer("Bu konu\u015fma art\u0131k eri\u015filebilir de\u011fil.");
           return;
         }
+        websocketReconnectCount += 1;
         startPolling();
         pollMessages();
         if (!document.hidden) {
-          setStatus("Ba\u011flant\u0131 kesildi, yeniden ba\u011flan\u0131l\u0131yor...", null);
+          if (websocketOpenedAtLeastOnce) {
+            setConnectionStatus("Canlı bağlantı koptu. Mesajlar otomatik yenileniyor.", "warning");
+          } else {
+            setConnectionStatus("Canlı bağlantı kurulamadı. Mesajlar otomatik yenileniyor.", "warning");
+          }
         }
-        reconnectTimer = window.setTimeout(connectWebSocket, reconnectDelayMs);
+        reconnectTimer = window.setTimeout(
+          connectWebSocket,
+          websocketReconnectCount >= 3 ? reconnectFallbackDelayMs : reconnectDelayMs
+        );
       });
     }
 
@@ -302,7 +397,8 @@
       }
 
       sending = true;
-      submitButton.disabled = true;
+      updateSubmitState();
+      setRetryVisible(false, "");
       setStatus("G\u00f6nderiliyor...", null);
 
       try {
@@ -313,31 +409,66 @@
           headers: { "X-Requested-With": "XMLHttpRequest" },
         });
         const payload = await response.json();
+        if (response.status === 409) {
+          disableComposer(payload.error || "Bu talepte mesajla\u015fma kapat\u0131ld\u0131.");
+          return;
+        }
         if (!response.ok || !payload.ok || !payload.message) {
+          setRetryVisible(true, bodyText);
           setStatus(payload.error || "Mesaj g\u00f6nderilemedi.", true);
           return;
         }
         appendMessages([payload.message], true);
         textarea.value = "";
+        setRetryVisible(false, "");
         setStatus("Mesaj g\u00f6nderildi.", false);
       } catch (error) {
-        setStatus("", null);
-        form.submit();
+        setRetryVisible(true, bodyText);
+        setStatus("Mesaj g\u00f6nderilemedi. Ba\u011flant\u0131n\u0131 kontrol edip tekrar dene.", true);
         return;
       } finally {
         sending = false;
-        if (!pollingStopped) submitButton.disabled = false;
+        updateSubmitState();
       }
     });
+
+    if (retryButton) {
+      retryButton.addEventListener("click", function () {
+        if (!textarea || !retryBodyText || sending || pollingStopped) return;
+        textarea.value = retryBodyText;
+        updateSubmitState();
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+          return;
+        }
+        form.dispatchEvent(new Event("submit", { cancelable: true }));
+      });
+    }
+
+    if (textarea) {
+      textarea.addEventListener("input", function () {
+        if (statusBox && statusBox.classList.contains("text-success")) {
+          setStatus("", null);
+        }
+        if (retryBodyText && String(textarea.value || "").trim() !== retryBodyText.trim()) {
+          setRetryVisible(false, "");
+        }
+        updateSubmitState();
+      });
+    }
 
     document.addEventListener("visibilitychange", function () {
       if (document.hidden) return;
       if (!websocketHealthy) {
         pollMessages();
+        if (!reconnectTimer && !pollingStopped) {
+          connectWebSocket();
+        }
       }
     });
 
     scrollToBottom();
+    updateSubmitState();
     startPolling();
     if (wsSupported) {
       connectWebSocket();

@@ -2397,6 +2397,8 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Hazır yanıtlar")
         self.assertNotContains(response, "data-quick-reply")
+        self.assertContains(response, 'id="chat-form-retry"')
+        self.assertContains(response, "Tekrar dene")
 
     def test_provider_cannot_message_before_customer_selects_provider(self):
         customer = User.objects.create_user(username="chatnoselect", password="GucluSifre123!")
