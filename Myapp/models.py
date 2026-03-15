@@ -231,6 +231,29 @@ class CustomerProfile(models.Model):
         return self.user.username
 
 
+class EmailVerificationCode(models.Model):
+    PURPOSE_CHOICES = (
+        ("customer-signup", "Musteri Kaydi"),
+    )
+
+    email = models.EmailField(db_index=True)
+    purpose = models.CharField(max_length=32, choices=PURPOSE_CHOICES, default="customer-signup")
+    code_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["email", "purpose", "created_at"], name="Myapp_email_email_e0e1c8_idx"),
+            models.Index(fields=["purpose", "expires_at"], name="Myapp_email_purpose_5e7a1c_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.email} {self.purpose}"
+
 
 class ProviderRating(models.Model):
     SCORE_CHOICES = (

@@ -282,6 +282,21 @@ USE_I18N = True
 USE_TZ = True
 
 
+# Email
+EMAIL_HOST = os.getenv("EMAIL_HOST", "").strip()
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Ustabul <noreply@ustabul.local>")
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend" if EMAIL_HOST else "django.core.mail.backends.console.EmailBackend",
+)
+
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
@@ -336,6 +351,12 @@ APPOINTMENT_SLOT_BUFFER_MINUTES = int(os.getenv("APPOINTMENT_SLOT_BUFFER_MINUTES
 APPOINTMENT_MIN_LEAD_MINUTES = int(os.getenv("APPOINTMENT_MIN_LEAD_MINUTES", "5"))
 APPOINTMENT_LAST_MINUTE_CANCEL_HOURS = int(os.getenv("APPOINTMENT_LAST_MINUTE_CANCEL_HOURS", "6"))
 APPOINTMENT_NO_SHOW_GRACE_MINUTES = int(os.getenv("APPOINTMENT_NO_SHOW_GRACE_MINUTES", "30"))
+EMAIL_VERIFICATION_CODE_TTL_MINUTES = int(os.getenv("EMAIL_VERIFICATION_CODE_TTL_MINUTES", "10"))
+EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = int(os.getenv("EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS", "60"))
+EMAIL_VERIFICATION_MAX_ATTEMPTS = int(os.getenv("EMAIL_VERIFICATION_MAX_ATTEMPTS", "5"))
+EMAIL_VERIFICATION_SESSION_TTL_MINUTES = int(
+    os.getenv("EMAIL_VERIFICATION_SESSION_TTL_MINUTES", "30")
+)
 try:
     SHORT_NOTE_MAX_CHARS = int(os.getenv("SHORT_NOTE_MAX_CHARS", "100"))
 except ValueError:

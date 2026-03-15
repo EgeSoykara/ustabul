@@ -5,6 +5,7 @@ from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.utils import timezone
 
@@ -409,8 +410,28 @@ class CustomerSignupForm(UserCreationForm):
             )
         return user
 
+    def build_pending_verification_payload(self):
+        return {
+            "purpose": "customer-signup",
+            "account_type": "customer",
+            "username": self.cleaned_data["username"],
+            "first_name": self.cleaned_data["first_name"],
+            "last_name": self.cleaned_data["last_name"],
+            "email": self.cleaned_data["email"],
+            "phone": self.cleaned_data["phone"],
+            "city": self.cleaned_data["city"],
+            "district": self.cleaned_data["district"],
+            "password_hash": make_password(self.cleaned_data["password1"]),
+        }
+
     def clean_phone(self):
         return normalize_phone_value(self.cleaned_data.get("phone"))
+
+    def clean_email(self):
+        email = str(self.cleaned_data.get("email") or "").strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise ValidationError("Bu e-posta adresi zaten kullaniliyor.")
+        return email
 
     def clean(self):
         cleaned_data = super().clean()
@@ -533,8 +554,29 @@ class ProviderSignupForm(UserCreationForm):
             provider.service_types.set(self.cleaned_data["service_types"])
         return user
 
+    def build_pending_verification_payload(self):
+        return {
+            "purpose": "provider-signup",
+            "account_type": "provider",
+            "username": self.cleaned_data["username"],
+            "full_name": self.cleaned_data["full_name"],
+            "email": self.cleaned_data["email"],
+            "phone": self.cleaned_data["phone"],
+            "city": self.cleaned_data["city"],
+            "district": self.cleaned_data["district"],
+            "service_type_ids": [service_type.id for service_type in self.cleaned_data["service_types"]],
+            "description": (self.cleaned_data.get("description") or "").strip(),
+            "password_hash": make_password(self.cleaned_data["password1"]),
+        }
+
     def clean_phone(self):
         return normalize_phone_value(self.cleaned_data.get("phone"))
+
+    def clean_email(self):
+        email = str(self.cleaned_data.get("email") or "").strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise ValidationError("Bu e-posta adresi zaten kullaniliyor.")
+        return email
 
     def clean(self):
         cleaned_data = super().clean()
@@ -555,6 +597,28 @@ class ProviderSignupForm(UserCreationForm):
         cleaned_data["city"] = city_key
         cleaned_data["district"] = resolved_district
         return cleaned_data
+
+
+class EmailVerificationCodeForm(forms.Form):
+    code = forms.CharField(
+        max_length=6,
+        min_length=6,
+        label="Doğrulama kodu",
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "123456",
+                "inputmode": "numeric",
+                "autocomplete": "one-time-code",
+                "maxlength": "6",
+            }
+        ),
+    )
+
+    def clean_code(self):
+        code = "".join(char for char in str(self.cleaned_data.get("code") or "").strip() if char.isdigit())
+        if len(code) != 6:
+            raise ValidationError("Kod 6 haneli olmalı.")
+        return code
 
 
 class ProviderProfileForm(forms.ModelForm):

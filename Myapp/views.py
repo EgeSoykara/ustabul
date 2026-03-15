@@ -3,6 +3,7 @@ import hashlib
 import time
 import unicodedata
 from datetime import datetime, timedelta
+from secrets import randbelow
 from uuid import uuid4
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -11,7 +12,10 @@ from django.contrib import messages
 from django.conf import settings
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q
@@ -31,6 +35,7 @@ from .forms import (
     ANY_DISTRICT_VALUE,
     AppointmentCreateForm,
     CustomerContactSettingsForm,
+    EmailVerificationCodeForm,
     CustomerLoginForm,
     CustomerSignupForm,
     NotificationPreferenceForm,
@@ -62,6 +67,7 @@ from .mobile_push import queue_mobile_push_for_activity
 from .models import (
     ActivityLog,
     CustomerProfile,
+    EmailVerificationCode,
     ErrorLog,
     IdempotencyRecord,
     MobileDevice,
@@ -80,6 +86,32 @@ from .models import (
 PROVIDER_PENDING_APPROVAL_MESSAGE = "Usta hesabınız admin onayı bekliyor."
 PROVIDER_PENDING_APPROVAL_FLASH_FLAG = "_provider_pending_approval_warned"
 PROVIDER_CACHE_ATTR = "_provider_profile_cache"
+PENDING_SIGNUP_SESSION_KEY = "pending_email_signup"
+EMAIL_VERIFICATION_CODE_LENGTH = 6
+EMAIL_VERIFICATION_PURPOSE_META = {
+    "customer-signup": {
+        "account_type": "customer",
+        "badge_label": "MÜŞTERİ KAYDI",
+        "title": "Kodunu Gir",
+        "description": "Kodu girince müşteri hesabın oluşturulacak.",
+        "back_url": "customer_signup",
+        "login_after_verify": True,
+        "success_message": "E-posta doğrulandı. Hesabınız oluşturuldu ve giriş yapıldı.",
+        "redirect_url": "index",
+        "mail_subject": "Müşteri kayıt doğrulama kodunuz",
+    },
+    "provider-signup": {
+        "account_type": "provider",
+        "badge_label": "USTA KAYDI",
+        "title": "Kodunu Gir",
+        "description": "Kodu girince usta hesabın oluşturulacak.",
+        "back_url": "provider_signup",
+        "login_after_verify": False,
+        "success_message": "E-posta doğrulandı. Usta hesabın oluşturuldu. Admin onayı sonrası giriş yapabilirsin.",
+        "redirect_url": "provider_login",
+        "mail_subject": "Usta kayıt doğrulama kodunuz",
+    },
+}
 
 
 def build_request_form_initial(request):
@@ -384,6 +416,226 @@ def get_first_form_error(form):
         if field_errors:
             return field_errors[0]
     return "Formdaki alanlari kontrol edip tekrar deneyin."
+
+
+def get_email_verification_code_ttl_minutes():
+    return max(3, int(getattr(settings, "EMAIL_VERIFICATION_CODE_TTL_MINUTES", 10)))
+
+
+def get_email_verification_resend_cooldown_seconds():
+    return max(10, int(getattr(settings, "EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS", 60)))
+
+
+def get_email_verification_max_attempts():
+    return max(3, int(getattr(settings, "EMAIL_VERIFICATION_MAX_ATTEMPTS", 5)))
+
+
+def get_email_verification_session_ttl_minutes():
+    return max(10, int(getattr(settings, "EMAIL_VERIFICATION_SESSION_TTL_MINUTES", 30)))
+
+
+def normalize_signup_email(value):
+    return str(value or "").strip().lower()
+
+
+def get_pending_signup_payload(request):
+    payload = request.session.get(PENDING_SIGNUP_SESSION_KEY)
+    if not isinstance(payload, dict):
+        return None
+
+    purpose = str(payload.get("purpose") or "").strip()
+    if purpose not in EMAIL_VERIFICATION_PURPOSE_META:
+        request.session.pop(PENDING_SIGNUP_SESSION_KEY, None)
+        request.session.modified = True
+        return None
+
+    started_at_raw = str(payload.get("started_at") or "").strip()
+    if started_at_raw:
+        try:
+            started_at = datetime.fromisoformat(started_at_raw)
+        except ValueError:
+            request.session.pop(PENDING_SIGNUP_SESSION_KEY, None)
+            request.session.modified = True
+            return None
+        if started_at.tzinfo is None:
+            started_at = timezone.make_aware(started_at, timezone.get_current_timezone())
+        if timezone.now() - started_at > timedelta(minutes=get_email_verification_session_ttl_minutes()):
+            request.session.pop(PENDING_SIGNUP_SESSION_KEY, None)
+            request.session.modified = True
+            return None
+
+    return payload
+
+
+def set_pending_signup_payload(request, payload):
+    request.session[PENDING_SIGNUP_SESSION_KEY] = {
+        **payload,
+        "email": normalize_signup_email(payload.get("email")),
+        "started_at": timezone.now().isoformat(),
+    }
+    request.session.modified = True
+
+
+def clear_pending_signup_payload(request):
+    request.session.pop(PENDING_SIGNUP_SESSION_KEY, None)
+    request.session.modified = True
+
+
+def get_signup_verification_meta(purpose):
+    return EMAIL_VERIFICATION_PURPOSE_META.get(str(purpose or "").strip(), EMAIL_VERIFICATION_PURPOSE_META["customer-signup"])
+
+
+def generate_email_verification_code():
+    upper_bound = 10 ** EMAIL_VERIFICATION_CODE_LENGTH
+    return f"{randbelow(upper_bound):0{EMAIL_VERIFICATION_CODE_LENGTH}d}"
+
+
+def hash_email_verification_code(email, purpose, code):
+    normalized_email = normalize_signup_email(email)
+    raw_value = f"{settings.SECRET_KEY}:{purpose}:{normalized_email}:{str(code or '').strip()}"
+    return hashlib.sha256(raw_value.encode("utf-8")).hexdigest()
+
+
+def get_latest_email_verification(email, purpose):
+    return (
+        EmailVerificationCode.objects.filter(email__iexact=normalize_signup_email(email), purpose=purpose)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+
+def get_active_email_verification(email, purpose):
+    now = timezone.now()
+    return (
+        EmailVerificationCode.objects.filter(
+            email__iexact=normalize_signup_email(email),
+            purpose=purpose,
+            consumed_at__isnull=True,
+            expires_at__gt=now,
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+
+def get_signup_resend_available_in(email, purpose):
+    latest_verification = get_latest_email_verification(email, purpose)
+    if not latest_verification or not latest_verification.created_at:
+        return 0
+    elapsed_seconds = int((timezone.now() - latest_verification.created_at).total_seconds())
+    return max(0, get_email_verification_resend_cooldown_seconds() - elapsed_seconds)
+
+
+def send_signup_verification_email(email, code, *, purpose):
+    meta = get_signup_verification_meta(purpose)
+    ttl_minutes = get_email_verification_code_ttl_minutes()
+    subject = f"Ustabul {meta['mail_subject']}"
+    body = (
+        f"Merhaba,\n\n"
+        f"Kaydi tamamlamak icin dogrulama kodunuz: {code}\n\n"
+        f"Bu kod {ttl_minutes} dakika boyunca gecerlidir.\n"
+        f"Eger bu islemi siz yapmadiysaniz bu e-postayi dikkate almayin.\n\n"
+        f"Ustabul"
+    )
+    send_mail(
+        subject,
+        body,
+        settings.DEFAULT_FROM_EMAIL,
+        [normalize_signup_email(email)],
+        fail_silently=False,
+    )
+
+
+def issue_signup_verification_code(email, purpose):
+    normalized_email = normalize_signup_email(email)
+    now = timezone.now()
+    code = generate_email_verification_code()
+    verification = EmailVerificationCode.objects.create(
+        email=normalized_email,
+        purpose=purpose,
+        code_hash=hash_email_verification_code(normalized_email, purpose, code),
+        expires_at=now + timedelta(minutes=get_email_verification_code_ttl_minutes()),
+    )
+    try:
+        send_signup_verification_email(normalized_email, code, purpose=purpose)
+    except Exception:
+        verification.delete()
+        raise
+
+    EmailVerificationCode.objects.filter(
+        email__iexact=normalized_email,
+        purpose=purpose,
+        consumed_at__isnull=True,
+    ).exclude(id=verification.id).update(consumed_at=now)
+    return verification
+
+
+def create_account_from_pending_signup(payload):
+    purpose = str(payload.get("purpose") or "").strip()
+    meta = get_signup_verification_meta(purpose)
+    account_type = meta["account_type"]
+    username = str(payload.get("username") or "").strip()
+    email = normalize_signup_email(payload.get("email"))
+    password_hash = str(payload.get("password_hash") or "").strip()
+
+    if not username or not email or not password_hash:
+        raise ValidationError("Kayit verisi eksik. Lutfen yeniden kayit olun.")
+    if User.objects.filter(username__iexact=username).exists():
+        raise ValidationError("Bu kullanici adi artik kullanilamiyor. Lutfen bilgileri yeniden girin.")
+    if User.objects.filter(email__iexact=email).exists():
+        raise ValidationError("Bu e-posta adresi artik kullanilamiyor. Lutfen bilgileri yeniden girin.")
+
+    with transaction.atomic():
+        user = User(
+            username=username,
+            email=email,
+            first_name=str(payload.get("first_name") or "").strip(),
+            last_name=str(payload.get("last_name") or "").strip(),
+        )
+        user.password = password_hash
+        user.save()
+
+        if account_type == "customer":
+            CustomerProfile.objects.update_or_create(
+                user=user,
+                defaults={
+                    "phone": str(payload.get("phone") or "").strip(),
+                    "city": str(payload.get("city") or "").strip(),
+                    "district": str(payload.get("district") or "").strip(),
+                },
+            )
+            return user
+
+        service_type_ids = [int(value) for value in payload.get("service_type_ids") or [] if str(value).isdigit()]
+        service_types = list(ServiceType.objects.filter(id__in=service_type_ids))
+        if len(service_types) != len(service_type_ids):
+            raise ValidationError("Secilen hizmetler dogrulanamadi. Lutfen yeniden kayit olun.")
+
+        provider = Provider.objects.create(
+            user=user,
+            full_name=str(payload.get("full_name") or "").strip(),
+            city=str(payload.get("city") or "").strip(),
+            district=str(payload.get("district") or "").strip(),
+            phone=str(payload.get("phone") or "").strip(),
+            description=str(payload.get("description") or "").strip(),
+            is_verified=False,
+            is_available=True,
+        )
+        provider.service_types.set(service_types)
+        return user
+
+
+def begin_signup_verification(request, pending_payload):
+    set_pending_signup_payload(request, pending_payload)
+    try:
+        verification = issue_signup_verification_code(
+            pending_payload.get("email"),
+            pending_payload.get("purpose"),
+        )
+    except Exception:
+        clear_pending_signup_payload(request)
+        raise
+    return verification
 
 
 def get_offer_expiry_minutes():
@@ -2559,11 +2811,17 @@ def signup_view(request):
     if request.method == "POST":
         form = CustomerSignupForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            request.session["role"] = "customer"
-            messages.success(request, "Hesabınız oluşturuldu ve giriş yapıldı.")
-            return redirect("index")
+            pending_payload = form.build_pending_verification_payload()
+            try:
+                verification = begin_signup_verification(request, pending_payload)
+            except Exception:
+                form.add_error(None, "Dogrulama e-postasi gonderilemedi. Lutfen daha sonra tekrar deneyin.")
+            else:
+                messages.success(
+                    request,
+                    f"{pending_payload['email']} adresine dogrulama kodu gonderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar gecerli.",
+                )
+                return redirect("signup_email_verify")
     else:
         form = CustomerSignupForm()
 
@@ -2586,9 +2844,17 @@ def provider_signup_view(request):
     if request.method == "POST":
         form = ProviderSignupForm(request.POST)
         if form.is_valid():
-            form.save()
-            messages.success(request, "Usta hesabınız oluşturuldu. Admin onayı sonrası giriş yapabilirsiniz.")
-            return redirect("provider_login")
+            pending_payload = form.build_pending_verification_payload()
+            try:
+                verification = begin_signup_verification(request, pending_payload)
+            except Exception:
+                form.add_error(None, "Dogrulama e-postasi gonderilemedi. Lutfen daha sonra tekrar deneyin.")
+            else:
+                messages.success(
+                    request,
+                    f"{pending_payload['email']} adresine dogrulama kodu gonderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar gecerli.",
+                )
+                return redirect("signup_email_verify")
     else:
         form = ProviderSignupForm()
 
@@ -2598,6 +2864,95 @@ def provider_signup_view(request):
         {
             "form": form,
             "city_district_map_json": get_city_district_map_json(),
+        },
+    )
+
+
+@never_cache
+@ensure_csrf_cookie
+def signup_email_verify_view(request):
+    if request.user.is_authenticated:
+        return redirect("provider_requests") if get_provider_for_user(request.user) else redirect("index")
+
+    pending_payload = get_pending_signup_payload(request)
+    if not pending_payload:
+        messages.info(request, "Dogrulama oturumu bulunamadi. Lutfen yeniden kayit olun.")
+        return redirect("customer_signup")
+
+    purpose = pending_payload["purpose"]
+    meta = get_signup_verification_meta(purpose)
+    email = pending_payload["email"]
+    form = EmailVerificationCodeForm()
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "verify").strip()
+        if action == "resend":
+            resend_available_in = get_signup_resend_available_in(email, purpose)
+            if resend_available_in:
+                messages.info(request, f"Yeni kodu {resend_available_in} saniye sonra isteyebilirsiniz.")
+            else:
+                try:
+                    verification = issue_signup_verification_code(email, purpose)
+                except Exception:
+                    messages.error(request, "Dogrulama e-postasi gonderilemedi. Lutfen tekrar deneyin.")
+                else:
+                    set_pending_signup_payload(request, pending_payload)
+                    messages.success(
+                        request,
+                        f"Yeni kod gonderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar gecerli.",
+                    )
+        else:
+            form = EmailVerificationCodeForm(request.POST)
+            if form.is_valid():
+                verification = get_latest_email_verification(email, purpose)
+                now = timezone.now()
+                max_attempts = get_email_verification_max_attempts()
+                if not verification or verification.consumed_at:
+                    form.add_error(None, "Aktif dogrulama kodu bulunamadi. Yeni kod isteyin.")
+                elif verification.expires_at <= now:
+                    form.add_error(None, "Kodun suresi doldu. Yeni kod isteyin.")
+                elif verification.attempt_count >= max_attempts:
+                    form.add_error(None, "Cok fazla hatali deneme oldu. Yeni kod isteyin.")
+                else:
+                    submitted_hash = hash_email_verification_code(email, purpose, form.cleaned_data["code"])
+                    if verification.code_hash != submitted_hash:
+                        verification.attempt_count += 1
+                        verification.save(update_fields=["attempt_count"])
+                        remaining_attempts = max(0, max_attempts - verification.attempt_count)
+                        if remaining_attempts:
+                            form.add_error("code", f"Kod hatali. Kalan deneme: {remaining_attempts}.")
+                        else:
+                            form.add_error(None, "Cok fazla hatali deneme oldu. Yeni kod isteyin.")
+                    else:
+                        verification.consumed_at = now
+                        verification.save(update_fields=["consumed_at"])
+                        try:
+                            user = create_account_from_pending_signup(pending_payload)
+                        except ValidationError as exc:
+                            form.add_error(None, exc.messages[0] if exc.messages else str(exc))
+                        else:
+                            clear_pending_signup_payload(request)
+                            if meta["login_after_verify"]:
+                                login(request, user)
+                                request.session["role"] = meta["account_type"]
+                            messages.success(request, meta["success_message"])
+                            return redirect(meta["redirect_url"])
+
+    active_verification = get_active_email_verification(email, purpose)
+    latest_verification = active_verification or get_latest_email_verification(email, purpose)
+    resend_available_in = get_signup_resend_available_in(email, purpose)
+    return render(
+        request,
+        "Myapp/customer_signup_verify.html",
+        {
+            "form": form,
+            "email": email,
+            "expires_at": latest_verification.expires_at if latest_verification and latest_verification.consumed_at is None else None,
+            "resend_available_in": resend_available_in,
+            "badge_label": meta["badge_label"],
+            "title": meta["title"],
+            "description": meta["description"],
+            "back_url": meta["back_url"],
         },
     )
 

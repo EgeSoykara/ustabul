@@ -13,6 +13,7 @@ urlpatterns = [
     path('musteri/giris/', views.login_view, name='customer_login'),
     path('usta/giris/', views.provider_login_view, name='provider_login'),
     path('kayit/', views.signup_view, name='signup'),
+    path('kayit/dogrula/', views.signup_email_verify_view, name='signup_email_verify'),
     path('musteri/kayit/', views.signup_view, name='customer_signup'),
     path('usta/kayit/', views.provider_signup_view, name='provider_signup'),
     path('usta/profil/', views.provider_profile_view, name='provider_profile'),

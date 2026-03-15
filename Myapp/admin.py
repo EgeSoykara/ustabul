@@ -9,6 +9,7 @@ from .constants import NC_CITY_CHOICES, NC_DISTRICT_CHOICES
 from .models import (
     ActivityLog,
     CustomerProfile,
+    EmailVerificationCode,
     ErrorLog,
     IdempotencyRecord,
     MobileDevice,
@@ -138,6 +139,21 @@ class CustomerProfileAdmin(admin.ModelAdmin):
     form = CustomerProfileAdminForm
     list_display = ("user", "phone", "city", "district", "created_at")
     search_fields = ("user__username", "phone", "city", "district")
+
+
+@admin.register(EmailVerificationCode)
+class EmailVerificationCodeAdmin(admin.ModelAdmin):
+    list_display = ("email", "purpose", "expires_at", "consumed_at", "attempt_count", "created_at")
+    list_filter = ("purpose", "consumed_at", "created_at")
+    search_fields = ("email",)
+    ordering = ("-created_at", "-id")
+    readonly_fields = ("email", "purpose", "code_hash", "expires_at", "consumed_at", "attempt_count", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ProviderRating)

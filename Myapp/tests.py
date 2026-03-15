@@ -1,7 +1,9 @@
 from datetime import time, timedelta
 import json
+import re
 from unittest.mock import patch
 
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.core.management import call_command
 from django.core.cache import cache
@@ -12,6 +14,7 @@ from io import StringIO
 
 from .models import (
     CustomerProfile,
+    EmailVerificationCode,
     IdempotencyRecord,
     MobileDevice,
     NotificationCursor,
@@ -84,6 +87,13 @@ class MarketplaceTests(TestCase):
 
     def _future_datetime_local(self, days=1):
         return timezone.localtime(timezone.now() + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M")
+
+    def _extract_latest_email_code(self):
+        self.assertTrue(mail.outbox)
+        body = mail.outbox[-1].body
+        match = re.search(r"(\d{6})", body)
+        self.assertIsNotNone(match)
+        return match.group(1)
 
     def _mark_request_rateable(self, service_request, customer_user, provider):
         appointment = ServiceAppointment.objects.create(
@@ -547,12 +557,45 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(User.objects.filter(username="musteri1").exists())
-        self.assertTrue(CustomerProfile.objects.filter(user__username="musteri1").exists())
+        self.assertFalse(User.objects.filter(username="musteri1").exists())
+        self.assertContains(response, "Kodunu Gir")
+        self.assertEqual(self.client.session.get("pending_email_signup", {}).get("purpose"), "customer-signup")
+        self.assertTrue(EmailVerificationCode.objects.filter(email="ayse@example.com", purpose="customer-signup").exists())
+        self.assertEqual(len(mail.outbox), 1)
         self.assertNotIn("phone_verify", self.client.session)
 
-    def test_customer_signup_normalizes_phone_input(self):
+    def test_customer_signup_verification_creates_account_and_logs_in(self):
+        self.client.post(
+            reverse("signup"),
+            data={
+                "username": "musteri2",
+                "first_name": "Fatma",
+                "last_name": "Demir",
+                "email": "fatma@example.com",
+                "phone": "05000000001",
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "password1": "GucluSifre123!",
+                "password2": "GucluSifre123!",
+            },
+            follow=True,
+        )
+        verify_code = self._extract_latest_email_code()
+
         response = self.client.post(
+            reverse("signup_email_verify"),
+            data={"action": "verify", "code": verify_code},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(User.objects.filter(username="musteri2", email="fatma@example.com").exists())
+        self.assertTrue(CustomerProfile.objects.filter(user__username="musteri2").exists())
+        self.assertEqual(self.client.session.get("role"), "customer")
+        self.assertNotIn("pending_email_signup", self.client.session)
+
+    def test_customer_signup_normalizes_phone_input(self):
+        self.client.post(
             reverse("signup"),
             data={
                 "username": "musteri_format",
@@ -567,6 +610,13 @@ class MarketplaceTests(TestCase):
             },
             follow=True,
         )
+        verify_code = self._extract_latest_email_code()
+        response = self.client.post(
+            reverse("signup_email_verify"),
+            data={"action": "verify", "code": verify_code},
+            follow=True,
+        )
+
         self.assertEqual(response.status_code, 200)
         profile = CustomerProfile.objects.get(user__username="musteri_format")
         self.assertEqual(profile.phone, "05002223344")
@@ -601,6 +651,15 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username="yeniprofesyonel").exists())
+        self.assertContains(response, "Kodunu Gir")
+        verify_code = self._extract_latest_email_code()
+        verify_response = self.client.post(
+            reverse("signup_email_verify"),
+            data={"action": "verify", "code": verify_code},
+            follow=True,
+        )
+        self.assertEqual(verify_response.status_code, 200)
         self.assertTrue(User.objects.filter(username="yeniprofesyonel").exists())
         provider = Provider.objects.get(user__username="yeniprofesyonel")
         self.assertEqual(provider.full_name, "Yeni Usta")
