@@ -9,10 +9,13 @@ from django.test import TestCase, override_settings
 from django.core.management import call_command
 from django.core.cache import cache
 from django.urls import reverse
+from django.contrib import admin
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.test import RequestFactory
 from io import StringIO
 
+from .admin import ProviderPaymentAdmin
 from .models import (
     CustomerProfile,
     EmailVerificationCode,
@@ -23,6 +26,7 @@ from .models import (
     Provider,
     ProviderAvailabilitySlot,
     ProviderOffer,
+    ProviderPayment,
     ProviderRating,
     SchedulerHeartbeat,
     SchedulerLock,
@@ -45,6 +49,7 @@ from .views import (
 class MarketplaceTests(TestCase):
     def setUp(self):
         cache.clear()
+        self.request_factory = RequestFactory()
         self.service = ServiceType.objects.create(name="Tesisat", slug="tesisat")
         self.provider_user_ali = User.objects.create_user(username="aliusta", password="GucluSifre123!")
         self.provider_ali = Provider.objects.create(
@@ -797,6 +802,246 @@ class MarketplaceTests(TestCase):
         self.assertNotIn("pending_email_signup", self.client.session)
         self.assertNotContains(response, "Kodunu Gir")
         self.assertNotEqual(self.client.session.get("role"), "provider")
+
+    def test_provider_payment_activates_membership_and_extends_expiry(self):
+        paid_at = timezone.now()
+        self.provider_ali.membership_status = "suspended"
+        self.provider_ali.membership_expires_at = paid_at - timedelta(days=40)
+        self.provider_ali.save(update_fields=["membership_status", "membership_expires_at"])
+
+        payment = ProviderPayment.objects.create(
+            provider=self.provider_ali,
+            amount="150.00",
+            period_months=1,
+            cash_received_at=paid_at,
+            received_by=self.provider_user_ali,
+            note="Mart tahsilatı",
+        )
+
+        self.provider_ali.refresh_from_db()
+        self.assertEqual(self.provider_ali.membership_status, "active")
+        self.assertEqual(self.provider_ali.last_cash_payment_at, paid_at)
+        self.assertEqual(self.provider_ali.membership_expires_at, payment.membership_extended_until)
+        self.assertTrue(payment.membership_extended_until > paid_at)
+
+    def test_provider_payment_admin_received_by_lists_only_staff_users(self):
+        staff_user = User.objects.create_user(
+            username="staffcashier",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        regular_user = User.objects.create_user(username="normalmusteri", password="GucluSifre123!")
+        request = self.request_factory.get("/admin/Myapp/providerpayment/add/")
+        request.user = staff_user
+        model_admin = ProviderPaymentAdmin(ProviderPayment, admin.site)
+
+        form = model_admin.get_form(request)()
+        received_by_queryset = form.fields["received_by"].queryset
+
+        self.assertIn(staff_user, received_by_queryset)
+        self.assertNotIn(regular_user, received_by_queryset)
+        self.assertNotIn(self.provider_user_ali, received_by_queryset)
+
+    def test_index_hides_provider_with_suspended_membership(self):
+        self.provider_ali.membership_status = "suspended"
+        self.provider_ali.save(update_fields=["membership_status"])
+
+        response = self.client.get(reverse("index"))
+
+        self.assertEqual(response.status_code, 200)
+        providers = response.context["providers"]
+        provider_names = [provider.full_name for provider in providers]
+        self.assertNotIn("Ali Usta", provider_names)
+
+    def test_provider_cannot_accept_offer_when_membership_is_suspended(self):
+        customer = User.objects.create_user(username="uyelikmusteri", password="GucluSifre123!")
+        CustomerProfile.objects.create(user=customer, phone="05003334444", city="Lefkosa", district="Ortakoy")
+        service_request = ServiceRequest.objects.create(
+            customer_name="Uyelik Musteri",
+            customer_phone="05003334444",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Petek temizligi",
+            customer=customer,
+            status="pending_provider",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="MEMBERS1",
+            sequence=1,
+            status="pending",
+        )
+        self.provider_ali.membership_status = "suspended"
+        self.provider_ali.save(update_fields=["membership_status"])
+        self.client.login(username="aliusta", password="GucluSifre123!")
+
+        response = self.client.post(reverse("provider_accept_offer", args=[offer.id]), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Yeni talep alamazsınız")
+        offer.refresh_from_db()
+        self.assertNotEqual(offer.status, "accepted")
+
+    def test_provider_requests_shows_membership_warning_banner(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Banner Musteri",
+            customer_phone="05001112233",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Elektrik arizasi",
+            status="pending_provider",
+        )
+        ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider_ali,
+            token="MEMBERS2",
+            sequence=1,
+            status="pending",
+        )
+        self.provider_ali.membership_status = "suspended"
+        self.provider_ali.save(update_fields=["membership_status"])
+        self.client.login(username="aliusta", password="GucluSifre123!")
+
+        response = self.client.get(reverse("provider_requests"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Üyeliğiniz askıda")
+
+    def test_operations_dashboard_lists_membership_management_section(self):
+        staff_user = User.objects.create_user(
+            username="operasyonadmin",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_ali.membership_status = "active"
+        self.provider_ali.membership_expires_at = timezone.now() + timedelta(days=5)
+        self.provider_ali.save(update_fields=["membership_status", "membership_expires_at"])
+        self.client.login(username="operasyonadmin", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Usta \u00dcyelik Y\u00f6netimi")
+        self.assertContains(response, "Ali Usta")
+        self.assertContains(response, "gün kaldı")
+
+    def test_operations_dashboard_can_filter_memberships(self):
+        User.objects.create_user(
+            username="operasyonfiltre",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_ali.membership_status = "suspended"
+        self.provider_ali.save(update_fields=["membership_status"])
+        self.provider_mehmet.membership_status = "active"
+        self.provider_mehmet.membership_expires_at = timezone.now() + timedelta(days=3)
+        self.provider_mehmet.save(update_fields=["membership_status", "membership_expires_at"])
+        self.client.login(username="operasyonfiltre", password="GucluSifre123!")
+
+        response = self.client.get(
+            reverse("operations_dashboard"),
+            data={"membership_q": "Mehmet", "membership_state": "active"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Mehmet Usta")
+        self.assertNotContains(response, "Ali Usta")
+        self.assertContains(response, "1 usta listeleniyor")
+
+    def test_operations_dashboard_can_renew_provider_membership(self):
+        staff_user = User.objects.create_user(
+            username="operasyonyenile",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_ali.membership_status = "suspended"
+        self.provider_ali.membership_expires_at = timezone.now() - timedelta(days=2)
+        self.provider_ali.save(update_fields=["membership_status", "membership_expires_at"])
+        self.client.login(username="operasyonyenile", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("operations_dashboard"),
+            data={
+                "day": timezone.localdate().isoformat(),
+                "provider_id": self.provider_ali.id,
+                "membership_action": "renew",
+                "amount": "2000",
+                "period_months": "3",
+                "membership_note": "Mart yenilemesi",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "üyeliği")
+        self.provider_ali.refresh_from_db()
+        self.assertEqual(self.provider_ali.membership_status, "active")
+        self.assertEqual(self.provider_ali.membership_note, "Mart yenilemesi")
+        payment = ProviderPayment.objects.latest("id")
+        self.assertEqual(payment.provider, self.provider_ali)
+        self.assertEqual(payment.received_by, staff_user)
+        self.assertEqual(payment.period_months, 3)
+
+    def test_operations_dashboard_can_suspend_provider_membership(self):
+        staff_user = User.objects.create_user(
+            username="operasyonsuspend",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.client.login(username="operasyonsuspend", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("operations_dashboard"),
+            data={
+                "day": timezone.localdate().isoformat(),
+                "provider_id": self.provider_ali.id,
+                "membership_action": "suspend",
+                "membership_note": "Nakit odeme bekleniyor",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "askıya alındı")
+        self.provider_ali.refresh_from_db()
+        self.assertEqual(self.provider_ali.membership_status, "suspended")
+        self.assertEqual(self.provider_ali.membership_note, "Nakit odeme bekleniyor")
+
+    def test_operations_dashboard_can_adjust_provider_membership_days(self):
+        User.objects.create_user(
+            username="operasyondogru",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        original_expiry = timezone.now() + timedelta(days=35)
+        self.provider_ali.membership_status = "active"
+        self.provider_ali.membership_expires_at = original_expiry
+        self.provider_ali.save(update_fields=["membership_status", "membership_expires_at"])
+        self.client.login(username="operasyondogru", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("operations_dashboard"),
+            data={
+                "day": timezone.localdate().isoformat(),
+                "provider_id": self.provider_ali.id,
+                "membership_action": "adjust_days",
+                "adjust_days": "-30",
+                "membership_note": "Yanlis ekleme duzeltildi",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "\u00fcyelik s\u00fcresi -30 g\u00fcn d\u00fczeltildi")
+        self.provider_ali.refresh_from_db()
+        self.assertEqual(self.provider_ali.membership_note, "Yanlis ekleme duzeltildi")
+        self.assertLess(
+            abs((self.provider_ali.membership_expires_at - (original_expiry - timedelta(days=30))).total_seconds()),
+            2,
+        )
 
     def test_provider_signup_verify_page_redirects_stale_provider_session(self):
         session = self.client.session

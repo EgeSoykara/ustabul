@@ -246,7 +246,7 @@ class ServiceRequestForm(forms.ModelForm):
             return None
 
         self._preferred_provider = (
-            Provider.objects.filter(id=preferred_provider_id, is_verified=True, is_available=True)
+            Provider.objects.accepting_new_requests().filter(id=preferred_provider_id)
             .prefetch_related("service_types")
             .first()
         )
@@ -305,7 +305,7 @@ class ServiceRequestForm(forms.ModelForm):
         if preferred_provider_id:
             if not preferred_provider or preferred_provider.id != preferred_provider_id:
                 preferred_provider = (
-                    Provider.objects.filter(id=preferred_provider_id, is_verified=True, is_available=True)
+                    Provider.objects.accepting_new_requests().filter(id=preferred_provider_id)
                     .prefetch_related("service_types")
                     .first()
                 )

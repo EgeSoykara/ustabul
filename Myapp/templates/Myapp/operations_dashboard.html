@@ -130,6 +130,232 @@
 
 <section class="card panel-card shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <div>
+        <h2 class="h5 mb-1"><i class="bi bi-wallet2 me-2"></i>Usta Üyelik Yönetimi</h2>
+        <p class="small text-muted mb-0">Tüm ustaların kalan süresi, son tahsilatı ve yenileme işlemleri burada.</p>
+      </div>
+      <div class="operations-membership-summary">
+        <div class="operations-membership-summary-card">
+          <div class="operations-membership-summary-label">Aktif</div>
+          <strong class="operations-membership-summary-value">{{ membership_summary.active_count }}</strong>
+        </div>
+        <div class="operations-membership-summary-card">
+          <div class="operations-membership-summary-label">Deneme</div>
+          <strong class="operations-membership-summary-value">{{ membership_summary.trial_count }}</strong>
+        </div>
+        <div class="operations-membership-summary-card">
+          <div class="operations-membership-summary-label">Ek süre</div>
+          <strong class="operations-membership-summary-value">{{ membership_summary.grace_count }}</strong>
+        </div>
+        <div class="operations-membership-summary-card">
+          <div class="operations-membership-summary-label">Askıda</div>
+          <strong class="operations-membership-summary-value">{{ membership_summary.suspended_count }}</strong>
+        </div>
+        <div class="operations-membership-summary-card">
+          <div class="operations-membership-summary-label">7 gün içinde bitecek</div>
+          <strong class="operations-membership-summary-value">{{ membership_summary.expiring_soon_count }}</strong>
+        </div>
+      </div>
+    </div>
+    <form method="get" action="{% url 'operations_dashboard' %}" class="row g-2 align-items-end mb-3 operations-membership-filters">
+      <input type="hidden" name="day" value="{{ selected_date_input }}">
+      <div class="col-12 col-xl-5">
+        <label class="form-label form-label-sm mb-1" for="membership-q">Usta ara</label>
+        <input
+          type="search"
+          id="membership-q"
+          name="membership_q"
+          value="{{ membership_filter_query }}"
+          class="form-control form-control-sm"
+          placeholder="Ad, kullanıcı adı, telefon, şehir"
+        >
+      </div>
+      <div class="col-12 col-md-6 col-xl-4">
+        <label class="form-label form-label-sm mb-1" for="membership-state">Durum</label>
+        <select id="membership-state" name="membership_state" class="form-select form-select-sm">
+          {% for state_value, state_label in membership_filter_options.items %}
+            <option value="{{ state_value }}" {% if membership_filter_state == state_value %}selected{% endif %}>{{ state_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Filtrele</button>
+      </div>
+      <div class="col-6 col-md-3 col-xl-1">
+        <a href="?day={{ selected_date_input }}" class="btn btn-sm btn-link w-100 px-0">Temizle</a>
+      </div>
+      <div class="col-12">
+        <div class="small text-muted">{{ membership_filtered_count }} usta listeleniyor.</div>
+      </div>
+    </form>
+
+    {% if membership_rows %}
+      <div class="table-responsive">
+        <table class="table request-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Usta</th>
+              <th>Durum</th>
+              <th>Kalan Süre</th>
+              <th>Bitiş Tarihi</th>
+              <th>Son Tahsilat</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for provider in membership_rows %}
+              <tr>
+                <td data-label="Usta">
+                  <strong>{{ provider.full_name }}</strong>
+                  <div class="small text-muted">
+                    {% if provider.user %}@{{ provider.user.username }}{% else %}Kullanıcı bağlı değil{% endif %}
+                    &middot; {{ provider.city }}/{{ provider.district }}
+                  </div>
+                  <div class="small text-muted">
+                    {% if provider.is_verified %}Admin onaylı{% else %}Onay bekliyor{% endif %}
+                  </div>
+                </td>
+                <td data-label="Durum">
+                  <span class="status-pill operations-membership-state state-{{ provider.membership_ui.state }}">
+                    {{ provider.membership_state_label }}
+                  </span>
+                  <div class="small text-muted mt-1">{{ provider.membership_ui.message }}</div>
+                </td>
+                <td data-label="Kalan Süre">
+                  <strong>{{ provider.membership_remaining_label }}</strong>
+                  {% if provider.membership_ui.note %}
+                    <div class="small text-muted mt-1">Not: {{ provider.membership_ui.note }}</div>
+                  {% endif %}
+                </td>
+                <td data-label="Bitiş Tarihi">
+                  {% if provider.membership_expires_at %}
+                    {{ provider.membership_expires_at|date:"d.m.Y H:i" }}
+                  {% else %}
+                    -
+                  {% endif %}
+                  {% if provider.membership_ui.grace_until %}
+                    <div class="small text-muted mt-1">Ek süre sonu: {{ provider.membership_ui.grace_until|date:"d.m.Y H:i" }}</div>
+                  {% endif %}
+                </td>
+                <td data-label="Son Tahsilat">
+                  {% if provider.latest_membership_payment %}
+                    <strong>{{ provider.latest_membership_payment.amount }}</strong>
+                    <div class="small text-muted">{{ provider.latest_membership_payment.cash_received_at|date:"d.m.Y H:i" }}</div>
+                    <div class="small text-muted">
+                      {% if provider.latest_membership_payment.received_by %}
+                        Tahsil eden: {{ provider.latest_membership_payment.received_by.username }}
+                      {% else %}
+                        Tahsil eden kaydı yok
+                      {% endif %}
+                    </div>
+                  {% else %}
+                    <span class="text-muted">Kayıt yok</span>
+                  {% endif %}
+                </td>
+                <td data-label="İşlem">
+                  <form method="post" action="{% url 'operations_dashboard' %}" class="d-grid gap-2 operations-membership-form" data-membership-form>
+                    {% csrf_token %}
+                    <input type="hidden" name="day" value="{{ selected_date_input }}">
+                    <input type="hidden" name="membership_page" value="{{ membership_page_obj.number }}">
+                    <input type="hidden" name="provider_id" value="{{ provider.id }}">
+                    <input type="hidden" name="membership_q" value="{{ membership_filter_query }}">
+                    <input type="hidden" name="membership_state" value="{{ membership_filter_state }}">
+                    <div>
+                      <label class="form-label form-label-sm mb-1" for="membership-action-{{ provider.id }}">İşlem seç</label>
+                      <select
+                        id="membership-action-{{ provider.id }}"
+                        name="membership_action"
+                        class="form-select form-select-sm"
+                        data-membership-action
+                      >
+                        <option value="renew">Üyeliği yenile</option>
+                        <option value="adjust_days">Süreyi düzelt</option>
+                        <option value="trial">Deneme ver</option>
+                        <option value="suspend">Askıya al</option>
+                      </select>
+                    </div>
+                    <div class="small text-muted operations-membership-helper" data-membership-helper>
+                      Nakit tahsilat girip üyeliği uzatır.
+                    </div>
+                    <div class="row g-2 operations-membership-fieldset" data-membership-fields="renew">
+                      <div class="col-6">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          name="amount"
+                          class="form-control form-control-sm"
+                          placeholder="Tutar"
+                        >
+                      </div>
+                      <div class="col-6">
+                        <select name="period_months" class="form-select form-select-sm">
+                          {% for month_value in membership_period_options %}
+                            <option value="{{ month_value }}">{{ month_value }} ay</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                    </div>
+                    <div class="row g-2 operations-membership-fieldset" data-membership-fields="adjust_days" hidden>
+                      <div class="col-12">
+                        <input
+                          type="number"
+                          step="1"
+                          name="adjust_days"
+                          class="form-control form-control-sm"
+                          placeholder="Gün düzeltme (+/-)"
+                        >
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      name="membership_note"
+                      maxlength="240"
+                      class="form-control form-control-sm"
+                      placeholder="Not (opsiyonel)"
+                    >
+                    <div class="d-grid operations-membership-actions">
+                      <button type="submit" class="btn btn-sm btn-main" data-membership-submit>
+                        Yenilemeyi Kaydet
+                      </button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if membership_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ membership_page_obj.number }} / {{ membership_page_obj.paginator.num_pages }}</span>
+          <nav aria-label="Üyelik sayfalama">
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item {% if not membership_page_obj.has_previous %}disabled{% endif %}">
+                <a class="page-link" href="?membership_page={% if membership_page_obj.has_previous %}{{ membership_page_obj.previous_page_number }}{% else %}1{% endif %}{{ membership_page_query }}" aria-label="Önceki">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item disabled"><span class="page-link">{{ membership_page_obj.number }}</span></li>
+              <li class="page-item {% if not membership_page_obj.has_next %}disabled{% endif %}">
+                <a class="page-link" href="?membership_page={% if membership_page_obj.has_next %}{{ membership_page_obj.next_page_number }}{% else %}{{ membership_page_obj.paginator.num_pages }}{% endif %}{{ membership_page_query }}" aria-label="Sonraki">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="mb-0 text-muted">Henüz usta kaydı yok.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
       <h2 class="h5 mb-0"><i class="bi bi-cpu me-2"></i>Scheduler ve Hata Durumu</h2>
       {% if scheduler_healthy %}
@@ -312,4 +538,62 @@
     {% endif %}
   </div>
 </section>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const actionConfig = {
+      renew: {
+        label: "Yenilemeyi Kaydet",
+        helper: "Nakit tahsilat girip üyeliği uzatır.",
+      },
+      adjust_days: {
+        label: "Süreyi Düzelt",
+        helper: "Yanlış eklenen ya da eksik kalan günü doğrudan düzeltir.",
+      },
+      trial: {
+        label: "{{ provider_membership_trial_days }} Gün Deneme Tanımla",
+        helper: "Ustaya geçici erişim verir. Tahsilat kaydı oluşturmaz.",
+      },
+      suspend: {
+        label: "Ustayı Askıya Al",
+        helper: "Usta yeni iş alamaz, mevcut işlerini görmeye devam eder.",
+      },
+    };
+
+    document.querySelectorAll("[data-membership-form]").forEach(function (form) {
+      const actionField = form.querySelector("[data-membership-action]");
+      const helper = form.querySelector("[data-membership-helper]");
+      const submit = form.querySelector("[data-membership-submit]");
+      const renewFields = form.querySelector('[data-membership-fields="renew"]');
+      const adjustFields = form.querySelector('[data-membership-fields="adjust_days"]');
+      const amountField = form.querySelector('[name="amount"]');
+      const periodField = form.querySelector('[name="period_months"]');
+      const adjustField = form.querySelector('[name="adjust_days"]');
+
+      function syncFormState() {
+        const action = actionField.value;
+        const config = actionConfig[action] || actionConfig.renew;
+        const isRenew = action === "renew";
+        const isAdjust = action === "adjust_days";
+
+        renewFields.hidden = !isRenew;
+        adjustFields.hidden = !isAdjust;
+
+        amountField.disabled = !isRenew;
+        periodField.disabled = !isRenew;
+        adjustField.disabled = !isAdjust;
+
+        amountField.required = isRenew;
+        adjustField.required = isAdjust;
+
+        helper.textContent = config.helper;
+        submit.textContent = config.label;
+        submit.classList.toggle("btn-outline-danger", action === "suspend");
+        submit.classList.toggle("btn-main", action !== "suspend");
+      }
+
+      actionField.addEventListener("change", syncFormState);
+      syncFormState();
+    });
+  });
+</script>
 {% endblock %}

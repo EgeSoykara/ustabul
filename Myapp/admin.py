@@ -17,6 +17,7 @@ from .models import (
     Provider,
     ProviderAvailabilitySlot,
     ProviderOffer,
+    ProviderPayment,
     ProviderRating,
     SchedulerHeartbeat,
     ServiceAppointment,
@@ -82,6 +83,18 @@ class CustomerProfileAdminForm(forms.ModelForm):
         self.fields["district"].choices = with_existing_choice([("", "İlçe seçin")] + list(NC_DISTRICT_CHOICES), district_value)
 
 
+class ProviderPaymentInline(admin.TabularInline):
+    model = ProviderPayment
+    extra = 0
+    can_delete = False
+    fields = ("cash_received_at", "amount", "period_months", "membership_extended_until", "received_by", "note")
+    readonly_fields = ("cash_received_at", "amount", "period_months", "membership_extended_until", "received_by", "note")
+    ordering = ("-cash_received_at", "-id")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(ServiceType)
 class ServiceTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "slug")
@@ -103,15 +116,56 @@ class ProviderAdmin(admin.ModelAdmin):
         "is_available",
         "is_verified",
         "verified_at",
+        "membership_state_display",
+        "membership_expires_at",
+        "last_cash_payment_at",
         "rating",
     )
-    list_filter = ("service_types", "city", "is_available", "is_verified")
+    list_filter = ("service_types", "city", "is_available", "is_verified", "membership_status")
     search_fields = ("full_name", "user__username", "city", "district", "phone", "service_types__name")
     filter_horizontal = ("service_types",)
+    inlines = (ProviderPaymentInline,)
 
     @admin.display(description="Hizmet Türleri")
     def service_types_list(self, obj):
         return obj.service_types_display()
+
+    @admin.display(description="Üyelik Durumu")
+    def membership_state_display(self, obj):
+        labels = {
+            "trial": "Deneme",
+            "active": "Aktif",
+            "grace": "Ek Süre",
+            "suspended": "Askıda",
+        }
+        return labels.get(obj.get_membership_state(), "-")
+
+
+@admin.register(ProviderPayment)
+class ProviderPaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        "provider",
+        "amount",
+        "period_months",
+        "cash_received_at",
+        "membership_extended_until",
+        "received_by",
+    )
+    list_filter = ("period_months", "cash_received_at")
+    search_fields = ("provider__full_name", "provider__user__username", "note")
+    ordering = ("-cash_received_at", "-id")
+    readonly_fields = ("membership_extended_from", "membership_extended_until", "created_at")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "received_by":
+            queryset = kwargs.get("queryset", db_field.remote_field.model._default_manager.all())
+            kwargs["queryset"] = queryset.filter(is_staff=True, is_active=True).order_by("username")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not obj.received_by_id:
+            obj.received_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(ServiceRequest)

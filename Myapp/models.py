@@ -1,13 +1,20 @@
+from datetime import timedelta
+
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db.models import Avg
+from django.db.models import Avg, Q
 from django.utils.crypto import get_random_string
 from django.utils import timezone
 
 REQUEST_CODE_PREFIX = "TLP"
 REQUEST_CODE_RANDOM_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 REQUEST_CODE_RANDOM_LENGTH = 6
+
+
+def get_provider_membership_grace_days():
+    return max(0, int(getattr(settings, "PROVIDER_MEMBERSHIP_GRACE_DAYS", 5)))
 
 
 def build_service_request_code(created_at=None):
@@ -28,7 +35,26 @@ class ServiceType(models.Model):
         return self.name
 
 
+class ProviderQuerySet(models.QuerySet):
+    def accepting_new_requests(self, *, now=None):
+        reference_time = now or timezone.now()
+        grace_cutoff = reference_time - timedelta(days=get_provider_membership_grace_days())
+        return (
+            self.filter(is_verified=True, is_available=True)
+            .exclude(membership_status="suspended")
+            .filter(Q(membership_expires_at__isnull=True) | Q(membership_expires_at__gte=grace_cutoff))
+        )
+
+
 class Provider(models.Model):
+    MEMBERSHIP_STATUS_CHOICES = (
+        ("trial", "Deneme"),
+        ("active", "Aktif"),
+        ("suspended", "Askıda"),
+    )
+
+    objects = ProviderQuerySet.as_manager()
+
     user = models.OneToOneField(
         User,
         on_delete=models.SET_NULL,
@@ -47,6 +73,10 @@ class Provider(models.Model):
     is_available = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)
     verified_at = models.DateTimeField(null=True, blank=True)
+    membership_status = models.CharField(max_length=16, choices=MEMBERSHIP_STATUS_CHOICES, default="active")
+    membership_expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_cash_payment_at = models.DateTimeField(null=True, blank=True)
+    membership_note = models.CharField(max_length=240, blank=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -59,12 +89,85 @@ class Provider(models.Model):
     def service_types_display(self):
         return ", ".join(self.service_types.values_list("name", flat=True))
 
+    @property
+    def membership_grace_until(self):
+        if not self.membership_expires_at:
+            return None
+        return self.membership_expires_at + timedelta(days=get_provider_membership_grace_days())
+
+    def get_membership_state(self, *, now=None):
+        reference_time = now or timezone.now()
+        if self.membership_status == "suspended":
+            return "suspended"
+        if self.membership_expires_at and self.membership_expires_at < reference_time:
+            grace_until = self.membership_grace_until
+            if grace_until and grace_until >= reference_time:
+                return "grace"
+            return "suspended"
+        if self.membership_status == "trial":
+            return "trial"
+        return "active"
+
+    def can_receive_new_requests(self, *, now=None):
+        return bool(self.is_verified and self.is_available and self.get_membership_state(now=now) in {"trial", "active", "grace"})
+
     def save(self, *args, **kwargs):
         if self.is_verified and self.verified_at is None:
             self.verified_at = timezone.now()
         if not self.is_verified and self.verified_at is not None:
             self.verified_at = None
         super().save(*args, **kwargs)
+
+
+class ProviderPayment(models.Model):
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="membership_payments")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    period_months = models.PositiveSmallIntegerField(default=1)
+    cash_received_at = models.DateTimeField(default=timezone.now)
+    received_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="provider_payments_received",
+    )
+    note = models.CharField(max_length=240, blank=True)
+    membership_extended_from = models.DateTimeField(null=True, blank=True, editable=False)
+    membership_extended_until = models.DateTimeField(null=True, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-cash_received_at", "-id"]
+
+    def __str__(self):
+        paid_at = timezone.localtime(self.cash_received_at).strftime("%d.%m.%Y") if self.cash_received_at else "-"
+        return f"{self.provider.full_name} - {self.amount} ({paid_at})"
+
+    def save(self, *args, **kwargs):
+        is_create = self._state.adding
+        effective_paid_at = self.cash_received_at or timezone.now()
+        months = max(1, int(self.period_months or 1))
+        if is_create:
+            current_expiry = self.provider.membership_expires_at
+            extension_start = current_expiry if current_expiry and current_expiry > effective_paid_at else effective_paid_at
+            self.membership_extended_from = extension_start
+            self.membership_extended_until = extension_start + timedelta(days=30 * months)
+
+        super().save(*args, **kwargs)
+
+        if is_create:
+            update_fields = []
+            if self.provider.membership_status != "active":
+                self.provider.membership_status = "active"
+                update_fields.append("membership_status")
+            if self.provider.membership_expires_at != self.membership_extended_until:
+                self.provider.membership_expires_at = self.membership_extended_until
+                update_fields.append("membership_expires_at")
+            if self.provider.last_cash_payment_at != effective_paid_at:
+                self.provider.last_cash_payment_at = effective_paid_at
+                update_fields.append("last_cash_payment_at")
+            if update_fields:
+                self.provider.save(update_fields=update_fields)
 
 
 class ServiceRequest(models.Model):

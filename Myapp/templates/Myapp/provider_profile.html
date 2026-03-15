@@ -24,6 +24,18 @@
         <span class="small text-muted">Onay tarihi: {{ provider.verified_at|date:"d.m.Y H:i" }}</span>
       {% endif %}
     </div>
+    <div class="alert alert-{{ provider_membership.tone }} mt-3 mb-0" role="alert">
+      <div class="d-flex flex-column gap-1">
+        <strong>{{ provider_membership.title }}</strong>
+        <span>{{ provider_membership.message }}</span>
+        {% if provider_membership.last_cash_payment_at %}
+          <span class="small">Son nakit tahsilat: {{ provider_membership.last_cash_payment_at|date:"d.m.Y H:i" }}</span>
+        {% endif %}
+        {% if provider_membership.note %}
+          <span class="small">Not: {{ provider_membership.note }}</span>
+        {% endif %}
+      </div>
+    </div>
   </div>
 </section>
 

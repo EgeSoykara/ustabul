@@ -17,6 +17,16 @@
         <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Randevu onayı</div><div class="h5 mb-0">{{ pending_appointments_count }}</div></div></div>
       {% endif %}
     </div>
+
+    <div class="alert alert-{{ provider_membership.tone }} mb-0" role="alert">
+      <div class="d-flex flex-column gap-1">
+        <strong>{{ provider_membership.title }}</strong>
+        <span>{{ provider_membership.message }}</span>
+        {% if provider_membership.note %}
+          <span class="small">Not: {{ provider_membership.note }}</span>
+        {% endif %}
+      </div>
+    </div>
   </div>
 </section>
 
@@ -77,10 +87,14 @@
                 placeholder="Kısa not (opsiyonel)"
               >
               <div class="provider-inline-actions">
-                <form method="post" action="{% url 'provider_accept_offer' offer.id %}" id="accept-offer-pending-{{ offer.id }}" class="m-0">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-main"><i class="bi bi-check2 me-1"></i>Onayla</button>
-                </form>
+                {% if provider_membership.can_receive_new_requests %}
+                  <form method="post" action="{% url 'provider_accept_offer' offer.id %}" id="accept-offer-pending-{{ offer.id }}" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-main"><i class="bi bi-check2 me-1"></i>Onayla</button>
+                  </form>
+                {% else %}
+                  <div class="small text-muted">Üyelik yenilenene kadar yeni iş kabulü kapalı.</div>
+                {% endif %}
                 <form method="post" action="{% url 'provider_reject_offer' offer.id %}" class="m-0" data-confirm-message="Bu teklifi reddetmek istediğinize emin misiniz?">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle me-1"></i>Reddet</button>

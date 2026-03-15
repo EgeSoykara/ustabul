@@ -8,8 +8,10 @@ import time
 import traceback
 import unicodedata
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from email.utils import parseaddr
 from secrets import randbelow
+from urllib.parse import urlencode
 from uuid import uuid4
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -24,7 +26,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.urls import reverse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -80,6 +82,7 @@ from .models import (
     Provider,
     ProviderAvailabilitySlot,
     ProviderOffer,
+    ProviderPayment,
     ProviderRating,
     SchedulerHeartbeat,
     ServiceAppointment,
@@ -140,7 +143,7 @@ def get_preferred_provider(raw_provider_id):
     if not raw_value.isdigit():
         return None
     return (
-        Provider.objects.filter(id=int(raw_value), is_verified=True, is_available=True)
+        Provider.objects.accepting_new_requests().filter(id=int(raw_value))
         .prefetch_related("service_types")
         .first()
     )
@@ -406,6 +409,143 @@ def get_verified_provider_or_redirect(request, *, redirect_name="provider_login"
         queue_provider_pending_approval_warning(request)
         return None, redirect(redirect_name)
     return provider, None
+
+
+def build_provider_membership_context(provider, *, now=None):
+    reference_time = now or timezone.now()
+    state = provider.get_membership_state(now=reference_time)
+    expires_at = provider.membership_expires_at
+    grace_until = provider.membership_grace_until
+    context = {
+        "state": state,
+        "can_receive_new_requests": provider.can_receive_new_requests(now=reference_time),
+        "expires_at": expires_at,
+        "grace_until": grace_until,
+        "last_cash_payment_at": provider.last_cash_payment_at,
+        "note": (provider.membership_note or "").strip(),
+        "tone": "success",
+        "title": "Üyeliğiniz aktif",
+        "message": "Yeni talepler almaya devam edebilirsiniz.",
+    }
+    if state == "trial":
+        context["tone"] = "info"
+        context["title"] = "Deneme üyeliği aktif"
+        context["message"] = (
+            f"Son görünürlük tarihi: {timezone.localtime(expires_at).strftime('%d.%m.%Y %H:%M')}."
+            if expires_at
+            else "Admin panelinden ilk son ödeme tarihi tanımlanana kadar görünürsünüz."
+        )
+    elif state == "active":
+        if expires_at:
+            context["message"] = f"Üyeliğiniz {timezone.localtime(expires_at).strftime('%d.%m.%Y %H:%M')} tarihine kadar aktif."
+    elif state == "grace":
+        context["tone"] = "warning"
+        context["title"] = "Ödeme yenilemesi gerekiyor"
+        context["message"] = (
+            f"Son ödeme tarihiniz geçti. {timezone.localtime(grace_until).strftime('%d.%m.%Y %H:%M')} tarihine kadar görünürlüğünüz korunuyor."
+            if grace_until
+            else "Son ödeme tarihiniz geçti. Lütfen üyeliğinizi yenileyin."
+        )
+    else:
+        context["tone"] = "danger"
+        context["title"] = "Üyeliğiniz askıda"
+        context["message"] = "Yeni talep alamazsınız. Mevcut işlerinizi tamamlayabilir, yenileme için yönetime başvurabilirsiniz."
+    return context
+
+
+def require_provider_membership_for_new_requests(request, provider, *, redirect_name="provider_requests"):
+    if provider.can_receive_new_requests():
+        return None
+    membership = build_provider_membership_context(provider)
+    messages.warning(request, membership["message"])
+    return redirect(redirect_name)
+
+
+def get_provider_membership_trial_days():
+    return max(1, int(getattr(settings, "PROVIDER_MEMBERSHIP_TRIAL_DAYS", 30)))
+
+
+def get_provider_membership_state_label(state):
+    labels = {
+        "trial": "Deneme",
+        "active": "Aktif",
+        "grace": "Ek Süre",
+        "suspended": "Askıda",
+    }
+    return labels.get(state, "-")
+
+
+def get_provider_membership_state_rank(state):
+    ranks = {
+        "suspended": 0,
+        "grace": 1,
+        "trial": 2,
+        "active": 3,
+    }
+    return ranks.get(state, 9)
+
+
+def build_provider_membership_remaining_label(provider, membership, *, now=None):
+    reference_time = now or timezone.now()
+    expires_at = membership.get("expires_at")
+    grace_until = membership.get("grace_until")
+    state = membership.get("state")
+
+    if state in {"active", "trial"}:
+        if not expires_at:
+            return "Tarih tanımlı değil"
+        remaining = expires_at - reference_time
+        if remaining.total_seconds() <= 0:
+            return "Bugün bitiyor"
+        days = max(0, int(remaining.total_seconds() // 86400))
+        hours = max(0, int((remaining.total_seconds() % 86400) // 3600))
+        if days > 0:
+            return f"{days} gün kaldı"
+        if hours > 0:
+            return f"{hours} saat kaldı"
+        return "1 saatten az kaldı"
+
+    if state == "grace":
+        if not grace_until:
+            return "Ek sürede"
+        remaining = grace_until - reference_time
+        if remaining.total_seconds() <= 0:
+            return "Ek süre doldu"
+        days = max(0, int(remaining.total_seconds() // 86400))
+        hours = max(0, int((remaining.total_seconds() % 86400) // 3600))
+        if days > 0:
+            return f"Ek sürede, {days} gün kaldı"
+        if hours > 0:
+            return f"Ek sürede, {hours} saat kaldı"
+        return "Ek sürede, son saatler"
+
+    if expires_at and expires_at < reference_time:
+        overdue = reference_time - expires_at
+        overdue_days = max(1, int(overdue.total_seconds() // 86400) or 0)
+        return f"{overdue_days} gün gecikmiş"
+    return "Askıda"
+
+
+def build_operations_dashboard_redirect_url(request, selected_day):
+    params = {}
+    if selected_day:
+        params["day"] = selected_day.isoformat()
+    membership_page_raw = str(request.POST.get("membership_page") or request.GET.get("membership_page") or "").strip()
+    if membership_page_raw.isdigit():
+        params["membership_page"] = membership_page_raw
+    activity_page_raw = str(request.POST.get("activity_page") or request.GET.get("activity_page") or "").strip()
+    if activity_page_raw.isdigit():
+        params["activity_page"] = activity_page_raw
+    membership_query = str(request.POST.get("membership_q") or request.GET.get("membership_q") or "").strip()
+    if membership_query:
+        params["membership_q"] = membership_query
+    membership_state = str(request.POST.get("membership_state") or request.GET.get("membership_state") or "").strip()
+    if membership_state and membership_state != "all":
+        params["membership_state"] = membership_state
+    base_url = reverse("operations_dashboard")
+    if not params:
+        return base_url
+    return f"{base_url}?{urlencode(params)}"
 
 
 def get_city_district_map_json():
@@ -1453,13 +1593,13 @@ def refresh_offer_lifecycle():
     expired_request_ids.update(expired_qs.values_list("service_request_id", flat=True))
     expired_qs.update(status="expired", responded_at=now)
 
-    # Unverified providers must never stay in customer offer flow.
-    unverified_offer_qs = ProviderOffer.objects.filter(
-        status__in=["pending", "accepted"],
-        provider__is_verified=False,
+    # Providers who are no longer eligible for new work must never stay in offer flow.
+    eligible_provider_ids = Provider.objects.accepting_new_requests(now=now).values_list("id", flat=True)
+    ineligible_offer_qs = ProviderOffer.objects.filter(status__in=["pending", "accepted"]).exclude(
+        provider_id__in=eligible_provider_ids
     )
-    expired_request_ids.update(unverified_offer_qs.values_list("service_request_id", flat=True))
-    unverified_offer_qs.update(status="expired", responded_at=now)
+    expired_request_ids.update(ineligible_offer_qs.values_list("service_request_id", flat=True))
+    ineligible_offer_qs.update(status="expired", responded_at=now)
 
     reminder_deadline = now + timedelta(minutes=get_offer_reminder_minutes())
     reminder_qs = list(
@@ -1743,7 +1883,10 @@ def build_customer_requests_signature(user):
         return "empty"
 
     offer_rows = list(
-        ProviderOffer.objects.filter(service_request__customer=user, provider__is_verified=True)
+        ProviderOffer.objects.filter(
+            service_request__customer=user,
+            provider_id__in=Provider.objects.accepting_new_requests().values("id"),
+        )
         .values_list("service_request_id", "provider_id", "status", "responded_at")
         .order_by("service_request_id", "provider_id")
     )
@@ -1814,6 +1957,14 @@ def build_provider_panel_signature(provider):
         "requests": request_rows,
         "appointments": appointment_rows,
         "unread": unread_rows,
+        "membership": [
+            provider.membership_status,
+            provider.get_membership_state(),
+            provider.membership_expires_at,
+            provider.last_cash_payment_at,
+            provider.is_available,
+            provider.is_verified,
+        ],
     }
     encoded = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -1859,7 +2010,7 @@ def build_customer_snapshot_payload(user):
     snapshot["accepted_offers_count"] = ProviderOffer.objects.filter(
         service_request__customer=user,
         status="accepted",
-        provider__is_verified=True,
+        provider_id__in=Provider.objects.accepting_new_requests().values("id"),
     ).count()
     snapshot["unread_messages_count"] = ServiceMessage.objects.filter(
         service_request__customer=user,
@@ -2270,11 +2421,8 @@ def generate_offer_token():
 def build_provider_candidate_groups(service_request):
     city_variants = _build_city_variants(service_request.city)
     base_qs = (
-        Provider.objects.filter(
-            is_verified=True,
-            is_available=True,
-            service_types=service_request.service_type,
-        )
+        Provider.objects.accepting_new_requests()
+        .filter(service_types=service_request.service_type)
         .filter(_build_iexact_query("city", city_variants))
         .prefetch_related("service_types")
     )
@@ -2316,10 +2464,9 @@ def dispatch_preferred_provider_offer(
 
     city_variants = _build_city_variants(service_request.city)
     candidate_qs = (
-        Provider.objects.filter(
+        Provider.objects.accepting_new_requests()
+        .filter(
             id=preferred_provider.id,
-            is_verified=True,
-            is_available=True,
             service_types=service_request.service_type,
         )
         .filter(_build_iexact_query("city", city_variants))
@@ -2570,10 +2717,8 @@ def index(request):
             provider_page_size = 24
     else:
         provider_page_size = 24
-    providers_qs = (
-        Provider.objects.filter(is_verified=True, is_available=True)
-        .prefetch_related("service_types")
-        .annotate(ratings_count=Count("ratings", distinct=True))
+    providers_qs = Provider.objects.accepting_new_requests().prefetch_related("service_types").annotate(
+        ratings_count=Count("ratings", distinct=True)
     )
     selected_sort_label = "Önerilen"
 
@@ -2764,7 +2909,7 @@ def create_request(request):
         provider_page_size_options = [12, 24, 48, 96]
         provider_page_size = 24
         providers_qs = (
-            Provider.objects.filter(is_verified=True, is_available=True)
+            Provider.objects.accepting_new_requests()
             .prefetch_related("service_types")
             .annotate(ratings_count=Count("ratings", distinct=True))
             .order_by("-rating", "full_name", "id")
@@ -3225,6 +3370,7 @@ def provider_profile_view(request):
         "Myapp/provider_profile.html",
         {
             "provider": provider,
+            "provider_membership": build_provider_membership_context(provider),
             "form": form,
             "availability_form": availability_form,
             "availability_slots": availability_slots,
@@ -3672,17 +3818,122 @@ def operations_dashboard(request):
         messages.error(request, "Bu alan sadece y\u00f6netim kullan\u0131c\u0131lar\u0131 i\u00e7indir.")
         return redirect("index")
 
-    refresh_marketplace_lifecycle()
-
     today = timezone.localdate()
     selected_day = today
-    selected_day_raw = (request.GET.get("day") or "").strip()
+    selected_day_raw = (request.POST.get("day") or request.GET.get("day") or "").strip()
     if selected_day_raw:
         try:
             selected_day = datetime.strptime(selected_day_raw, "%Y-%m-%d").date()
         except ValueError:
             messages.warning(request, "Ge\u00e7ersiz tarih nedeniyle bug\u00fcn\u00fcn verileri g\u00f6sterildi.")
             selected_day = today
+    membership_filter_query = str(request.POST.get("membership_q") or request.GET.get("membership_q") or "").strip()
+    membership_filter_state = str(request.POST.get("membership_state") or request.GET.get("membership_state") or "all").strip()
+    membership_filter_options = {
+        "all": "Tümü",
+        "active": "Aktif",
+        "trial": "Deneme",
+        "grace": "Ek sürede",
+        "suspended": "Askıda",
+        "expiring_soon": "7 gün içinde bitecek",
+        "pending_verification": "Onay bekleyenler",
+    }
+    if membership_filter_state not in membership_filter_options:
+        membership_filter_state = "all"
+
+    if request.method == "POST":
+        provider_id_raw = str(request.POST.get("provider_id") or "").strip()
+        membership_action = str(request.POST.get("membership_action") or "").strip()
+        redirect_url = build_operations_dashboard_redirect_url(request, selected_day)
+        if not provider_id_raw.isdigit():
+            messages.warning(request, "Üyelik işlemi için geçerli bir usta seçin.")
+            return redirect(redirect_url)
+
+        provider = get_object_or_404(Provider.objects.select_related("user"), id=int(provider_id_raw))
+        membership_note = (request.POST.get("membership_note") or "").strip()
+        if len(membership_note) > 240:
+            messages.warning(request, "Üyelik notu en fazla 240 karakter olabilir.")
+            return redirect(redirect_url)
+
+        now = timezone.now()
+        if membership_action == "renew":
+            amount_raw = str(request.POST.get("amount") or "").strip().replace(",", ".")
+            period_months_raw = str(request.POST.get("period_months") or "1").strip()
+            try:
+                amount = Decimal(amount_raw)
+            except (InvalidOperation, ValueError):
+                messages.warning(request, "Geçerli bir tahsilat tutarı girin.")
+                return redirect(redirect_url)
+            if amount <= 0:
+                messages.warning(request, "Tahsilat tutarı sıfırdan büyük olmalıdır.")
+                return redirect(redirect_url)
+            if not period_months_raw.isdigit():
+                messages.warning(request, "Geçerli bir üyelik süresi seçin.")
+                return redirect(redirect_url)
+            period_months = max(1, min(12, int(period_months_raw)))
+            payment = ProviderPayment.objects.create(
+                provider=provider,
+                amount=amount,
+                period_months=period_months,
+                cash_received_at=now,
+                received_by=request.user,
+                note=membership_note,
+            )
+            if membership_note and provider.membership_note != membership_note:
+                provider.membership_note = membership_note
+                provider.save(update_fields=["membership_note"])
+            messages.success(
+                request,
+                f"{provider.full_name} üyeliği {timezone.localtime(payment.membership_extended_until).strftime('%d.%m.%Y %H:%M')} tarihine kadar yenilendi.",
+            )
+        elif membership_action == "suspend":
+            update_fields = []
+            if provider.membership_status != "suspended":
+                provider.membership_status = "suspended"
+                update_fields.append("membership_status")
+            if provider.membership_note != membership_note:
+                provider.membership_note = membership_note
+                update_fields.append("membership_note")
+            if update_fields:
+                provider.save(update_fields=update_fields)
+            messages.success(request, f"{provider.full_name} askıya alındı.")
+        elif membership_action == "trial":
+            trial_days = get_provider_membership_trial_days()
+            trial_start = provider.membership_expires_at if provider.membership_expires_at and provider.membership_expires_at > now else now
+            provider.membership_status = "trial"
+            provider.membership_expires_at = trial_start + timedelta(days=trial_days)
+            provider.membership_note = membership_note
+            provider.save(update_fields=["membership_status", "membership_expires_at", "membership_note"])
+            messages.success(request, f"{provider.full_name} için {trial_days} günlük deneme süresi tanımlandı.")
+        elif membership_action == "adjust_days":
+            adjust_days_raw = str(request.POST.get("adjust_days") or "").strip()
+            try:
+                adjust_days = int(adjust_days_raw)
+            except (TypeError, ValueError):
+                messages.warning(request, "Düzeltme için geçerli bir gün değeri girin.")
+                return redirect(redirect_url)
+            if adjust_days == 0:
+                messages.warning(request, "Düzeltme için sıfır dışında bir gün değeri girin.")
+                return redirect(redirect_url)
+            if not -365 <= adjust_days <= 365:
+                messages.warning(request, "Gün düzeltme değeri -365 ile 365 arasında olmalıdır.")
+                return redirect(redirect_url)
+            base_expiry = provider.membership_expires_at or now
+            provider.membership_expires_at = base_expiry + timedelta(days=adjust_days)
+            update_fields = ["membership_expires_at"]
+            if membership_note != provider.membership_note:
+                provider.membership_note = membership_note
+                update_fields.append("membership_note")
+            provider.save(update_fields=update_fields)
+            messages.success(request, f"{provider.full_name} için üyelik süresi {adjust_days:+} gün düzeltildi.")
+        else:
+            messages.warning(request, "Bilinmeyen üyelik işlemi.")
+            return redirect(redirect_url)
+
+        refresh_marketplace_lifecycle()
+        return redirect(redirect_url)
+
+    refresh_marketplace_lifecycle()
 
     request_status_labels = {
         "new": "Yeni",
@@ -3789,6 +4040,73 @@ def operations_dashboard(request):
         for status_key, _label in ServiceAppointment.STATUS_CHOICES
     ]
 
+    membership_qs = Provider.objects.select_related("user").prefetch_related(
+        "service_types",
+        Prefetch(
+            "membership_payments",
+            queryset=ProviderPayment.objects.select_related("received_by").order_by("-cash_received_at", "-id"),
+        ),
+    )
+    if membership_filter_query:
+        membership_qs = membership_qs.filter(
+            Q(full_name__icontains=membership_filter_query)
+            | Q(user__username__icontains=membership_filter_query)
+            | Q(phone__icontains=membership_filter_query)
+            | Q(city__icontains=membership_filter_query)
+            | Q(district__icontains=membership_filter_query)
+        )
+    membership_rows = list(membership_qs)
+    membership_now = timezone.now()
+    fallback_sort_at = timezone.make_aware(datetime.max.replace(microsecond=0))
+    for provider in membership_rows:
+        membership = build_provider_membership_context(provider, now=membership_now)
+        provider.membership_state = membership["state"]
+        provider.membership_state_label = get_provider_membership_state_label(membership["state"])
+        provider.membership_remaining_label = build_provider_membership_remaining_label(
+            provider,
+            membership,
+            now=membership_now,
+        )
+        provider.membership_ui = membership
+        payments = list(provider.membership_payments.all())
+        provider.latest_membership_payment = payments[0] if payments else None
+        provider.membership_is_expiring_soon = False
+        provider.membership_sort_rank = get_provider_membership_state_rank(membership["state"])
+        provider.membership_sort_at = provider.membership_expires_at or membership.get("grace_until") or fallback_sort_at
+
+        if provider.membership_expires_at and membership["state"] in {"active", "trial"}:
+            remaining_seconds = (provider.membership_expires_at - membership_now).total_seconds()
+            if 0 <= remaining_seconds <= 7 * 86400:
+                provider.membership_is_expiring_soon = True
+
+    if membership_filter_state != "all":
+        if membership_filter_state == "expiring_soon":
+            membership_rows = [provider for provider in membership_rows if provider.membership_is_expiring_soon]
+        elif membership_filter_state == "pending_verification":
+            membership_rows = [provider for provider in membership_rows if not provider.is_verified]
+        else:
+            membership_rows = [provider for provider in membership_rows if provider.membership_state == membership_filter_state]
+
+    membership_summary = {
+        "active_count": sum(1 for provider in membership_rows if provider.membership_state == "active"),
+        "trial_count": sum(1 for provider in membership_rows if provider.membership_state == "trial"),
+        "grace_count": sum(1 for provider in membership_rows if provider.membership_state == "grace"),
+        "suspended_count": sum(1 for provider in membership_rows if provider.membership_state == "suspended"),
+        "expiring_soon_count": sum(1 for provider in membership_rows if provider.membership_is_expiring_soon),
+    }
+
+    membership_rows.sort(
+        key=lambda item: (
+            item.membership_sort_rank,
+            item.membership_sort_at,
+            not item.is_verified,
+            item.full_name.lower(),
+            item.id,
+        )
+    )
+    membership_page_obj = paginate_items(request, membership_rows, per_page=12, page_param="membership_page")
+    membership_page_query = build_page_query_suffix(request, "membership_page")
+
     return render(
         request,
         "Myapp/operations_dashboard.html",
@@ -3814,6 +4132,16 @@ def operations_dashboard(request):
             "activity_page_obj": activity_page_obj,
             "activity_rows": list(activity_page_obj.object_list),
             "activity_page_query": activity_page_query,
+            "membership_summary": membership_summary,
+            "membership_page_obj": membership_page_obj,
+            "membership_rows": list(membership_page_obj.object_list),
+            "membership_page_query": membership_page_query,
+            "membership_filter_query": membership_filter_query,
+            "membership_filter_state": membership_filter_state,
+            "membership_filter_options": membership_filter_options,
+            "membership_filtered_count": len(membership_rows),
+            "membership_period_options": [1, 3, 6, 12],
+            "provider_membership_trial_days": get_provider_membership_trial_days(),
             "scheduler_heartbeat": scheduler_heartbeat,
             "scheduler_healthy": scheduler_healthy,
             "scheduler_age_seconds": scheduler_age_seconds,
@@ -4685,7 +5013,7 @@ def select_provider_offer(request, request_id, offer_id):
                 id=offer_id,
                 service_request=service_request,
                 status="accepted",
-                provider__is_verified=True,
+                provider_id__in=Provider.objects.accepting_new_requests().values("id"),
             )
             .first()
         )
@@ -4720,6 +5048,7 @@ def select_provider_offer(request, request_id, offer_id):
 
 def build_provider_panel_context(request, provider):
     calendar_enabled = is_calendar_enabled()
+    provider_membership = build_provider_membership_context(provider)
     highlight_request_raw = str(request.GET.get("highlight_request") or "").strip()
     highlight_request_id = int(highlight_request_raw) if highlight_request_raw.isdigit() else None
     highlight_appointment_raw = str(request.GET.get("highlight_appointment") or "").strip()
@@ -4978,6 +5307,7 @@ def build_provider_panel_context(request, provider):
 
     return {
         "provider": provider,
+        "provider_membership": provider_membership,
         "pending_offers": pending_offers,
         "pending_offers_count": pending_offers_count,
         "latest_pending_offer_id": latest_pending_offer_id,
@@ -5046,9 +5376,10 @@ def provider_panel_snapshot(request):
 
 def provider_detail(request, provider_id):
     provider = get_object_or_404(
-        Provider.objects.prefetch_related("service_types").annotate(ratings_count=Count("ratings", distinct=True)),
+        Provider.objects.accepting_new_requests()
+        .prefetch_related("service_types")
+        .annotate(ratings_count=Count("ratings", distinct=True)),
         id=provider_id,
-        is_verified=True,
     )
     recent_ratings = list(provider.ratings.select_related("customer").order_by("-updated_at")[:10])
     completed_jobs = provider.service_requests.filter(status="completed").count()
@@ -5274,6 +5605,9 @@ def provider_accept_offer(request, offer_id):
     provider, blocked_response = get_verified_provider_or_redirect(request)
     if blocked_response:
         return blocked_response
+    membership_block = require_provider_membership_for_new_requests(request, provider)
+    if membership_block:
+        return membership_block
 
     rate_limit_response = reject_rate_limited_request(
         request,
