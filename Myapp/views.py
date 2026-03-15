@@ -589,9 +589,9 @@ def send_signup_verification_email(email, code, *, purpose):
     subject = f"Ustabul {meta['mail_subject']}"
     body = (
         f"Merhaba,\n\n"
-        f"Kaydi tamamlamak icin dogrulama kodunuz: {code}\n\n"
-        f"Bu kod {ttl_minutes} dakika boyunca gecerlidir.\n"
-        f"Eger bu islemi siz yapmadiysaniz bu e-postayi dikkate almayin.\n\n"
+        f"Kaydınızı tamamlamak için doğrulama kodunuz: {code}\n\n"
+        f"Bu kod {ttl_minutes} dakika boyunca geçerlidir.\n"
+        f" Eğer bu işlemi siz yapmadıysanız bu e-postayı dikkate almayınız.\n\n"
         f"Ustabul"
     )
     if brevo_api_key:
@@ -604,7 +604,7 @@ def send_signup_verification_email(email, code, *, purpose):
             if not str(getattr(settings, field_name, "") or "").strip()
         ]
         if missing_fields:
-            raise RuntimeError(f"SMTP ayarlari eksik: {', '.join(missing_fields)}")
+            raise RuntimeError(f"SMTP ayarları eksik: {', '.join(missing_fields)}")
     if not sender_email:
         raise RuntimeError("DEFAULT_FROM_EMAIL ayari gecersiz.")
     send_mail(
@@ -658,7 +658,7 @@ def log_signup_email_delivery_failure(request, *, email, purpose, exc):
         user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
         request_id = request.headers.get("X-Request-ID", "")[:120]
         detail = (
-            f"Kayit dogrulama e-postasi gonderilemedi "
+            f"Kayıt doğrulama e-postası gönderilemedi "
             f"({purpose}, {normalize_signup_email(email)}): {type(exc).__name__}: {exc}"
         )
         ErrorLog.objects.create(
@@ -709,7 +709,7 @@ def create_account_from_pending_signup(payload):
     password_hash = str(payload.get("password_hash") or "").strip()
 
     if not username or not email or not password_hash:
-        raise ValidationError("Kayit verisi eksik. Lutfen yeniden kayit olun.")
+        raise ValidationError("Kayıt verisi eksik. ütfen yeniden kayıt olun.")
     if User.objects.filter(username__iexact=username).exists():
         raise ValidationError("Bu kullanici adi artik kullanilamiyor. Lutfen bilgileri yeniden girin.")
     if User.objects.filter(email__iexact=email).exists():
@@ -739,7 +739,7 @@ def create_account_from_pending_signup(payload):
         service_type_ids = [int(value) for value in payload.get("service_type_ids") or [] if str(value).isdigit()]
         service_types = list(ServiceType.objects.filter(id__in=service_type_ids))
         if len(service_types) != len(service_type_ids):
-            raise ValidationError("Secilen hizmetler dogrulanamadi. Lutfen yeniden kayit olun.")
+            raise ValidationError("Seçilen hizmetler doğrulanamadı. Lutfen yeniden kayıt olun.")
 
         provider = Provider.objects.create(
             user=user,
@@ -841,7 +841,7 @@ def evaluate_appointment_cancel_policy(appointment, *, now=None):
                 f"Son dakika iptal politikasi: Randevuya {get_last_minute_cancel_hours()} saatten az kala iptaller "
                 "son dakika iptali olarak kaydedilir."
             ),
-            "result_message": "Randevu iptal edildi. Son dakika iptal kaydi olusturuldu.",
+            "result_message": "Randevu iptal edildi. Son dakika iptal kaydi oluşturuldu.",
             "workflow_suffix": f"Son dakika iptali ({timing_note}).",
         }
 

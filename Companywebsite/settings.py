@@ -247,7 +247,7 @@ else:
         }
     }
 if IS_PRODUCTION and not DATABASE_URL:
-    raise RuntimeError("Production ortaminda DATABASE_URL zorunludur; sqlite fallback devre disi.")
+    raise RuntimeError("Production ortaminda DATABASE_URL zorunludur; sqlite fallback devre dışı.")
 
 
 # Password validation

@@ -44,13 +44,21 @@
         <form method="post" class="m-0">
           {% csrf_token %}
           <input type="hidden" name="action" value="resend">
-          <button type="submit" class="btn btn-outline-secondary" {% if resend_available_in %}disabled{% endif %}>
+          <button
+            type="submit"
+            class="btn btn-outline-secondary"
+            id="resend-code-button"
+            data-resend-seconds="{{ resend_available_in|default:0 }}"
+            {% if resend_available_in %}disabled{% endif %}
+          >
             <i class="bi bi-arrow-repeat me-1"></i>
-            {% if resend_available_in %}
-              Yeni kod {{ resend_available_in }} sn sonra
-            {% else %}
-              Kodu Yeniden Gönder
-            {% endif %}
+            <span id="resend-code-label">
+              {% if resend_available_in %}
+                Yeni kod {{ resend_available_in }} sn sonra
+              {% else %}
+                Kodu Yeniden Gönder
+              {% endif %}
+            </span>
           </button>
         </form>
 
@@ -59,4 +67,37 @@
     </div>
   </div>
 </section>
+<script>
+  (function () {
+    const button = document.getElementById("resend-code-button");
+    const label = document.getElementById("resend-code-label");
+    if (!button || !label) return;
+
+    let remainingSeconds = Number(button.dataset.resendSeconds || "0");
+    if (!Number.isFinite(remainingSeconds) || remainingSeconds <= 0) {
+      button.disabled = false;
+      label.textContent = "Kodu Yeniden Gönder";
+      return;
+    }
+
+    const updateLabel = function () {
+      if (remainingSeconds <= 0) {
+        button.disabled = false;
+        label.textContent = "Kodu Yeniden Gönder";
+        return true;
+      }
+      button.disabled = true;
+      label.textContent = `Yeni kod ${remainingSeconds} sn sonra`;
+      return false;
+    };
+
+    updateLabel();
+    const intervalId = window.setInterval(function () {
+      remainingSeconds -= 1;
+      if (updateLabel()) {
+        window.clearInterval(intervalId);
+      }
+    }, 1000);
+  })();
+</script>
 {% endblock %}

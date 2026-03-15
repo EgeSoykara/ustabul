@@ -709,6 +709,28 @@ class MarketplaceTests(TestCase):
         self.assertEqual(self.client.session.get("role"), "customer")
         self.assertNotIn("pending_email_signup", self.client.session)
 
+    def test_signup_verify_page_includes_live_resend_countdown(self):
+        response = self.client.post(
+            reverse("signup"),
+            data={
+                "username": "musteri_countdown",
+                "first_name": "Ayse",
+                "last_name": "Yilmaz",
+                "email": "countdown@example.com",
+                "phone": "05000000000",
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "password1": "GucluSifre123!",
+                "password2": "GucluSifre123!",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="resend-code-button"')
+        self.assertContains(response, 'data-resend-seconds="')
+        self.assertContains(response, 'id="resend-code-label"')
+
     def test_customer_signup_normalizes_phone_input(self):
         self.client.post(
             reverse("signup"),
