@@ -2980,23 +2980,13 @@ def provider_signup_view(request):
     if request.method == "POST":
         form = ProviderSignupForm(request.POST)
         if form.is_valid():
-            pending_payload = form.build_pending_verification_payload()
-            try:
-                verification = begin_signup_verification(request, pending_payload)
-            except Exception as exc:
-                log_signup_email_delivery_failure(
-                    request,
-                    email=pending_payload.get("email"),
-                    purpose=pending_payload.get("purpose"),
-                    exc=exc,
-                )
-                form.add_error(None, get_signup_email_delivery_error_message(exc))
-            else:
-                messages.success(
-                    request,
-                    f"{pending_payload['email']} adresine doğrulama kodu gönderildi. Kod {timezone.localtime(verification.expires_at).strftime('%H:%M')} saatine kadar geçerli.",
-                )
-                return redirect("signup_email_verify")
+            clear_pending_signup_payload(request)
+            form.save()
+            messages.success(
+                request,
+                "Usta hesabınız oluşturuldu. Admin onayı sonrası giriş yapabilirsiniz.",
+            )
+            return redirect("provider_login")
     else:
         form = ProviderSignupForm()
 
@@ -3022,6 +3012,13 @@ def signup_email_verify_view(request):
         return redirect("customer_signup")
 
     purpose = pending_payload["purpose"]
+    if purpose == "provider-signup":
+        clear_pending_signup_payload(request)
+        messages.info(
+            request,
+            "Usta kaydında e-posta doğrulaması kaldırıldı. Lütfen kaydı yeniden tamamlayın.",
+        )
+        return redirect("provider_signup")
     meta = get_signup_verification_meta(purpose)
     email = pending_payload["email"]
     form = EmailVerificationCodeForm()

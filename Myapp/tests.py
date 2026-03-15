@@ -788,21 +788,31 @@ class MarketplaceTests(TestCase):
             follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(User.objects.filter(username="yeniprofesyonel").exists())
-        self.assertContains(response, "Kodunu Gir")
-        verify_code = self._extract_latest_email_code()
-        verify_response = self.client.post(
-            reverse("signup_email_verify"),
-            data={"action": "verify", "code": verify_code},
-            follow=True,
-        )
-        self.assertEqual(verify_response.status_code, 200)
         self.assertTrue(User.objects.filter(username="yeniprofesyonel").exists())
         provider = Provider.objects.get(user__username="yeniprofesyonel")
         self.assertEqual(provider.full_name, "Yeni Usta")
         self.assertTrue(provider.service_types.filter(id=self.service.id).exists())
         self.assertFalse(provider.is_verified)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertNotIn("pending_email_signup", self.client.session)
+        self.assertNotContains(response, "Kodunu Gir")
         self.assertNotEqual(self.client.session.get("role"), "provider")
+
+    def test_provider_signup_verify_page_redirects_stale_provider_session(self):
+        session = self.client.session
+        session["pending_email_signup"] = {
+            "purpose": "provider-signup",
+            "email": "usta@example.com",
+            "created_at": timezone.now().isoformat(),
+        }
+        session.save()
+
+        response = self.client.get(reverse("signup_email_verify"), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Usta kaydında e-posta doğrulaması kaldırıldı.")
+        self.assertEqual(response.request["PATH_INFO"], reverse("provider_signup"))
+        self.assertNotIn("pending_email_signup", self.client.session)
 
     def test_unverified_provider_cannot_login_until_admin_approval(self):
         pending_user = User.objects.create_user(username="bekleyenusta", password="GucluSifre123!")
