@@ -2868,8 +2868,9 @@ def service_worker(request):
 
 @login_required
 def rate_request(request, request_id):
+    back_url = "agreement_history"
     if request.method != "POST":
-        return redirect("my_requests")
+        return redirect(back_url)
     if get_provider_for_user(request.user):
         messages.error(request, "Bu alan sadece müşteri hesapları içindir.")
         return redirect("provider_requests")
@@ -2877,7 +2878,7 @@ def rate_request(request, request_id):
     service_request = get_object_or_404(ServiceRequest, id=request_id, customer=request.user)
     if service_request.status != "completed" or service_request.matched_provider is None:
         messages.error(request, "Puanlama sadece tamamlanmış ve eşleşmiş talepler için yapılabilir.")
-        return redirect("my_requests")
+        return redirect(back_url)
     appointment = ServiceAppointment.objects.filter(service_request=service_request).only("id", "status").first()
     has_confirmed_appointment = WorkflowEvent.objects.filter(
         target_type="appointment",
@@ -2886,7 +2887,7 @@ def rate_request(request, request_id):
     ).exists()
     if not appointment or appointment.status != "completed" or not has_confirmed_appointment:
         messages.error(request, "Randevu oluşturulup onaylanmadan tamamlanan işlerde puanlama yapılamaz.")
-        return redirect("my_requests")
+        return redirect(back_url)
 
     current_rating = getattr(service_request, "provider_rating", None)
     form = ProviderRatingForm(request.POST, instance=current_rating)
@@ -2903,7 +2904,7 @@ def rate_request(request, request_id):
     else:
         messages.error(request, "Puan kaydedilemedi. Lütfen geçerli bir puan seçin.")
 
-    return redirect("my_requests")
+    return redirect(back_url)
 
 
 @never_cache
@@ -3774,6 +3775,7 @@ def my_requests(request):
 @login_required
 def agreement_history(request):
     provider = get_provider_for_user(request.user)
+    calendar_enabled = is_calendar_enabled()
     if provider:
         agreements_qs = (
             ServiceRequest.objects.filter(
@@ -3804,19 +3806,52 @@ def agreement_history(request):
 
     agreements_page_obj = paginate_items(request, agreements_qs, per_page=12, page_param="page")
     agreements = list(agreements_page_obj.object_list)
+    agreement_ids = [item.id for item in agreements]
     appointment_map = {
         appointment.service_request_id: appointment
-        for appointment in ServiceAppointment.objects.filter(service_request_id__in=[item.id for item in agreements])
+        for appointment in ServiceAppointment.objects.filter(service_request_id__in=agreement_ids)
     }
+    rating_map = {
+        rating.service_request_id: rating
+        for rating in ProviderRating.objects.filter(service_request_id__in=agreement_ids)
+    }
+    confirmed_appointment_request_ids = set()
+    if calendar_enabled and agreement_ids:
+        confirmed_appointment_request_ids = set(
+            WorkflowEvent.objects.filter(
+                target_type="appointment",
+                service_request_id__in=agreement_ids,
+                to_status="confirmed",
+            ).values_list("service_request_id", flat=True)
+        )
     for item in agreements:
         item.appointment_entry = appointment_map.get(item.id)
+        item.rating_entry = rating_map.get(item.id)
         status_ui = get_service_request_status_ui(
             item,
             item.appointment_entry,
-            calendar_enabled=is_calendar_enabled(),
+            calendar_enabled=calendar_enabled,
         )
         item.status_ui_label = status_ui["label"]
         item.status_ui_class = status_ui["css_status"]
+        item.can_rate = False
+        item.rate_block_reason = ""
+        if not provider and item.status == "completed" and item.matched_provider_id:
+            if calendar_enabled:
+                item.can_rate = (
+                    bool(item.appointment_entry)
+                    and item.appointment_entry.status == "completed"
+                    and item.id in confirmed_appointment_request_ids
+                )
+                if not item.can_rate:
+                    if item.appointment_entry is None:
+                        item.rate_block_reason = "Randevu oluşturulmadan kapanan işlerde puanlama kapalıdır."
+                    elif item.id not in confirmed_appointment_request_ids:
+                        item.rate_block_reason = "Randevu müşteri onayı olmadan kapatıldığı için puanlama kapalıdır."
+                    elif item.appointment_entry.status != "completed":
+                        item.rate_block_reason = "Puanlama için randevunun tamamlanması gerekir."
+            else:
+                item.can_rate = True
 
     summary = agreements_qs.aggregate(
         total_count=Count("id"),
@@ -3830,6 +3865,7 @@ def agreement_history(request):
             "agreements": agreements,
             "agreements_page_obj": agreements_page_obj,
             "is_provider_user": bool(provider),
+            "calendar_enabled": calendar_enabled,
             "summary_total_count": summary.get("total_count", 0) or 0,
             "summary_completed_count": summary.get("completed_count", 0) or 0,
             "summary_matched_count": summary.get("matched_count", 0) or 0,

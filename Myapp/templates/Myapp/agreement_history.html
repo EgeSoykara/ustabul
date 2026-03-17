@@ -16,6 +16,9 @@
     </div>
     <p class="text-muted mt-2 mb-0">
       Kimle ve ne zaman anlaşıldığını bu ekrandan takip edebilirsin.
+      {% if not is_provider_user %}
+        Tamamlanan işler için yorum ve puanlama da burada tutulur.
+      {% endif %}
     </p>
   </div>
 </section>
@@ -67,6 +70,9 @@
               <th>Anlaşma Zamanı</th>
               <th>Durum</th>
               <th>Randevu</th>
+              {% if not is_provider_user %}
+                <th>İşlem</th>
+              {% endif %}
             </tr>
           </thead>
           <tbody>
@@ -96,10 +102,18 @@
                     <span class="small text-muted">-</span>
                   {% endif %}
                 </td>
-                <td data-label="Durum"><span class="status-pill status-{{ item.status_ui_class }}">{{ item.status_ui_label }}</span></td>
+                <td data-label="Durum">
+                  <span class="status-pill status-{{ item.status_ui_class }}">{{ item.status_ui_label }}</span>
+                </td>
                 <td data-label="Randevu">
                   {% if item.appointment_entry %}
-                    <div class="small fw-semibold">{{ item.appointment_entry.scheduled_for|date:"d.m.Y H:i" }}</div>
+                    <div class="small fw-semibold">
+                      {% if item.appointment_entry.scheduled_for %}
+                        {{ item.appointment_entry.scheduled_for|date:"d.m.Y H:i" }}
+                      {% else %}
+                        Saat belirlenmedi
+                      {% endif %}
+                    </div>
                     <span class="status-pill appointment-status appointment-{{ item.appointment_entry.status }}">
                       {{ item.appointment_entry.get_status_display }}
                     </span>
@@ -107,6 +121,46 @@
                     <span class="small text-muted">Randevu yok</span>
                   {% endif %}
                 </td>
+                {% if not is_provider_user %}
+                  <td data-label="İşlem">
+                    {% if item.status == "completed" %}
+                      {% if item.can_rate %}
+                        {% if item.rating_entry %}
+                          <div class="small fw-semibold mb-2">Puanın: {{ item.rating_entry.score }}/5</div>
+                          {% if item.rating_entry.comment %}
+                            <div class="small text-muted mb-2">{{ item.rating_entry.comment }}</div>
+                          {% endif %}
+                        {% endif %}
+                        <details class="request-inline-panel">
+                          <summary>{% if item.rating_entry %}Puanını güncelle{% else %}Puan ver{% endif %}</summary>
+                          <div class="request-inline-panel-body">
+                            <form method="post" action="{% url 'rate_request' item.id %}" class="request-inline-form">
+                              {% csrf_token %}
+                              <div class="request-inline-form-grid">
+                                <select name="score" class="form-select form-select-sm" required>
+                                  <option value="">Puan</option>
+                                  <option value="5" {% if item.rating_entry and item.rating_entry.score == 5 %}selected{% endif %}>5</option>
+                                  <option value="4" {% if item.rating_entry and item.rating_entry.score == 4 %}selected{% endif %}>4</option>
+                                  <option value="3" {% if item.rating_entry and item.rating_entry.score == 3 %}selected{% endif %}>3</option>
+                                  <option value="2" {% if item.rating_entry and item.rating_entry.score == 2 %}selected{% endif %}>2</option>
+                                  <option value="1" {% if item.rating_entry and item.rating_entry.score == 1 %}selected{% endif %}>1</option>
+                                </select>
+                                <input type="text" name="comment" class="form-control form-control-sm" placeholder="Yorum (opsiyonel)" value="{% if item.rating_entry %}{{ item.rating_entry.comment }}{% endif %}">
+                              </div>
+                              <button type="submit" class="btn btn-sm btn-outline-primary">Puanı kaydet</button>
+                            </form>
+                          </div>
+                        </details>
+                      {% elif item.rate_block_reason %}
+                        <span class="small text-muted">{{ item.rate_block_reason }}</span>
+                      {% else %}
+                        <span class="small text-muted">Puanlama kapalı.</span>
+                      {% endif %}
+                    {% else %}
+                      <span class="small text-muted">İş tamamlanınca açılır.</span>
+                    {% endif %}
+                  </td>
+                {% endif %}
               </tr>
             {% endfor %}
           </tbody>
@@ -140,5 +194,3 @@
   </div>
 </section>
 {% endblock %}
-
-

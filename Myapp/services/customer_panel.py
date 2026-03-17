@@ -18,13 +18,12 @@ def build_customer_panel_context(request):
         "waiting_provider": "Yanıt bekliyor",
         "pending_customer": "Seçmen gereken",
         "matched": "Devam eden",
-        "completed": "Tamamlanan",
         "cancelled": "İptal edilen",
     }
     if customer_filter_state not in customer_filter_options:
         customer_filter_state = "all"
 
-    requests_qs = request.user.service_requests.select_related(
+    all_requests_qs = request.user.service_requests.select_related(
         "service_type",
         "matched_provider",
         "matched_offer",
@@ -34,6 +33,8 @@ def build_customer_panel_context(request):
         "provider_offers__provider",
         "matched_provider__availability_slots",
     )
+    completed_history_count = all_requests_qs.filter(status="completed").count()
+    requests_qs = all_requests_qs.exclude(status="completed")
 
     if customer_filter_query:
         requests_qs = requests_qs.filter(
@@ -194,6 +195,7 @@ def build_customer_panel_context(request):
         "requests": requests,
         "requests_page_obj": requests_page_obj,
         "cancelled_count": cancelled_count,
+        "completed_history_count": completed_history_count,
         "customer_requests_signature": customer_snapshot["signature"],
         "customer_snapshot": customer_snapshot,
         "customer_flow_summary": customer_flow_summary,
