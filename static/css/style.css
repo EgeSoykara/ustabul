@@ -2243,6 +2243,16 @@ body.live-sync-attention .panel-card {
   backdrop-filter: blur(8px);
 }
 
+.alert-success {
+  color: #ffffff;
+  background: linear-gradient(135deg, #15803d, #166534);
+  border-color: rgba(22, 101, 52, 0.72);
+}
+
+.alert-success a {
+  color: #ffffff;
+}
+
 input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {

@@ -290,6 +290,118 @@ input:not([type="checkbox"]):not([type="radio"]) {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.72));
 }
 
+[data-theme="dark"] .navbar-toggler {
+  border-color: rgba(148, 163, 184, 0.34);
+  background: rgba(15, 23, 42, 0.82);
+}
+
+[data-theme="dark"] .navbar-toggler-icon {
+  filter: invert(1) grayscale(1) brightness(1.8);
+}
+
+[data-theme="dark"] .modal-content {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--premium-border) 84%, var(--line));
+  background:
+    linear-gradient(145deg, rgba(30, 41, 59, 0.48), rgba(15, 23, 42, 0.2)),
+    var(--premium-surface-strong);
+  box-shadow: var(--premium-shadow-hard);
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme="dark"] .btn-close {
+  filter: invert(1) grayscale(1) brightness(1.9);
+  opacity: 0.9;
+}
+
+[data-theme="dark"] .btn-close:hover,
+[data-theme="dark"] .btn-close:focus {
+  opacity: 1;
+}
+
+[data-theme="dark"] .btn-link {
+  color: #93c5fd;
+}
+
+[data-theme="dark"] .btn-link:hover,
+[data-theme="dark"] .btn-link:focus {
+  color: #e0f2fe;
+}
+
+[data-theme="dark"] .alert {
+  color: #e5e7eb;
+  background: rgba(15, 23, 42, 0.84);
+  border-color: rgba(148, 163, 184, 0.24);
+}
+
+[data-theme="dark"] .alert-info {
+  color: #cffafe;
+  background: rgba(8, 145, 178, 0.2);
+  border-color: rgba(34, 211, 238, 0.28);
+}
+
+[data-theme="dark"] .alert-success {
+  color: #ffffff;
+  background: rgba(22, 163, 74, 0.2);
+  border-color: rgba(74, 222, 128, 0.26);
+}
+
+[data-theme="dark"] .alert-warning {
+  color: #fed7aa;
+  background: rgba(180, 83, 9, 0.22);
+  border-color: rgba(251, 191, 36, 0.26);
+}
+
+[data-theme="dark"] .alert-danger {
+  color: #fee2e2;
+  background: rgba(185, 28, 28, 0.24);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+[data-theme="dark"] .badge {
+  border: 1px solid transparent;
+}
+
+[data-theme="dark"] .badge.text-bg-light {
+  color: #f8fafc !important;
+  background: rgba(51, 65, 85, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+[data-theme="dark"] .badge.text-bg-success {
+  color: #dcfce7 !important;
+  background: rgba(22, 163, 74, 0.26) !important;
+  border-color: rgba(74, 222, 128, 0.28);
+}
+
+[data-theme="dark"] .badge.text-bg-info {
+  color: #cffafe !important;
+  background: rgba(8, 145, 178, 0.24) !important;
+  border-color: rgba(34, 211, 238, 0.28);
+}
+
+[data-theme="dark"] .badge.text-bg-danger {
+  color: #fee2e2 !important;
+  background: rgba(185, 28, 28, 0.28) !important;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+[data-theme="dark"] .badge.text-bg-secondary {
+  color: #e2e8f0 !important;
+  background: rgba(51, 65, 85, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+[data-theme="dark"] .bg-light,
+[data-theme="dark"] .bg-white {
+  background-color: rgba(15, 23, 42, 0.82) !important;
+  color: var(--text) !important;
+}
+
 .form-control:focus,
 .form-select:focus,
 textarea:focus,
