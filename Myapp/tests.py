@@ -17,6 +17,7 @@ from io import StringIO
 
 from .admin import ProviderPaymentAdmin
 from .models import (
+    ActivityLog,
     CustomerProfile,
     EmailVerificationCode,
     ErrorLog,
@@ -924,10 +925,33 @@ class MarketplaceTests(TestCase):
         response = self.client.get(reverse("operations_dashboard"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Onay Bekleyen Ustalar")
+        self.assertContains(response, "Müdahale Gerekenler")
+        self.assertContains(response, "Yakında Askıya Düşecekler")
         self.assertContains(response, "Usta \u00dcyelik Y\u00f6netimi")
+        self.assertContains(response, "Sistem Sa\u011fl\u0131\u011f\u0131")
+        self.assertContains(response, "Toplam Hareket")
         self.assertContains(response, "Ali Usta")
         self.assertContains(response, "\u00dcyelik Takvimi")
         self.assertContains(response, "gün kaldı")
+        self.assertNotContains(response, "Seçili Gün Açılan Talep")
+        self.assertNotContains(response, "Talep Durum Dağılımı")
+
+    def test_operations_dashboard_renders_membership_shortcuts(self):
+        User.objects.create_user(
+            username="operasyonkisayol",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.client.login(username="operasyonkisayol", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="membership-management"', html=False)
+        self.assertContains(response, "membership_state=pending_verification#membership-management")
+        self.assertContains(response, "membership_state=expiring_soon#membership-management")
+        self.assertContains(response, "membership_state=active#membership-management")
 
     def test_operations_dashboard_can_filter_memberships(self):
         User.objects.create_user(
@@ -968,6 +992,179 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Esas bitiş")
         self.assertContains(response, "Ek süre biter")
+
+    def test_operations_dashboard_shows_pending_verification_count(self):
+        User.objects.create_user(
+            username="operasyononay",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_hasan.is_verified = False
+        self.provider_hasan.save(update_fields=["is_verified"])
+        self.client.login(username="operasyononay", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Onay bekleyen")
+        self.assertEqual(response.context["membership_summary"]["pending_verification_count"], 1)
+
+    def test_operations_dashboard_surfaces_attention_and_expiring_lists(self):
+        User.objects.create_user(
+            username="operasyonodak",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_hasan.is_verified = False
+        self.provider_hasan.save(update_fields=["is_verified"])
+        self.provider_mehmet.membership_status = "active"
+        self.provider_mehmet.membership_expires_at = timezone.now() + timedelta(days=2)
+        self.provider_mehmet.save(update_fields=["membership_status", "membership_expires_at"])
+        stale_request = ServiceRequest.objects.create(
+            customer_name="Bekleyen Musteri",
+            customer_phone="05556667788",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Uzun sure bekleyen secim",
+            status="pending_customer",
+        )
+        ServiceRequest.objects.filter(pk=stale_request.pk).update(created_at=timezone.now() - timedelta(days=2))
+        stale_request.refresh_from_db()
+        self.client.login(username="operasyonodak", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hasan Usta")
+        self.assertContains(response, "Mehmet Usta")
+        self.assertContains(response, stale_request.display_code)
+        self.assertGreaterEqual(len(response.context["attention_items"]), 1)
+        self.assertEqual(response.context["membership_summary"]["expiring_soon_count"], 1)
+
+    def test_operations_dashboard_attention_detail_is_paginated(self):
+        User.objects.create_user(
+            username="operasyondetay",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        for idx in range(13):
+            stale_request = ServiceRequest.objects.create(
+                customer_name=f"Bekleyen Musteri {idx}",
+                customer_phone=f"0555666{idx:04d}",
+                city="Lefkosa",
+                district="Ortakoy",
+                service_type=self.service,
+                details=f"Uzun sure bekleyen secim {idx}",
+                status="pending_customer",
+            )
+            ServiceRequest.objects.filter(pk=stale_request.pk).update(
+                created_at=timezone.now() - timedelta(days=3, minutes=idx)
+            )
+        self.client.login(username="operasyondetay", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"), data={"attention": "all"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["attention_detail_open"])
+        self.assertContains(response, "Tüm Müdahale Gerekenler")
+        self.assertEqual(response.context["attention_total_count"], 13)
+        self.assertEqual(response.context["attention_page_obj"].paginator.count, 13)
+        self.assertEqual(len(response.context["attention_page_rows"]), 12)
+
+        second_page = self.client.get(
+            reverse("operations_dashboard"),
+            data={"attention": "all", "attention_page": 2},
+        )
+
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(second_page.context["attention_page_obj"].number, 2)
+        self.assertEqual(len(second_page.context["attention_page_rows"]), 1)
+
+    def test_operations_dashboard_shows_activity_summary_counts(self):
+        User.objects.create_user(
+            username="operasyonhareket",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        service_request = ServiceRequest.objects.create(
+            customer_name="Aktivite Musteri",
+            customer_phone="05550001122",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Aktivite ozet testi",
+        )
+        second_request = ServiceRequest.objects.create(
+            customer_name="Aktivite Musteri 2",
+            customer_phone="05550001123",
+            city="Girne",
+            district="Karakum",
+            service_type=self.service,
+            details="Ikinci aktivite testi",
+        )
+        ActivityLog.objects.create(
+            action_type="request_status",
+            service_request=service_request,
+            actor_role="system",
+            source="system",
+            summary="Talep beklemeye alindi",
+        )
+        ActivityLog.objects.create(
+            action_type="appointment_status",
+            service_request=service_request,
+            actor_role="provider",
+            source="user",
+            summary="Randevu onaylandi",
+        )
+        ActivityLog.objects.create(
+            action_type="message_sent",
+            service_request=second_request,
+            actor_role="customer",
+            source="user",
+            summary="Mesaj gonderildi",
+        )
+        self.client.login(username="operasyonhareket", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Toplam Hareket")
+        self.assertContains(response, "Talep Ak")
+        self.assertContains(response, "Randevu Ak")
+        self.assertContains(response, "Etkilenen Talep")
+        self.assertEqual(response.context["activity_summary"]["total_count"], 3)
+        self.assertEqual(response.context["activity_summary"]["request_touch_count"], 2)
+
+    def test_operations_dashboard_can_approve_provider_and_start_trial(self):
+        User.objects.create_user(
+            username="operasyonhizionay",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_hasan.is_verified = False
+        self.provider_hasan.membership_status = "active"
+        self.provider_hasan.membership_expires_at = None
+        self.provider_hasan.save(update_fields=["is_verified", "membership_status", "membership_expires_at"])
+        self.client.login(username="operasyonhizionay", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("operations_dashboard"),
+            data={
+                "day": timezone.localdate().isoformat(),
+                "provider_id": self.provider_hasan.id,
+                "provider_verification_action": "approve",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "onaylandı")
+        self.provider_hasan.refresh_from_db()
+        self.assertTrue(self.provider_hasan.is_verified)
+        self.assertEqual(self.provider_hasan.membership_status, "trial")
+        self.assertIsNotNone(self.provider_hasan.membership_expires_at)
+        self.assertIsNotNone(self.provider_hasan.verified_at)
 
     def test_operations_dashboard_can_renew_provider_membership(self):
         staff_user = User.objects.create_user(

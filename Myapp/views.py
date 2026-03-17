@@ -526,6 +526,26 @@ def build_provider_membership_remaining_label(provider, membership, *, now=None)
     return "Askıda"
 
 
+def build_waiting_duration_label(reference_at, *, now=None):
+    if not reference_at:
+        return "-"
+    reference_time = now or timezone.now()
+    elapsed_seconds = max(0, int((reference_time - reference_at).total_seconds()))
+    if elapsed_seconds < 60:
+        return "Az önce"
+
+    minutes = max(1, elapsed_seconds // 60)
+    if minutes < 60:
+        return f"{minutes} dk bekliyor"
+
+    hours = max(1, elapsed_seconds // 3600)
+    if hours < 48:
+        return f"{hours} saattir bekliyor"
+
+    days = max(1, elapsed_seconds // 86400)
+    return f"{days} gündür bekliyor"
+
+
 def build_operations_dashboard_redirect_url(request, selected_day):
     params = {}
     if selected_day:
@@ -536,12 +556,18 @@ def build_operations_dashboard_redirect_url(request, selected_day):
     activity_page_raw = str(request.POST.get("activity_page") or request.GET.get("activity_page") or "").strip()
     if activity_page_raw.isdigit():
         params["activity_page"] = activity_page_raw
+    attention_page_raw = str(request.POST.get("attention_page") or request.GET.get("attention_page") or "").strip()
+    if attention_page_raw.isdigit():
+        params["attention_page"] = attention_page_raw
     membership_query = str(request.POST.get("membership_q") or request.GET.get("membership_q") or "").strip()
     if membership_query:
         params["membership_q"] = membership_query
     membership_state = str(request.POST.get("membership_state") or request.GET.get("membership_state") or "").strip()
     if membership_state and membership_state != "all":
         params["membership_state"] = membership_state
+    attention_view = str(request.POST.get("attention") or request.GET.get("attention") or "").strip()
+    if attention_view == "all":
+        params["attention"] = attention_view
     base_url = reverse("operations_dashboard")
     if not params:
         return base_url
@@ -3829,6 +3855,7 @@ def operations_dashboard(request):
             selected_day = today
     membership_filter_query = str(request.POST.get("membership_q") or request.GET.get("membership_q") or "").strip()
     membership_filter_state = str(request.POST.get("membership_state") or request.GET.get("membership_state") or "all").strip()
+    attention_view = str(request.POST.get("attention") or request.GET.get("attention") or "").strip()
     membership_filter_options = {
         "all": "Tümü",
         "active": "Aktif",
@@ -3840,9 +3867,12 @@ def operations_dashboard(request):
     }
     if membership_filter_state not in membership_filter_options:
         membership_filter_state = "all"
+    if attention_view != "all":
+        attention_view = "summary"
 
     if request.method == "POST":
         provider_id_raw = str(request.POST.get("provider_id") or "").strip()
+        provider_verification_action = str(request.POST.get("provider_verification_action") or "").strip()
         membership_action = str(request.POST.get("membership_action") or "").strip()
         redirect_url = build_operations_dashboard_redirect_url(request, selected_day)
         if not provider_id_raw.isdigit():
@@ -3850,13 +3880,38 @@ def operations_dashboard(request):
             return redirect(redirect_url)
 
         provider = get_object_or_404(Provider.objects.select_related("user"), id=int(provider_id_raw))
-        membership_note = (request.POST.get("membership_note") or "").strip()
+        membership_note = (request.POST.get("membership_note") or request.POST.get("operation_note") or "").strip()
         if len(membership_note) > 240:
             messages.warning(request, "Üyelik notu en fazla 240 karakter olabilir.")
             return redirect(redirect_url)
 
         now = timezone.now()
-        if membership_action == "renew":
+        if provider_verification_action == "approve":
+            if provider.is_verified:
+                messages.info(request, f"{provider.full_name} zaten onaylı.")
+                return redirect(redirect_url)
+
+            update_fields = ["is_verified", "verified_at"]
+            provider.is_verified = True
+            trial_days = get_provider_membership_trial_days()
+            started_trial = False
+            if provider.membership_expires_at is None:
+                provider.membership_status = "trial"
+                provider.membership_expires_at = now + timedelta(days=trial_days)
+                update_fields.extend(["membership_status", "membership_expires_at"])
+                started_trial = True
+            if membership_note and provider.membership_note != membership_note:
+                provider.membership_note = membership_note
+                update_fields.append("membership_note")
+            provider.save(update_fields=list(dict.fromkeys(update_fields)))
+            if started_trial:
+                messages.success(
+                    request,
+                    f"{provider.full_name} onaylandı. {trial_days} günlük deneme erişimi başlatıldı.",
+                )
+            else:
+                messages.success(request, f"{provider.full_name} onaylandı.")
+        elif membership_action == "renew":
             amount_raw = str(request.POST.get("amount") or "").strip().replace(",", ".")
             period_months_raw = str(request.POST.get("period_months") or "1").strip()
             try:
@@ -3935,41 +3990,6 @@ def operations_dashboard(request):
 
     refresh_marketplace_lifecycle()
 
-    request_status_labels = {
-        "new": "Yeni",
-        "pending_provider": "Usta Onay\u0131 Bekleniyor",
-        "pending_customer": "M\u00fc\u015fteri Se\u00e7imi Bekleniyor",
-        "matched": "E\u015fle\u015ftirildi",
-        "completed": "Tamamland\u0131",
-        "cancelled": "\u0130ptal Edildi",
-    }
-    appointment_status_labels = {
-        "pending": "Usta Onay\u0131 Bekleniyor",
-        "pending_customer": "M\u00fc\u015fteri Onay\u0131 Bekleniyor",
-        "confirmed": "Onayland\u0131",
-        "rejected": "Reddedildi",
-        "cancelled": "M\u00fc\u015fteri \u0130ptal Etti",
-        "completed": "Tamamland\u0131",
-    }
-
-    request_status_rows = (
-        ServiceRequest.objects.filter(created_at__date=selected_day).values("status").annotate(total=Count("id"))
-    )
-    appointment_status_rows = (
-        ServiceAppointment.objects.filter(created_at__date=selected_day).values("status").annotate(total=Count("id"))
-    )
-    request_status_counts = {row["status"]: row["total"] for row in request_status_rows}
-    appointment_status_counts = {row["status"]: row["total"] for row in appointment_status_rows}
-
-    open_request_count = sum(
-        request_status_counts.get(status_key, 0)
-        for status_key in ["new", "pending_provider", "pending_customer", "matched"]
-    )
-    open_appointment_count = sum(
-        appointment_status_counts.get(status_key, 0)
-        for status_key in ["pending", "pending_customer", "confirmed"]
-    )
-
     scheduler_heartbeat = SchedulerHeartbeat.objects.filter(worker_name="marketplace_lifecycle").first()
     scheduler_reference_at = None
     scheduler_age_seconds = None
@@ -3985,60 +4005,22 @@ def operations_dashboard(request):
         scheduler_age_seconds = max(0, int((timezone.now() - scheduler_reference_at).total_seconds()))
         scheduler_healthy = scheduler_age_seconds <= stale_after_seconds
 
-    daily_metrics = {
-        "new_requests": ServiceRequest.objects.filter(created_at__date=selected_day).count(),
-        "matched_requests": WorkflowEvent.objects.filter(
-            target_type="request",
-            to_status="matched",
-            created_at__date=selected_day,
-        )
-        .values("service_request_id")
-        .distinct()
-        .count(),
-        "completed_requests": WorkflowEvent.objects.filter(
-            target_type="request",
-            to_status="completed",
-            created_at__date=selected_day,
-        )
-        .values("service_request_id")
-        .distinct()
-        .count(),
-        "cancelled_requests": WorkflowEvent.objects.filter(
-            target_type="request",
-            to_status="cancelled",
-            created_at__date=selected_day,
-        )
-        .values("service_request_id")
-        .distinct()
-        .count(),
-        "new_messages": ServiceMessage.objects.filter(created_at__date=selected_day).count(),
-        "new_errors": ErrorLog.objects.filter(created_at__date=selected_day).count(),
-    }
+    selected_day_error_count = ErrorLog.objects.filter(created_at__date=selected_day).count()
 
     activity_qs = (
         ActivityLog.objects.select_related("actor_user", "service_request", "appointment", "message")
         .filter(created_at__date=selected_day)
         .order_by("-created_at", "-id")
     )
+    activity_summary = {
+        "total_count": activity_qs.count(),
+        "request_status_count": activity_qs.filter(action_type="request_status").count(),
+        "appointment_status_count": activity_qs.filter(action_type="appointment_status").count(),
+        "message_count": activity_qs.filter(action_type="message_sent").count(),
+        "request_touch_count": activity_qs.exclude(service_request_id__isnull=True).values("service_request_id").distinct().count(),
+    }
     activity_page_obj = paginate_items(request, activity_qs, per_page=20, page_param="activity_page")
     activity_page_query = build_page_query_suffix(request, "activity_page")
-
-    request_status_breakdown = [
-        {
-            "status": status_key,
-            "label": request_status_labels.get(status_key, status_key),
-            "count": request_status_counts.get(status_key, 0),
-        }
-        for status_key, _label in ServiceRequest.STATUS_CHOICES
-    ]
-    appointment_status_breakdown = [
-        {
-            "status": status_key,
-            "label": appointment_status_labels.get(status_key, status_key),
-            "count": appointment_status_counts.get(status_key, 0),
-        }
-        for status_key, _label in ServiceAppointment.STATUS_CHOICES
-    ]
 
     membership_qs = Provider.objects.select_related("user").prefetch_related(
         "service_types",
@@ -4055,10 +4037,10 @@ def operations_dashboard(request):
             | Q(city__icontains=membership_filter_query)
             | Q(district__icontains=membership_filter_query)
         )
-    membership_rows = list(membership_qs)
+    all_membership_rows = list(membership_qs)
     membership_now = timezone.now()
     fallback_sort_at = timezone.make_aware(datetime.max.replace(microsecond=0))
-    for provider in membership_rows:
+    for provider in all_membership_rows:
         membership = build_provider_membership_context(provider, now=membership_now)
         provider.membership_state = membership["state"]
         provider.membership_state_label = get_provider_membership_state_label(membership["state"])
@@ -4073,12 +4055,182 @@ def operations_dashboard(request):
         provider.membership_is_expiring_soon = False
         provider.membership_sort_rank = get_provider_membership_state_rank(membership["state"])
         provider.membership_sort_at = provider.membership_expires_at or membership.get("grace_until") or fallback_sort_at
+        provider.membership_attention_deadline = None
+        provider.membership_attention_label = ""
+        provider.pending_wait_label = build_waiting_duration_label(provider.created_at, now=membership_now)
+        provider.membership_filter_token = provider.user.username if provider.user_id and provider.user else provider.full_name
+        service_names = [service.name for service in provider.service_types.all()]
+        provider.service_type_summary = ", ".join(service_names[:2])
+        if len(service_names) > 2:
+            provider.service_type_summary = f"{provider.service_type_summary} +{len(service_names) - 2}"
 
         if provider.membership_expires_at and membership["state"] in {"active", "trial"}:
             remaining_seconds = (provider.membership_expires_at - membership_now).total_seconds()
             if 0 <= remaining_seconds <= 7 * 86400:
                 provider.membership_is_expiring_soon = True
+                provider.membership_attention_deadline = provider.membership_expires_at
+                provider.membership_attention_label = "Esas bitiş"
+        elif membership["state"] == "grace" and membership.get("grace_until"):
+            remaining_seconds = (membership["grace_until"] - membership_now).total_seconds()
+            if 0 <= remaining_seconds <= 7 * 86400:
+                provider.membership_is_expiring_soon = True
+                provider.membership_attention_deadline = membership["grace_until"]
+                provider.membership_attention_label = "Ek süre biter"
 
+    membership_summary = {
+        "active_count": sum(1 for provider in all_membership_rows if provider.membership_state == "active"),
+        "trial_count": sum(1 for provider in all_membership_rows if provider.membership_state == "trial"),
+        "grace_count": sum(1 for provider in all_membership_rows if provider.membership_state == "grace"),
+        "suspended_count": sum(1 for provider in all_membership_rows if provider.membership_state == "suspended"),
+        "expiring_soon_count": sum(1 for provider in all_membership_rows if provider.membership_is_expiring_soon),
+        "pending_verification_count": sum(1 for provider in all_membership_rows if not provider.is_verified),
+    }
+
+    pending_provider_rows = sorted(
+        [provider for provider in all_membership_rows if not provider.is_verified],
+        key=lambda item: (item.created_at, item.id),
+    )[:5]
+    expiring_membership_rows = sorted(
+        [provider for provider in all_membership_rows if provider.membership_is_expiring_soon],
+        key=lambda item: (item.membership_attention_deadline or fallback_sort_at, item.full_name.lower(), item.id),
+    )[:6]
+
+    attention_items = []
+    attention_cutoff = membership_now - timedelta(hours=24)
+    attention_detail_open = attention_view == "all"
+    pending_selection_qs = (
+        ServiceRequest.objects.filter(status="pending_customer", created_at__lte=attention_cutoff)
+        .select_related("service_type")
+        .order_by("created_at", "id")
+    )
+    if not attention_detail_open:
+        pending_selection_qs = pending_selection_qs[:4]
+    pending_selection_rows = list(pending_selection_qs)
+    for service_request in pending_selection_rows:
+        attention_items.append(
+            {
+                "tone": "warning",
+                "badge_label": "Müşteri Kararı",
+                "request_code": get_request_display_code(service_request),
+                "title": "Müşteri seçimi uzun süredir bekliyor",
+                "reason": "Kabul verilen teklifler arasından henüz bir usta seçilmedi.",
+                "next_step": "Müşteriye ulaşılıp seçim yapması hatırlatılmalı.",
+                "waited_label": build_waiting_duration_label(service_request.created_at, now=membership_now),
+                "service_name": service_request.service_type.name,
+                "customer_name": service_request.customer_name,
+                "customer_phone": service_request.customer_phone,
+                "provider_name": "",
+                "provider_phone": "",
+                "sort_at": service_request.created_at,
+            }
+        )
+
+    matched_attention_qs = (
+        ServiceRequest.objects.filter(status="matched")
+        .filter(
+            Q(matched_at__lte=attention_cutoff) | Q(matched_at__isnull=True, created_at__lte=attention_cutoff),
+            Q(appointment__isnull=True) | Q(appointment__status__in=["rejected", "cancelled"]),
+        )
+        .select_related("service_type", "matched_provider")
+        .order_by("matched_at", "created_at", "id")
+    )
+    if not attention_detail_open:
+        matched_attention_qs = matched_attention_qs[:4]
+    matched_attention_rows = list(matched_attention_qs)
+    for service_request in matched_attention_rows:
+        reference_at = service_request.matched_at or service_request.created_at
+        has_closed_appointment = ServiceAppointment.objects.filter(
+            service_request=service_request,
+            status__in=["rejected", "cancelled"],
+        ).exists()
+        attention_items.append(
+            {
+                "tone": "warning",
+                "badge_label": "Randevu Yok",
+                "request_code": get_request_display_code(service_request),
+                "title": "Eşleşme var ama yeni randevu yok",
+                "reason": (
+                    "Önceki randevu kapandı, yeni saat seçilmedi."
+                    if has_closed_appointment
+                    else "Eşleşme tamamlandı ama henüz randevu oluşturulmadı."
+                ),
+                "next_step": "Taraflardan biri yeni randevu saati belirlemeli.",
+                "waited_label": build_waiting_duration_label(reference_at, now=membership_now),
+                "service_name": service_request.service_type.name,
+                "customer_name": service_request.customer_name,
+                "customer_phone": service_request.customer_phone,
+                "provider_name": service_request.matched_provider.full_name if service_request.matched_provider_id else "",
+                "provider_phone": service_request.matched_provider.phone if service_request.matched_provider_id else "",
+                "sort_at": reference_at,
+            }
+        )
+
+    provider_appointment_cutoff = membership_now - timedelta(minutes=max(60, get_appointment_provider_confirm_minutes() // 2))
+    pending_provider_appointments_qs = (
+        ServiceAppointment.objects.filter(status="pending", created_at__lte=provider_appointment_cutoff)
+        .select_related("service_request", "service_request__service_type", "provider")
+        .order_by("created_at", "id")
+    )
+    if not attention_detail_open:
+        pending_provider_appointments_qs = pending_provider_appointments_qs[:3]
+    pending_provider_appointments = list(pending_provider_appointments_qs)
+    for appointment in pending_provider_appointments:
+        attention_items.append(
+            {
+                "tone": "danger" if appointment.created_at <= membership_now - timedelta(minutes=get_appointment_provider_confirm_minutes()) else "warning",
+                "badge_label": "Usta Onayı",
+                "request_code": get_request_display_code(appointment.service_request),
+                "title": "Randevu uzun süredir usta onayında",
+                "reason": "Usta, seçilen randevu saatine henüz dönüş yapmadı.",
+                "next_step": "Bugün dönüş alınmazsa randevu otomatik kapanacak.",
+                "waited_label": build_waiting_duration_label(appointment.created_at, now=membership_now),
+                "service_name": appointment.service_request.service_type.name,
+                "customer_name": appointment.service_request.customer_name,
+                "customer_phone": appointment.service_request.customer_phone,
+                "provider_name": appointment.provider.full_name,
+                "provider_phone": appointment.provider.phone,
+                "sort_at": appointment.created_at,
+            }
+        )
+
+    customer_appointment_cutoff = membership_now - timedelta(minutes=max(60, get_appointment_customer_confirm_minutes() // 2))
+    pending_customer_appointments_qs = (
+        ServiceAppointment.objects.filter(status="pending_customer", updated_at__lte=customer_appointment_cutoff)
+        .select_related("service_request", "service_request__service_type", "provider")
+        .order_by("updated_at", "id")
+    )
+    if not attention_detail_open:
+        pending_customer_appointments_qs = pending_customer_appointments_qs[:3]
+    pending_customer_appointments = list(pending_customer_appointments_qs)
+    for appointment in pending_customer_appointments:
+        attention_items.append(
+            {
+                "tone": "danger" if appointment.updated_at <= membership_now - timedelta(minutes=get_appointment_customer_confirm_minutes()) else "warning",
+                "badge_label": "Müşteri Onayı",
+                "request_code": get_request_display_code(appointment.service_request),
+                "title": "Randevu uzun süredir müşteri onayında",
+                "reason": "Müşteri, önerilen randevu saatini henüz onaylamadı.",
+                "next_step": "Müşteriye ulaşılıp randevu saatini netleştirmek gerekiyor.",
+                "waited_label": build_waiting_duration_label(appointment.updated_at, now=membership_now),
+                "service_name": appointment.service_request.service_type.name,
+                "customer_name": appointment.service_request.customer_name,
+                "customer_phone": appointment.service_request.customer_phone,
+                "provider_name": appointment.provider.full_name,
+                "provider_phone": appointment.provider.phone,
+                "sort_at": appointment.updated_at,
+            }
+        )
+
+    attention_items.sort(key=lambda item: (item["sort_at"], item["request_code"]))
+    full_attention_items = attention_items
+    attention_total_count = len(full_attention_items)
+    attention_preview_items = full_attention_items[:8]
+    attention_page_obj = paginate_items(request, full_attention_items, per_page=12, page_param="attention_page")
+    attention_page_query = build_page_query_suffix(request, "attention_page")
+    attention_open_url = f"{build_query_url(request, updates={'day': selected_day.isoformat(), 'attention': 'all'}, remove=['attention_page'])}#attention-management"
+    attention_close_url = f"{build_query_url(request, updates={'day': selected_day.isoformat()}, remove=['attention', 'attention_page'])}#attention-management"
+
+    membership_rows = list(all_membership_rows)
     if membership_filter_state != "all":
         if membership_filter_state == "expiring_soon":
             membership_rows = [provider for provider in membership_rows if provider.membership_is_expiring_soon]
@@ -4086,14 +4238,6 @@ def operations_dashboard(request):
             membership_rows = [provider for provider in membership_rows if not provider.is_verified]
         else:
             membership_rows = [provider for provider in membership_rows if provider.membership_state == membership_filter_state]
-
-    membership_summary = {
-        "active_count": sum(1 for provider in membership_rows if provider.membership_state == "active"),
-        "trial_count": sum(1 for provider in membership_rows if provider.membership_state == "trial"),
-        "grace_count": sum(1 for provider in membership_rows if provider.membership_state == "grace"),
-        "suspended_count": sum(1 for provider in membership_rows if provider.membership_state == "suspended"),
-        "expiring_soon_count": sum(1 for provider in membership_rows if provider.membership_is_expiring_soon),
-    }
 
     membership_rows.sort(
         key=lambda item: (
@@ -4118,20 +4262,15 @@ def operations_dashboard(request):
             "previous_date_input": (selected_day - timedelta(days=1)).isoformat(),
             "next_date_input": (selected_day + timedelta(days=1)).isoformat(),
             "can_go_next_date": selected_day < today,
-            "daily_metrics": daily_metrics,
-            "open_request_count": open_request_count,
-            "open_appointment_count": open_appointment_count,
-            "pending_provider_approval_count": Provider.objects.filter(is_verified=False).count(),
-            "unread_message_count": ServiceMessage.objects.filter(read_at__isnull=True).count(),
             "unresolved_error_count": ErrorLog.objects.filter(resolved_at__isnull=True).count(),
+            "selected_day_error_count": selected_day_error_count,
             "recent_errors": ErrorLog.objects.select_related("user")
             .filter(created_at__date=selected_day)
             .order_by("-created_at", "-id")[:8],
-            "request_status_breakdown": request_status_breakdown,
-            "appointment_status_breakdown": appointment_status_breakdown,
             "activity_page_obj": activity_page_obj,
             "activity_rows": list(activity_page_obj.object_list),
             "activity_page_query": activity_page_query,
+            "activity_summary": activity_summary,
             "membership_summary": membership_summary,
             "membership_page_obj": membership_page_obj,
             "membership_rows": list(membership_page_obj.object_list),
@@ -4142,6 +4281,16 @@ def operations_dashboard(request):
             "membership_filtered_count": len(membership_rows),
             "membership_period_options": [1, 3, 6, 12],
             "provider_membership_trial_days": get_provider_membership_trial_days(),
+            "pending_provider_rows": pending_provider_rows,
+            "attention_items": attention_preview_items,
+            "attention_total_count": attention_total_count,
+            "attention_detail_open": attention_detail_open,
+            "attention_page_obj": attention_page_obj,
+            "attention_page_rows": list(attention_page_obj.object_list),
+            "attention_page_query": attention_page_query,
+            "attention_open_url": attention_open_url,
+            "attention_close_url": attention_close_url,
+            "expiring_membership_rows": expiring_membership_rows,
             "scheduler_heartbeat": scheduler_heartbeat,
             "scheduler_healthy": scheduler_healthy,
             "scheduler_age_seconds": scheduler_age_seconds,

@@ -57,79 +57,256 @@
   </div>
 </section>
 
-<section class="provider-kpi-grid mb-4" aria-label="G&uuml;nl&uuml;k metrikler">
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n A&ccedil;&#305;lan Talep</div>
-    <div class="provider-kpi-value">{{ daily_metrics.new_requests }}</div>
-    <div class="provider-kpi-note">Yeni form kay&#305;tlar&#305;.</div>
+<section class="operations-focus-grid mb-4">
+  <article class="card panel-card shadow-sm reveal-up operations-focus-card">
+    <div class="card-body p-4">
+      <div class="operations-focus-header">
+        <div>
+          <h2 class="h5 mb-1"><i class="bi bi-person-check me-2"></i>Onay Bekleyen Ustalar</h2>
+          <p class="small text-muted mb-0">Yeni kay&#305;t olan ustalar&#305; buradan h&#305;zl&#305;ca onaylayabilirsiniz.</p>
+        </div>
+        <div class="operations-focus-header-actions">
+          <a
+            href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=pending_verification#membership-management"
+            class="operations-filter-shortcut {% if membership_filter_state == 'pending_verification' %}is-active{% endif %}"
+          >
+            Tabloda a&ccedil;
+          </a>
+          <span class="operations-focus-counter">{{ membership_summary.pending_verification_count }}</span>
+        </div>
+      </div>
+      {% if pending_provider_rows %}
+        <div class="operations-focus-list">
+          {% for provider in pending_provider_rows %}
+            <article class="operations-focus-item">
+              <div class="operations-focus-title-row">
+                <div>
+                  <strong>{{ provider.full_name }}</strong>
+                  <div class="small text-muted">
+                    {% if provider.user %}@{{ provider.user.username }}{% else %}Kullan&#305;c&#305; ba&#287;l&#305; de&#287;il{% endif %}
+                    &middot; {{ provider.city }}/{{ provider.district }}
+                  </div>
+                </div>
+                <span class="operations-focus-age">{{ provider.pending_wait_label }}</span>
+              </div>
+              <div class="small text-muted">
+                {% if provider.service_type_summary %}{{ provider.service_type_summary }}{% else %}Hizmet bilgisi bekleniyor{% endif %}
+              </div>
+              <div class="operations-focus-actions">
+                <form method="post" action="{% url 'operations_dashboard' %}" class="operations-inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="day" value="{{ selected_date_input }}">
+                  <input type="hidden" name="membership_page" value="{{ membership_page_obj.number }}">
+                  <input type="hidden" name="activity_page" value="{{ activity_page_obj.number }}">
+                  <input type="hidden" name="attention" value="{% if attention_detail_open %}all{% else %}summary{% endif %}">
+                  <input type="hidden" name="attention_page" value="{{ attention_page_obj.number }}">
+                  <input type="hidden" name="membership_q" value="{{ membership_filter_query }}">
+                  <input type="hidden" name="membership_state" value="{{ membership_filter_state }}">
+                  <input type="hidden" name="provider_id" value="{{ provider.id }}">
+                  <input type="hidden" name="provider_verification_action" value="approve">
+                  <button type="submit" class="btn btn-sm btn-main">Onayla</button>
+                </form>
+                <a
+                  href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_q={{ provider.membership_filter_token|urlencode }}#membership-{{ provider.id }}"
+                  class="btn btn-sm btn-outline-secondary"
+                >
+                  Sat&#305;ra git
+                </a>
+                <a href="tel:{{ provider.phone }}" class="btn btn-sm btn-outline-secondary">Ara</a>
+              </div>
+              <div class="small text-muted">Onay verildi&#287;inde {{ provider_membership_trial_days }} g&uuml;nl&uuml;k deneme eri&#351;imi ba&#351;lar.</div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="operations-focus-empty mb-0">Bekleyen usta onay&#305; yok.</p>
+      {% endif %}
+    </div>
   </article>
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n E&#351;le&#351;en</div>
-    <div class="provider-kpi-value">{{ daily_metrics.matched_requests }}</div>
-    <div class="provider-kpi-note">M&uuml;&#351;teri-usta se&ccedil;imi tamamlananlar.</div>
+
+  <article class="card panel-card shadow-sm reveal-up operations-focus-card">
+    <div class="card-body p-4">
+      <div class="operations-focus-header">
+        <div>
+          <h2 class="h5 mb-1"><i class="bi bi-exclamation-triangle me-2"></i>Müdahale Gerekenler</h2>
+          <p class="small text-muted mb-0">Uzun s&uuml;redir bekleyen ve elle dokunulmas&#305; gereken ak&#305;&#351;lar.</p>
+        </div>
+        <div class="operations-focus-header-actions">
+          {% if attention_detail_open %}
+            <a href="{{ attention_close_url }}" class="operations-filter-shortcut is-active">Özeti göster</a>
+          {% else %}
+            <a href="{{ attention_open_url }}" class="operations-filter-shortcut">Tümünü aç</a>
+          {% endif %}
+          <span class="operations-focus-counter">{{ attention_total_count }}</span>
+        </div>
+      </div>
+      {% if attention_items %}
+        <div class="operations-focus-list">
+          {% for item in attention_items %}
+            <article class="operations-focus-item">
+              <div class="operations-focus-title-row">
+                <div>
+                  <span class="operations-focus-badge tone-{{ item.tone }}">{{ item.badge_label }}</span>
+                  <strong class="d-block mt-2">{{ item.request_code }}</strong>
+                </div>
+                <span class="operations-focus-age">{{ item.waited_label }}</span>
+              </div>
+              <div>{{ item.title }}</div>
+              <div class="small text-muted">{{ item.reason }}</div>
+              <div class="operations-focus-meta">
+                <span>{{ item.service_name }}</span>
+                {% if item.customer_name %}<span>M&uuml;&#351;teri: {{ item.customer_name }}{% if item.customer_phone %} - {{ item.customer_phone }}{% endif %}</span>{% endif %}
+                {% if item.provider_name %}<span>Usta: {{ item.provider_name }}{% if item.provider_phone %} - {{ item.provider_phone }}{% endif %}</span>{% endif %}
+              </div>
+              <div class="small text-muted">{{ item.next_step }}</div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="operations-focus-empty mb-0">&#350;u an tak&#305;lm&#305;&#351; i&#351; g&ouml;r&uuml;nm&uuml;yor.</p>
+      {% endif %}
+    </div>
   </article>
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n Tamamlanan</div>
-    <div class="provider-kpi-value">{{ daily_metrics.completed_requests }}</div>
-    <div class="provider-kpi-note">Kapanan i&#351; say&#305;s&#305;.</div>
-  </article>
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n &#304;ptal</div>
-    <div class="provider-kpi-value">{{ daily_metrics.cancelled_requests }}</div>
-    <div class="provider-kpi-note">&#304;ptal/no-show dahil.</div>
-  </article>
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n Mesaj</div>
-    <div class="provider-kpi-value">{{ daily_metrics.new_messages }}</div>
-    <div class="provider-kpi-note">Sohbet trafi&#287;i.</div>
-  </article>
-  <article class="provider-kpi-card">
-    <div class="provider-kpi-title">Se&ccedil;ili G&uuml;n Hata</div>
-    <div class="provider-kpi-value">{{ daily_metrics.new_errors }}</div>
-    <div class="provider-kpi-note">500 tipi hata kay&#305;tlar&#305;.</div>
+
+  <article class="card panel-card shadow-sm reveal-up operations-focus-card">
+    <div class="card-body p-4">
+      <div class="operations-focus-header">
+        <div>
+          <h2 class="h5 mb-1"><i class="bi bi-hourglass-split me-2"></i>Yakında Askıya Düşecekler</h2>
+          <p class="small text-muted mb-0">Yak&#305;n tarihte yenilenmezse g&ouml;r&uuml;n&uuml;rl&uuml;&#287;&uuml; kapanacak ustalar.</p>
+        </div>
+        <div class="operations-focus-header-actions">
+          <a
+            href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=expiring_soon#membership-management"
+            class="operations-filter-shortcut {% if membership_filter_state == 'expiring_soon' %}is-active{% endif %}"
+          >
+            Tabloda a&ccedil;
+          </a>
+          <span class="operations-focus-counter">{{ membership_summary.expiring_soon_count }}</span>
+        </div>
+      </div>
+      {% if expiring_membership_rows %}
+        <div class="operations-focus-list">
+          {% for provider in expiring_membership_rows %}
+            <article class="operations-focus-item">
+              <div class="operations-focus-title-row">
+                <div>
+                  <strong>{{ provider.full_name }}</strong>
+                  <div class="small text-muted">{{ provider.membership_state_label }} &middot; {{ provider.city }}/{{ provider.district }}</div>
+                </div>
+                <span class="operations-focus-age">{{ provider.membership_remaining_label }}</span>
+              </div>
+              <div class="small text-muted">
+                {{ provider.membership_attention_label }}:
+                {% if provider.membership_attention_deadline %}
+                  {{ provider.membership_attention_deadline|date:"d.m.Y H:i" }}
+                {% else %}
+                  Tarih tan&#305;ml&#305; de&#287;il
+                {% endif %}
+              </div>
+              {% if provider.latest_membership_payment %}
+                <div class="small text-muted">Son tahsilat: {{ provider.latest_membership_payment.cash_received_at|date:"d.m.Y H:i" }}</div>
+              {% endif %}
+              <div class="operations-focus-actions">
+                <a
+                  href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_q={{ provider.membership_filter_token|urlencode }}#membership-{{ provider.id }}"
+                  class="btn btn-sm btn-main"
+                >
+                  Yenile sat&#305;r&#305;n&#305; a&ccedil;
+                </a>
+                <a href="tel:{{ provider.phone }}" class="btn btn-sm btn-outline-secondary">Ara</a>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="operations-focus-empty mb-0">&#214;n&uuml;m&uuml;zdeki 7 g&uuml;nde ask&#305;ya d&uuml;&#351;ecek usta yok.</p>
+      {% endif %}
+    </div>
   </article>
 </section>
 
-<section class="row g-3 mb-4">
-  <div class="col-12 col-md-6 col-lg-3">
-    <div class="card panel-card shadow-sm h-100">
-      <div class="card-body p-3">
-        <div class="small text-muted">A&ccedil;&#305;k Talep</div>
-        <div class="h4 mb-1">{{ open_request_count }}</div>
-        <div class="small text-muted">Yeni + onay bekleyen + e&#351;le&#351;en.</div>
+{% if attention_detail_open %}
+  <section class="card panel-card shadow-sm reveal-up mb-4" id="attention-management">
+    <div class="card-body p-4">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <div>
+          <h2 class="h5 mb-1"><i class="bi bi-list-task me-2"></i>Tüm Müdahale Gerekenler</h2>
+          <p class="small text-muted mb-0">{{ attention_total_count }} kayıt içinden sayfalı görünüm.</p>
+        </div>
+        <a href="{{ attention_close_url }}" class="btn btn-sm btn-outline-secondary">Özeti Göster</a>
       </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-6 col-lg-3">
-    <div class="card panel-card shadow-sm h-100">
-      <div class="card-body p-3">
-        <div class="small text-muted">A&ccedil;&#305;k Randevu</div>
-        <div class="h4 mb-1">{{ open_appointment_count }}</div>
-        <div class="small text-muted">Onay s&uuml;recindeki randevular.</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-6 col-lg-3">
-    <div class="card panel-card shadow-sm h-100">
-      <div class="card-body p-3">
-        <div class="small text-muted">Onays&#305;z Usta</div>
-        <div class="h4 mb-1">{{ pending_provider_approval_count }}</div>
-        <div class="small text-muted">Admin onay&#305; bekleyen hesaplar.</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-6 col-lg-3">
-    <div class="card panel-card shadow-sm h-100">
-      <div class="card-body p-3">
-        <div class="small text-muted">Okunmam&#305;&#351; Mesaj</div>
-        <div class="h4 mb-1">{{ unread_message_count }}</div>
-        <div class="small text-muted">T&uuml;m a&ccedil;&#305;k threadlerde.</div>
-      </div>
-    </div>
-  </div>
-</section>
 
-<section class="card panel-card shadow-sm reveal-up mb-4">
+      {% if attention_page_rows %}
+        <div class="table-responsive">
+          <table class="table request-table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Durum</th>
+                <th>Talep</th>
+                <th>Bekleme</th>
+                <th>Özet</th>
+                <th>İletişim</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in attention_page_rows %}
+                <tr>
+                  <td data-label="Durum">
+                    <span class="operations-focus-badge tone-{{ item.tone }}">{{ item.badge_label }}</span>
+                  </td>
+                  <td data-label="Talep">
+                    <strong>{{ item.request_code }}</strong>
+                    <div class="small text-muted">{{ item.service_name }}</div>
+                  </td>
+                  <td data-label="Bekleme">{{ item.waited_label }}</td>
+                  <td data-label="Özet">
+                    <strong>{{ item.title }}</strong>
+                    <div class="small text-muted mt-1">{{ item.reason }}</div>
+                    <div class="small text-muted">{{ item.next_step }}</div>
+                  </td>
+                  <td data-label="İletişim">
+                    <div class="small text-muted">
+                      {% if item.customer_name %}Müşteri: {{ item.customer_name }}{% if item.customer_phone %} - {{ item.customer_phone }}{% endif %}{% endif %}
+                    </div>
+                    <div class="small text-muted">
+                      {% if item.provider_name %}Usta: {{ item.provider_name }}{% if item.provider_phone %} - {{ item.provider_phone }}{% endif %}{% endif %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if attention_page_obj.has_other_pages %}
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+            <span class="small text-muted">Sayfa {{ attention_page_obj.number }} / {{ attention_page_obj.paginator.num_pages }}</span>
+            <nav aria-label="Müdahale gerekenler sayfalama">
+              <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if not attention_page_obj.has_previous %}disabled{% endif %}">
+                  <a class="page-link" href="?attention_page={% if attention_page_obj.has_previous %}{{ attention_page_obj.previous_page_number }}{% else %}1{% endif %}{{ attention_page_query }}#attention-management" aria-label="Önceki">
+                    <span aria-hidden="true">&laquo;</span>
+                  </a>
+                </li>
+                <li class="page-item disabled"><span class="page-link">{{ attention_page_obj.number }}</span></li>
+                <li class="page-item {% if not attention_page_obj.has_next %}disabled{% endif %}">
+                  <a class="page-link" href="?attention_page={% if attention_page_obj.has_next %}{{ attention_page_obj.next_page_number }}{% else %}{{ attention_page_obj.paginator.num_pages }}{% endif %}{{ attention_page_query }}#attention-management" aria-label="Sonraki">
+                    <span aria-hidden="true">&raquo;</span>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="mb-0 text-muted">Açık müdahale kaydı yok.</p>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}
+
+<section class="card panel-card shadow-sm reveal-up mb-4" id="membership-management">
   <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <div>
@@ -137,26 +314,30 @@
         <p class="small text-muted mb-0">Tüm ustaların kalan süresi, son tahsilatı ve yenileme işlemleri burada.</p>
       </div>
       <div class="operations-membership-summary">
-        <div class="operations-membership-summary-card">
+        <a href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=active#membership-management" class="operations-membership-summary-card {% if membership_filter_state == 'active' %}is-active{% endif %}">
           <div class="operations-membership-summary-label">Aktif</div>
           <strong class="operations-membership-summary-value">{{ membership_summary.active_count }}</strong>
-        </div>
-        <div class="operations-membership-summary-card">
+        </a>
+        <a href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=trial#membership-management" class="operations-membership-summary-card {% if membership_filter_state == 'trial' %}is-active{% endif %}">
           <div class="operations-membership-summary-label">Deneme</div>
           <strong class="operations-membership-summary-value">{{ membership_summary.trial_count }}</strong>
-        </div>
-        <div class="operations-membership-summary-card">
+        </a>
+        <a href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=grace#membership-management" class="operations-membership-summary-card {% if membership_filter_state == 'grace' %}is-active{% endif %}">
           <div class="operations-membership-summary-label">Ek süre</div>
           <strong class="operations-membership-summary-value">{{ membership_summary.grace_count }}</strong>
-        </div>
-        <div class="operations-membership-summary-card">
+        </a>
+        <a href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=suspended#membership-management" class="operations-membership-summary-card {% if membership_filter_state == 'suspended' %}is-active{% endif %}">
           <div class="operations-membership-summary-label">Askıda</div>
           <strong class="operations-membership-summary-value">{{ membership_summary.suspended_count }}</strong>
-        </div>
-        <div class="operations-membership-summary-card">
-          <div class="operations-membership-summary-label">7 gün içinde bitecek</div>
+        </a>
+        <a href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=expiring_soon#membership-management" class="operations-membership-summary-card {% if membership_filter_state == 'expiring_soon' %}is-active{% endif %}">
+          <div class="operations-membership-summary-label">Yakında askıya düşecek</div>
           <strong class="operations-membership-summary-value">{{ membership_summary.expiring_soon_count }}</strong>
-        </div>
+        </a>
+        <a href="{% url 'operations_dashboard' %}?day={{ selected_date_input }}&membership_state=pending_verification#membership-management" class="operations-membership-summary-card {% if membership_filter_state == 'pending_verification' %}is-active{% endif %}">
+          <div class="operations-membership-summary-label">Onay bekleyen</div>
+          <strong class="operations-membership-summary-value">{{ membership_summary.pending_verification_count }}</strong>
+        </a>
       </div>
     </div>
     <form method="get" action="{% url 'operations_dashboard' %}" class="row g-2 align-items-end mb-3 operations-membership-filters">
@@ -206,7 +387,7 @@
           </thead>
           <tbody>
             {% for provider in membership_rows %}
-              <tr>
+              <tr id="membership-{{ provider.id }}">
                 <td data-label="Usta">
                   <strong>{{ provider.full_name }}</strong>
                   <div class="small text-muted">
@@ -267,6 +448,9 @@
                     {% csrf_token %}
                     <input type="hidden" name="day" value="{{ selected_date_input }}">
                     <input type="hidden" name="membership_page" value="{{ membership_page_obj.number }}">
+                    <input type="hidden" name="activity_page" value="{{ activity_page_obj.number }}">
+                    <input type="hidden" name="attention" value="{% if attention_detail_open %}all{% else %}summary{% endif %}">
+                    <input type="hidden" name="attention_page" value="{{ attention_page_obj.number }}">
                     <input type="hidden" name="provider_id" value="{{ provider.id }}">
                     <input type="hidden" name="membership_q" value="{{ membership_filter_query }}">
                     <input type="hidden" name="membership_state" value="{{ membership_filter_state }}">
@@ -366,7 +550,7 @@
 <section class="card panel-card shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-      <h2 class="h5 mb-0"><i class="bi bi-cpu me-2"></i>Scheduler ve Hata Durumu</h2>
+      <h2 class="h5 mb-0"><i class="bi bi-cpu me-2"></i>Sistem Sağlığı</h2>
       {% if scheduler_healthy %}
         <span class="status-pill status-completed">Scheduler: Sa&#287;l&#305;kl&#305;</span>
       {% else %}
@@ -388,70 +572,44 @@
         {% endif %}
       </div>
       <div class="col-12 col-lg-5">
-        <div class="small text-muted">Hata kay&#305;tlar&#305;</div>
+        <div class="small text-muted">Hata takibi</div>
         <div class="small mt-1">&Ccedil;&ouml;z&uuml;lmemi&#351;: <strong>{{ unresolved_error_count }}</strong></div>
-        <div class="small">Se&ccedil;ili G&uuml;n: <strong>{{ daily_metrics.new_errors }}</strong></div>
+        <div class="small">Se&ccedil;ili G&uuml;n: <strong>{{ selected_day_error_count }}</strong></div>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="row g-3 mb-4">
-  <div class="col-12 col-lg-6">
-    <section class="card panel-card shadow-sm reveal-up h-100">
-      <div class="card-body p-4">
-        <h2 class="h5 mb-3"><i class="bi bi-kanban me-2"></i>Talep Durum Da&#287;&#305;l&#305;m&#305;</h2>
-        <div class="table-responsive">
-          <table class="table request-table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Durum</th>
-                <th>Adet</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in request_status_breakdown %}
-                <tr>
-                  <td>{{ row.label }}</td>
-                  <td>{{ row.count }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  </div>
-  <div class="col-12 col-lg-6">
-    <section class="card panel-card shadow-sm reveal-up h-100">
-      <div class="card-body p-4">
-        <h2 class="h5 mb-3"><i class="bi bi-calendar-check me-2"></i>Randevu Durum Da&#287;&#305;l&#305;m&#305;</h2>
-        <div class="table-responsive">
-          <table class="table request-table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Durum</th>
-                <th>Adet</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in appointment_status_breakdown %}
-                <tr>
-                  <td>{{ row.label }}</td>
-                  <td>{{ row.count }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
   </div>
 </section>
 
 <section class="card panel-card shadow-sm reveal-up mb-4">
   <div class="card-body p-4">
     <h2 class="h5 mb-3"><i class="bi bi-clock-history me-2"></i>Se&ccedil;ili G&uuml;n Sistem Hareketleri</h2>
+    <section class="provider-kpi-grid operations-activity-summary mb-3" aria-label="Sistem hareketleri özeti">
+      <article class="provider-kpi-card">
+        <div class="provider-kpi-title">Toplam Hareket</div>
+        <div class="provider-kpi-value">{{ activity_summary.total_count }}</div>
+        <div class="provider-kpi-note">Se&ccedil;ili g&uuml;ndeki t&uuml;m log sat&#305;rlar&#305;.</div>
+      </article>
+      <article class="provider-kpi-card">
+        <div class="provider-kpi-title">Talep Ak&#305;&#351;&#305;</div>
+        <div class="provider-kpi-value">{{ activity_summary.request_status_count }}</div>
+        <div class="provider-kpi-note">Talep durum ge&ccedil;i&#351;leri.</div>
+      </article>
+      <article class="provider-kpi-card">
+        <div class="provider-kpi-title">Randevu Ak&#305;&#351;&#305;</div>
+        <div class="provider-kpi-value">{{ activity_summary.appointment_status_count }}</div>
+        <div class="provider-kpi-note">Randevu durum ge&ccedil;i&#351;leri.</div>
+      </article>
+      <article class="provider-kpi-card">
+        <div class="provider-kpi-title">Mesaj</div>
+        <div class="provider-kpi-value">{{ activity_summary.message_count }}</div>
+        <div class="provider-kpi-note">G&ouml;nderilen mesaj kay&#305;tlar&#305;.</div>
+      </article>
+      <article class="provider-kpi-card">
+        <div class="provider-kpi-title">Etkilenen Talep</div>
+        <div class="provider-kpi-value">{{ activity_summary.request_touch_count }}</div>
+        <div class="provider-kpi-note">Hareket g&ouml;ren benzersiz talep.</div>
+      </article>
+    </section>
     {% if activity_rows %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
