@@ -43,3 +43,15 @@ def user_notifications_summary(request):
     if not user or not user.is_authenticated:
         return {"nav_unread_notifications_count": 0}
     return {"nav_unread_notifications_count": get_total_unread_notifications_count(user)}
+
+
+def frontend_runtime_context(request):
+    return {
+        "frontend_realtime_channels_enabled": bool(
+            getattr(settings, "REALTIME_CHANNELS_ENABLED", False)
+        ),
+        "frontend_nav_badge_poll_interval_ms": max(
+            5000,
+            int(getattr(settings, "NAV_BADGE_POLL_INTERVAL_SECONDS", 15)) * 1000,
+        ),
+    }

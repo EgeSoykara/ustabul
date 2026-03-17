@@ -129,6 +129,44 @@ class MarketplaceTests(TestCase):
         )
         return appointment
 
+    def _signup_and_verify_customer(
+        self,
+        *,
+        username,
+        email,
+        phone,
+        first_name="Ayse",
+        last_name="Yilmaz",
+        city="Lefkosa",
+        district="Ortakoy",
+    ):
+        mail.outbox.clear()
+        response = self.client.post(
+            reverse("signup"),
+            data={
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email,
+                "phone": phone,
+                "city": city,
+                "district": district,
+                "password1": "GucluSifre123!",
+                "password2": "GucluSifre123!",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        verify_code = self._extract_latest_email_code()
+        response = self.client.post(
+            reverse("signup_email_verify"),
+            data={"action": "verify", "code": verify_code},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session.get("role"), "customer")
+        return User.objects.get(username=username)
+
     def test_home_page_loads(self):
         response = self.client.get(reverse("index"))
         self.assertEqual(response.status_code, 200)
@@ -804,6 +842,55 @@ class MarketplaceTests(TestCase):
         self.assertNotContains(response, "Kodunu Gir")
         self.assertNotEqual(self.client.session.get("role"), "provider")
 
+    def test_password_reset_request_sends_email_and_resets_password(self):
+        user = User.objects.create_user(
+            username="sifresifirla",
+            email="reset@example.com",
+            password="GucluSifre123!",
+        )
+        mail.outbox.clear()
+
+        response = self.client.post(
+            reverse("password_reset"),
+            data={"email": "reset@example.com"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.request["PATH_INFO"], reverse("password_reset_sent"))
+        self.assertEqual(len(mail.outbox), 1)
+        reset_body = mail.outbox[-1].body
+        reset_link_match = re.search(r"http://testserver\S+", reset_body)
+        self.assertIsNotNone(reset_link_match)
+        reset_link = reset_link_match.group(0)
+
+        confirm_response = self.client.get(reset_link)
+        self.assertEqual(confirm_response.status_code, 200)
+        self.assertContains(confirm_response, "Yeni Sifreni Belirle")
+
+        complete_response = self.client.post(
+            reset_link,
+            data={
+                "new_password1": "YeniGucluSifre123!",
+                "new_password2": "YeniGucluSifre123!",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(complete_response.status_code, 200)
+        self.assertContains(complete_response, "Sifreniz Yenilendi")
+        self.client.logout()
+        self.assertTrue(self.client.login(username=user.username, password="YeniGucluSifre123!"))
+
+    def test_login_pages_link_to_password_reset(self):
+        response = self.client.get(reverse("customer_login"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("password_reset"))
+
+        provider_response = self.client.get(reverse("provider_login"))
+        self.assertEqual(provider_response.status_code, 200)
+        self.assertContains(provider_response, reverse("password_reset"))
+
     def test_provider_payment_activates_membership_and_extends_expiry(self):
         paid_at = timezone.now()
         self.provider_ali.membership_status = "suspended"
@@ -1009,6 +1096,37 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, "Onay bekleyen")
         self.assertEqual(response.context["membership_summary"]["pending_verification_count"], 1)
 
+    @override_settings(
+        REALTIME_CHANNELS_ENABLED=False,
+        BREVO_API_KEY="",
+        EMAIL_HOST="",
+        EMAIL_HOST_USER="",
+        EMAIL_HOST_PASSWORD="",
+        MOBILE_PUSH_ENABLED=True,
+        FCM_PROJECT_ID="",
+        FCM_SERVICE_ACCOUNT_FILE="",
+        FCM_SERVICE_ACCOUNT_JSON="",
+        REQUEST_LIFECYCLE_REFRESH_ENABLED=True,
+        DEBUG=False,
+    )
+    def test_operations_dashboard_surfaces_live_readiness_items(self):
+        User.objects.create_user(
+            username="operasyonhazirlik",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.client.login(username="operasyonhazirlik", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        readiness_codes = {item["code"] for item in response.context["readiness_items"]}
+        self.assertIn("scheduler_missing", readiness_codes)
+        self.assertIn("realtime_disabled", readiness_codes)
+        self.assertIn("email_not_configured", readiness_codes)
+        self.assertIn("mobile_push_incomplete", readiness_codes)
+        self.assertIn("request_lifecycle_on_web", readiness_codes)
+
     def test_operations_dashboard_surfaces_attention_and_expiring_lists(self):
         User.objects.create_user(
             username="operasyonodak",
@@ -1165,6 +1283,58 @@ class MarketplaceTests(TestCase):
         self.assertEqual(self.provider_hasan.membership_status, "trial")
         self.assertIsNotNone(self.provider_hasan.membership_expires_at)
         self.assertIsNotNone(self.provider_hasan.verified_at)
+
+    def test_operations_dashboard_can_bulk_approve_filtered_pending_providers(self):
+        User.objects.create_user(
+            username="operasyontopluonay",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.provider_mehmet.is_verified = False
+        self.provider_mehmet.membership_expires_at = None
+        self.provider_mehmet.save(update_fields=["is_verified", "membership_expires_at"])
+        self.provider_hasan.is_verified = False
+        self.provider_hasan.membership_expires_at = None
+        self.provider_hasan.save(update_fields=["is_verified", "membership_expires_at"])
+        self.client.login(username="operasyontopluonay", password="GucluSifre123!")
+
+        response = self.client.post(
+            reverse("operations_dashboard"),
+            data={
+                "day": timezone.localdate().isoformat(),
+                "membership_state": "pending_verification",
+                "bulk_action": "approve_pending_filtered",
+                "operation_note": "Toplu onay testi",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.provider_mehmet.refresh_from_db()
+        self.provider_hasan.refresh_from_db()
+        self.assertTrue(self.provider_mehmet.is_verified)
+        self.assertTrue(self.provider_hasan.is_verified)
+        self.assertEqual(self.provider_mehmet.membership_status, "trial")
+        self.assertEqual(self.provider_hasan.membership_status, "trial")
+
+    def test_operations_dashboard_can_export_filtered_memberships_as_csv(self):
+        User.objects.create_user(
+            username="operasyoncsv",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        self.client.login(username="operasyoncsv", password="GucluSifre123!")
+
+        response = self.client.get(
+            reverse("operations_dashboard"),
+            data={"membership_q": "Ali", "membership_export": "csv"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response["Content-Type"])
+        csv_text = response.content.decode("utf-8-sig")
+        self.assertIn("Ali Usta", csv_text)
+        self.assertNotIn("Mehmet Usta", csv_text)
 
     def test_operations_dashboard_can_renew_provider_membership(self):
         staff_user = User.objects.create_user(
@@ -2079,7 +2249,7 @@ class MarketplaceTests(TestCase):
         self.assertEqual(service_request.matched_offer, offer)
         self.assertEqual(offer.status, "accepted")
 
-    @override_settings(APPOINTMENT_PROVIDER_CONFIRM_MINUTES=5)
+    @override_settings(APPOINTMENT_PROVIDER_CONFIRM_MINUTES=5, REQUEST_LIFECYCLE_REFRESH_ENABLED=True)
     def test_pending_appointment_auto_cancels_after_provider_timeout(self):
         customer = User.objects.create_user(username="sureasimiusta", password="GucluSifre123!")
         appointment_request = ServiceRequest.objects.create(
@@ -2154,7 +2324,7 @@ class MarketplaceTests(TestCase):
         self.assertIn(service_request.status, {"new", "pending_provider", "pending_customer"})
         self.assertEqual(blocked_offer.status, "expired")
 
-    @override_settings(APPOINTMENT_CUSTOMER_CONFIRM_MINUTES=5)
+    @override_settings(APPOINTMENT_CUSTOMER_CONFIRM_MINUTES=5, REQUEST_LIFECYCLE_REFRESH_ENABLED=True)
     def test_pending_customer_appointment_auto_cancels_after_customer_timeout(self):
         customer = User.objects.create_user(username="sureasimimusteri", password="GucluSifre123!")
         appointment_request = ServiceRequest.objects.create(
@@ -3175,6 +3345,37 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, 'id="chat-form-retry"')
         self.assertContains(response, "Tekrar dene")
 
+    @override_settings(REALTIME_CHANNELS_ENABLED=False)
+    def test_request_messages_page_falls_back_to_polling_when_realtime_disabled(self):
+        customer = User.objects.create_user(username="chatpollonly", password="GucluSifre123!")
+        matched_request = ServiceRequest.objects.create(
+            customer_name="Polling Musteri",
+            customer_phone="05006660003",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Realtime kapaliyken polling devam etmeli",
+            matched_provider=self.provider_ali,
+            customer=customer,
+            status="matched",
+        )
+        selected_offer = ProviderOffer.objects.create(
+            service_request=matched_request,
+            provider=self.provider_ali,
+            token="CHATPOLL1",
+            sequence=1,
+            status="accepted",
+        )
+        matched_request.matched_offer = selected_offer
+        matched_request.save(update_fields=["matched_offer"])
+
+        self.client.login(username="chatpollonly", password="GucluSifre123!")
+        response = self.client.get(reverse("request_messages", args=[matched_request.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-realtime-enabled="0"')
+        self.assertContains(response, "js/request-messages.js")
+
     def test_provider_cannot_message_before_customer_selects_provider(self):
         customer = User.objects.create_user(username="chatnoselect", password="GucluSifre123!")
         pending_request = ServiceRequest.objects.create(
@@ -3402,8 +3603,8 @@ class MarketplaceTests(TestCase):
 
         self.client.login(username="karsilastirma", password="GucluSifre123!")
         response = self.client.get(reverse("my_requests"))
-        requests = response.context["requests"]
-        target = next(item for item in requests if item.id == service_request.id)
+        request_items = list(response.context["requests"]) + list(response.context["pending_selection_items"])
+        target = next(item for item in request_items if item.id == service_request.id)
         self.assertEqual(target.recommended_offer_id, target.accepted_offers[0].id)
         self.assertGreaterEqual(target.accepted_offers[0].comparison_score, target.accepted_offers[1].comparison_score)
 
@@ -3731,6 +3932,28 @@ class MarketplaceTests(TestCase):
         self.assertEqual(payload["unread_messages_count"], 1)
         self.assertIn("unread_notifications_count", payload)
         self.assertGreaterEqual(payload["unread_notifications_count"], 0)
+
+    @override_settings(REQUEST_LIFECYCLE_REFRESH_ENABLED=False)
+    def test_my_requests_does_not_refresh_lifecycle_when_request_refresh_disabled(self):
+        customer = User.objects.create_user(username="norefreshcustomer", password="GucluSifre123!")
+        self.client.login(username="norefreshcustomer", password="GucluSifre123!")
+
+        with patch("Myapp.views.refresh_marketplace_lifecycle") as refresh_mock:
+            response = self.client.get(reverse("my_requests"))
+
+        self.assertEqual(response.status_code, 200)
+        refresh_mock.assert_not_called()
+
+    @override_settings(REQUEST_LIFECYCLE_REFRESH_ENABLED=True)
+    def test_my_requests_refreshes_lifecycle_when_request_refresh_enabled(self):
+        customer = User.objects.create_user(username="refreshcustomer", password="GucluSifre123!")
+        self.client.login(username="refreshcustomer", password="GucluSifre123!")
+
+        with patch("Myapp.views.refresh_marketplace_lifecycle", return_value=True) as refresh_mock:
+            response = self.client.get(reverse("my_requests"))
+
+        self.assertEqual(response.status_code, 200)
+        refresh_mock.assert_called_once()
 
     def test_notifications_view_keeps_provider_notifications_unread(self):
         customer = User.objects.create_user(username="notificationsprovidercustomer", password="GucluSifre123!")
@@ -4606,6 +4829,203 @@ class MarketplaceTests(TestCase):
         service_request.refresh_from_db()
         self.assertEqual(offer.status, "accepted")
         self.assertEqual(service_request.status, "pending_customer")
+
+    def test_end_to_end_customer_to_completed_job_journey(self):
+        customer = self._signup_and_verify_customer(
+            username="yolculukmusteri",
+            email="journey@example.com",
+            phone="05000000123",
+            first_name="Zeynep",
+            last_name="Kaya",
+        )
+
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Zeynep Kaya",
+                "customer_phone": "05000000123",
+                "service_type": self.service.id,
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "details": "Mutfak gideri tasiyor, bugun destek gerekiyor.",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ustaya teklif vermesi için iletildi")
+
+        service_request = ServiceRequest.objects.get(customer=customer, details__contains="Mutfak gideri")
+        ali_offer = ProviderOffer.objects.get(service_request=service_request, provider=self.provider_ali)
+        hasan_offer = ProviderOffer.objects.get(service_request=service_request, provider=self.provider_hasan)
+        self.assertEqual(service_request.status, "pending_provider")
+        self.assertEqual(
+            ProviderOffer.objects.filter(service_request=service_request, status="pending").count(),
+            2,
+        )
+
+        self.client.logout()
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("provider_accept_offer", args=[ali_offer.id]),
+            data={"quote_note": "Yarin ogleden sonra gelebilirim."},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        service_request.refresh_from_db()
+        ali_offer.refresh_from_db()
+        hasan_offer.refresh_from_db()
+        self.assertEqual(service_request.status, "pending_customer")
+        self.assertEqual(ali_offer.status, "accepted")
+        self.assertEqual(hasan_offer.status, "pending")
+
+        self.client.logout()
+        self.client.login(username="yolculukmusteri", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("select_provider_offer", args=[service_request.id, ali_offer.id]),
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        service_request.refresh_from_db()
+        self.assertEqual(service_request.status, "matched")
+        self.assertEqual(service_request.matched_provider_id, self.provider_ali.id)
+        self.assertEqual(service_request.matched_offer_id, ali_offer.id)
+        self.assertIsNotNone(service_request.matched_at)
+
+        response = self.client.post(
+            reverse("request_messages", args=[service_request.id]),
+            data={"body": "Yarin saat 14:00 benim icin uygundur."},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            ServiceMessage.objects.filter(
+                service_request=service_request,
+                sender_user=customer,
+                body="Yarin saat 14:00 benim icin uygundur.",
+            ).exists()
+        )
+
+        response = self.client.post(
+            reverse("create_appointment", args=[service_request.id]),
+            data={
+                "scheduled_for": self._future_datetime_local(days=2),
+                "customer_note": "Bina girisinde aramaniz yeterli.",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        appointment = ServiceAppointment.objects.get(service_request=service_request)
+        self.assertEqual(appointment.status, "pending")
+        self.assertEqual(appointment.provider_id, self.provider_ali.id)
+
+        self.client.logout()
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("provider_confirm_appointment", args=[appointment.id]),
+            data={"provider_note": "Saat uygundur, gorusuruz."},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, "confirmed")
+
+        response = self.client.post(
+            reverse("request_messages", args=[service_request.id]),
+            data={"body": "Onayladim, gorusmek uzere."},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            ServiceMessage.objects.filter(
+                service_request=service_request,
+                sender_user=self.provider_user_ali,
+                body="Onayladim, gorusmek uzere.",
+            ).exists()
+        )
+
+        appointment.scheduled_for = timezone.now() - timedelta(hours=2)
+        appointment.save(update_fields=["scheduled_for"])
+
+        self.client.logout()
+        self.client.login(username="yolculukmusteri", password="GucluSifre123!")
+        response = self.client.post(reverse("complete_request", args=[service_request.id]), follow=True)
+        self.assertEqual(response.status_code, 200)
+        service_request.refresh_from_db()
+        appointment.refresh_from_db()
+        self.assertEqual(service_request.status, "completed")
+        self.assertEqual(appointment.status, "completed")
+
+        response = self.client.post(
+            reverse("rate_request", args=[service_request.id]),
+            data={"score": 5, "comment": "Cok hizli ve temiz calisti."},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            ProviderRating.objects.filter(
+                service_request=service_request,
+                provider=self.provider_ali,
+                customer=customer,
+                score=5,
+            ).exists()
+        )
+
+    def test_end_to_end_suspended_provider_stops_new_work_but_keeps_existing_match_visible(self):
+        active_customer = User.objects.create_user(username="aktifmusteri", password="GucluSifre123!")
+        active_request = ServiceRequest.objects.create(
+            customer_name="Aktif Musteri",
+            customer_phone="05002223344",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Mevcut is devam ediyor",
+            customer=active_customer,
+            matched_provider=self.provider_ali,
+            status="matched",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=active_request,
+            provider=self.provider_ali,
+            token="JOURNEY001",
+            sequence=1,
+            status="accepted",
+        )
+        active_request.matched_offer = matched_offer
+        active_request.save(update_fields=["matched_offer"])
+
+        self.provider_ali.membership_status = "suspended"
+        self.provider_ali.save(update_fields=["membership_status"])
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_requests"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Üyeliğiniz askıda")
+        self.assertContains(response, active_request.display_code)
+
+        self.client.logout()
+        blocked_customer = User.objects.create_user(username="yenitalepmusteri", password="GucluSifre123!")
+        self.client.login(username="yenitalepmusteri", password="GucluSifre123!")
+        response = self.client.post(
+            reverse("create_request"),
+            data={
+                "customer_name": "Yeni Talep Musteri",
+                "customer_phone": "05003334455",
+                "service_type": self.service.id,
+                "city": "Lefkosa",
+                "district": "Ortakoy",
+                "details": "Askidaki usta yeni talep almamali.",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+
+        new_request = ServiceRequest.objects.get(customer=blocked_customer)
+        self.assertFalse(
+            ProviderOffer.objects.filter(service_request=new_request, provider=self.provider_ali).exists()
+        )
+        self.assertTrue(
+            ProviderOffer.objects.filter(service_request=new_request, provider=self.provider_hasan).exists()
+        )
 
 
 class MobileApiTests(TestCase):

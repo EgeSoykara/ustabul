@@ -9,7 +9,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from Myapp.models import SchedulerHeartbeat, SchedulerLock
-from Myapp.views import refresh_marketplace_lifecycle
+from Myapp.core_views import refresh_marketplace_lifecycle
 
 
 class Command(BaseCommand):

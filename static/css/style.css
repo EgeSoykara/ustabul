@@ -2280,6 +2280,12 @@ body.live-sync-attention .panel-card {
   border-color: rgba(239, 68, 68, 0.26);
 }
 
+.operations-focus-badge.tone-info {
+  color: #0c4a6e;
+  background: rgba(125, 211, 252, 0.24);
+  border-color: rgba(14, 116, 144, 0.28);
+}
+
 .operations-focus-meta {
   display: flex;
   flex-wrap: wrap;
@@ -2317,6 +2323,25 @@ body.live-sync-attention .panel-card {
 
 .operations-membership-filters .btn-link {
   text-decoration: none;
+}
+
+.operations-membership-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.operations-bulk-form {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.operations-bulk-form .form-control {
+  min-width: min(100%, 240px);
 }
 
 .status-pill.operations-membership-state {

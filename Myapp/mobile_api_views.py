@@ -16,7 +16,7 @@ from .mobile_api_serializers import (
     MobileServiceRequestSerializer,
 )
 from .models import MobileDevice, ServiceAppointment, ServiceMessage, ServiceRequest
-from .views import (
+from .core_views import (
     build_customer_snapshot_payload,
     build_provider_snapshot_payload,
     build_unread_message_map,

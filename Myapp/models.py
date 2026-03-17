@@ -223,6 +223,11 @@ class ServiceRequest(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="sr_status_created_idx"),
+            models.Index(fields=["customer", "status", "created_at"], name="sr_customer_status_idx"),
+            models.Index(fields=["matched_provider", "status", "created_at"], name="sr_matched_status_idx"),
+        ]
 
     @property
     def display_code(self):
@@ -284,6 +289,11 @@ class ServiceAppointment(models.Model):
 
     class Meta:
         ordering = ["scheduled_for"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="sa_status_created_idx"),
+            models.Index(fields=["status", "updated_at"], name="sa_status_updated_idx"),
+            models.Index(fields=["provider", "status", "scheduled_for"], name="sa_provider_sched_idx"),
+        ]
 
     def __str__(self):
         request_label = self.service_request.display_code if self.service_request_id else "-"
@@ -315,6 +325,11 @@ class ProviderOffer(models.Model):
     class Meta:
         ordering = ["service_request_id", "sequence"]
         unique_together = ("service_request", "provider")
+        indexes = [
+            models.Index(fields=["provider", "status", "created_at"], name="po_provider_status_idx"),
+            models.Index(fields=["service_request", "status", "sequence"], name="po_request_status_idx"),
+            models.Index(fields=["status", "expires_at"], name="po_status_expires_idx"),
+        ]
 
     def __str__(self):
         request_label = self.service_request.display_code if self.service_request_id else "-"

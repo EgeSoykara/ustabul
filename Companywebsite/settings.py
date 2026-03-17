@@ -169,6 +169,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'Myapp.context_processors.admin_operational_summary',
                 'Myapp.context_processors.user_notifications_summary',
+                'Myapp.context_processors.frontend_runtime_context',
             ],
         },
     },
@@ -195,6 +196,10 @@ else:
         }
     }
 HAS_CHANNELS_REDIS = importlib.util.find_spec("channels_redis") is not None
+REALTIME_CHANNELS_ENABLED = env_bool(
+    "REALTIME_CHANNELS_ENABLED",
+    bool(REDIS_URL and HAS_CHANNELS_REDIS),
+)
 if REDIS_URL and HAS_CHANNELS_REDIS:
     CHANNEL_LAYERS = {
         "default": {
@@ -386,9 +391,11 @@ LIFECYCLE_LOCK_TTL_SECONDS = int(os.getenv("LIFECYCLE_LOCK_TTL_SECONDS", "120"))
 NAV_STREAM_INTERVAL_SECONDS = int(os.getenv("NAV_STREAM_INTERVAL_SECONDS", "8"))
 NAV_STREAM_MAX_DURATION_SECONDS = int(os.getenv("NAV_STREAM_MAX_DURATION_SECONDS", "55"))
 NAV_STREAM_REOPEN_MIN_SECONDS = int(os.getenv("NAV_STREAM_REOPEN_MIN_SECONDS", "2"))
+REQUEST_LIFECYCLE_REFRESH_ENABLED = env_bool("REQUEST_LIFECYCLE_REFRESH_ENABLED", DEBUG)
 REQUEST_MESSAGES_FALLBACK_POLL_INTERVAL_SECONDS = int(
     os.getenv("REQUEST_MESSAGES_FALLBACK_POLL_INTERVAL_SECONDS", "5")
 )
+NAV_BADGE_POLL_INTERVAL_SECONDS = int(os.getenv("NAV_BADGE_POLL_INTERVAL_SECONDS", "15"))
 NOTIFICATION_RETENTION_DAYS = int(os.getenv("NOTIFICATION_RETENTION_DAYS", "30"))
 NOTIFICATION_UNREAD_CACHE_SECONDS = int(os.getenv("NOTIFICATION_UNREAD_CACHE_SECONDS", "6"))
 MOBILE_PUSH_ENABLED = env_bool("MOBILE_PUSH_ENABLED", True)

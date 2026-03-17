@@ -57,6 +57,43 @@
   </div>
 </section>
 
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <div>
+        <h2 class="h5 mb-1"><i class="bi bi-broadcast-pin me-2"></i>Canl&#305;ya Haz&#305;rl&#305;k</h2>
+        <p class="small text-muted mb-0">Yay&#305;n &ouml;ncesi kritik servis ve entegrasyon kontrolleri.</p>
+      </div>
+      {% if readiness_items %}
+        <span class="status-pill status-cancelled">
+          {{ readiness_summary.critical_count }} kritik / {{ readiness_summary.warning_count }} uyar&#305;
+        </span>
+      {% else %}
+        <span class="status-pill status-completed">Haz&#305;r g&ouml;r&uuml;n&uuml;yor</span>
+      {% endif %}
+    </div>
+
+    {% if readiness_items %}
+      <div class="operations-focus-list">
+        {% for item in readiness_items %}
+          <article class="operations-focus-item">
+            <div class="operations-focus-title-row">
+              <div>
+                <span class="operations-focus-badge tone-{{ item.tone }}">{{ item.badge_label }}</span>
+                <strong class="d-block mt-2">{{ item.title }}</strong>
+              </div>
+            </div>
+            <div class="small text-muted">{{ item.message }}</div>
+            <div class="small text-muted">{{ item.action }}</div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="operations-focus-empty mb-0">Canl&#305;ya almay&#305; bloklayan kritik ayar g&ouml;r&uuml;nm&uuml;yor.</p>
+    {% endif %}
+  </div>
+</section>
+
 <section class="operations-focus-grid mb-4">
   <article class="card panel-card shadow-sm reveal-up operations-focus-card">
     <div class="card-body p-4">
@@ -372,6 +409,40 @@
       </div>
     </form>
 
+    <div class="operations-membership-tools mb-3">
+      <form
+        method="post"
+        action="{% url 'operations_dashboard' %}"
+        class="operations-bulk-form"
+        data-confirm-message="Filtredeki bekleyen ustalar toplu olarak onaylansın mı?"
+      >
+        {% csrf_token %}
+        <input type="hidden" name="day" value="{{ selected_date_input }}">
+        <input type="hidden" name="membership_q" value="{{ membership_filter_query }}">
+        <input type="hidden" name="membership_state" value="{{ membership_filter_state }}">
+        <input type="hidden" name="attention" value="{% if attention_detail_open %}all{% else %}summary{% endif %}">
+        <input type="hidden" name="bulk_action" value="approve_pending_filtered">
+        <input
+          type="text"
+          name="operation_note"
+          maxlength="240"
+          class="form-control form-control-sm"
+          placeholder="Toplu not (opsiyonel)"
+        >
+        <button
+          type="submit"
+          class="btn btn-sm btn-main"
+          {% if not bulk_pending_approval_count %}disabled aria-disabled="true"{% endif %}
+        >
+          Filtredeki bekleyenleri toplu onayla ({{ bulk_pending_approval_count }})
+        </button>
+      </form>
+
+      <a href="{{ membership_export_url }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-download me-1"></i>CSV indir
+      </a>
+    </div>
+
     {% if membership_rows %}
       <div class="table-responsive">
         <table class="table request-table align-middle mb-0">
@@ -559,7 +630,7 @@
     </div>
     <div class="row g-3 mt-1">
       <div class="col-12 col-lg-7">
-        <div class="small text-muted">Marketplace worker heartbeat</div>
+        <div class="small text-muted">Marketplace worker durumu</div>
         {% if scheduler_heartbeat %}
           <div class="small mt-1">&Ccedil;al&#305;&#351;ma say&#305;s&#305;: <strong>{{ scheduler_heartbeat.run_count }}</strong></div>
           <div class="small">Son ba&#351;ar&#305;: {% if scheduler_heartbeat.last_success_at %}{{ scheduler_heartbeat.last_success_at|date:"d.m.Y H:i:s" }}{% else %}-{% endif %}</div>

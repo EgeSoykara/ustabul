@@ -4,7 +4,13 @@ import unicodedata
 from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
+from django.contrib.auth.forms import (
+    AuthenticationForm,
+    PasswordChangeForm,
+    PasswordResetForm,
+    SetPasswordForm,
+    UserCreationForm,
+)
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -857,6 +863,29 @@ class AccountPasswordChangeForm(PasswordChangeForm):
     old_password = forms.CharField(label="Mevcut Şifre", widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
     new_password1 = forms.CharField(label="Yeni Şifre", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
     new_password2 = forms.CharField(label="Yeni Şifre (Tekrar)", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+
+
+class AccountPasswordResetRequestForm(PasswordResetForm):
+    email = forms.EmailField(
+        label="E-posta",
+        widget=forms.EmailInput(
+            attrs={
+                "autocomplete": "email",
+                "placeholder": "ornek@eposta.com",
+            }
+        ),
+    )
+
+
+class AccountPasswordResetConfirmForm(SetPasswordForm):
+    new_password1 = forms.CharField(
+        label="Yeni Sifre",
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
+    )
+    new_password2 = forms.CharField(
+        label="Yeni Sifre (Tekrar)",
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
+    )
 
 
 class ProviderRatingForm(forms.ModelForm):
