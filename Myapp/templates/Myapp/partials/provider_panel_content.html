@@ -18,6 +18,26 @@
       {% endif %}
     </div>
 
+    <form method="get" action="{% url 'provider_requests' %}" class="row g-2 align-items-end mb-3">
+      <div class="col-12 col-lg-9">
+        <label class="form-label form-label-sm mb-1" for="provider-request-q">Talep ara</label>
+        <input
+          type="search"
+          id="provider-request-q"
+          name="provider_q"
+          value="{{ provider_filter_query }}"
+          class="form-control form-control-sm"
+          placeholder="Talep kodu, müşteri adı, telefon, hizmet"
+        >
+      </div>
+      <div class="col-6 col-lg-2">
+        <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Filtrele</button>
+      </div>
+      <div class="col-6 col-lg-1">
+        <a href="{% url 'provider_requests' %}" class="btn btn-sm btn-link w-100 px-0">Temizle</a>
+      </div>
+    </form>
+
     <div class="alert alert-{{ provider_membership.tone }} mb-0" role="alert">
       <div class="d-flex flex-column gap-1">
         <strong>{{ provider_membership.title }}</strong>
@@ -104,6 +124,19 @@
           </article>
         {% endfor %}
       </div>
+      {% if pending_offers_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ pending_offers_page_obj.number }} / {{ pending_offers_page_obj.paginator.num_pages }}</span>
+          <div class="d-flex align-items-center gap-2">
+            {% if pending_offers_page_obj.has_previous %}
+              <a class="btn btn-sm btn-outline-secondary" href="?pending_offer_page={{ pending_offers_page_obj.previous_page_number }}{{ pending_offer_page_query }}#pending-offers">Önceki</a>
+            {% endif %}
+            {% if pending_offers_page_obj.has_next %}
+              <a class="btn btn-sm btn-outline-secondary" href="?pending_offer_page={{ pending_offers_page_obj.next_page_number }}{{ pending_offer_page_query }}#pending-offers">Sonraki</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     {% else %}
       <p class="mb-0 text-muted">Bekleyen yeni talep yok.</p>
     {% endif %}
@@ -160,6 +193,19 @@
           </article>
         {% endfor %}
       </div>
+      {% if waiting_customer_selection_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ waiting_customer_selection_page_obj.number }} / {{ waiting_customer_selection_page_obj.paginator.num_pages }}</span>
+          <div class="d-flex align-items-center gap-2">
+            {% if waiting_customer_selection_page_obj.has_previous %}
+              <a class="btn btn-sm btn-outline-secondary" href="?waiting_selection_page={{ waiting_customer_selection_page_obj.previous_page_number }}{{ waiting_selection_page_query }}#waiting-selection">Önceki</a>
+            {% endif %}
+            {% if waiting_customer_selection_page_obj.has_next %}
+              <a class="btn btn-sm btn-outline-secondary" href="?waiting_selection_page={{ waiting_customer_selection_page_obj.next_page_number }}{{ waiting_selection_page_query }}#waiting-selection">Sonraki</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     </div>
   </section>
 {% endif %}
@@ -275,6 +321,19 @@
           </article>
         {% endfor %}
       </div>
+      {% if active_threads_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ active_threads_page_obj.number }} / {{ active_threads_page_obj.paginator.num_pages }}</span>
+          <div class="d-flex align-items-center gap-2">
+            {% if active_threads_page_obj.has_previous %}
+              <a class="btn btn-sm btn-outline-secondary" href="?active_thread_page={{ active_threads_page_obj.previous_page_number }}{{ active_thread_page_query }}#active-threads">Önceki</a>
+            {% endif %}
+            {% if active_threads_page_obj.has_next %}
+              <a class="btn btn-sm btn-outline-secondary" href="?active_thread_page={{ active_threads_page_obj.next_page_number }}{{ active_thread_page_query }}#active-threads">Sonraki</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     {% else %}
       <p class="mb-0 text-muted">Aktif iş yok.</p>
     {% endif %}
@@ -352,6 +411,19 @@
           </article>
         {% endfor %}
       </div>
+      {% if pending_appointments_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ pending_appointments_page_obj.number }} / {{ pending_appointments_page_obj.paginator.num_pages }}</span>
+          <div class="d-flex align-items-center gap-2">
+            {% if pending_appointments_page_obj.has_previous %}
+              <a class="btn btn-sm btn-outline-secondary" href="?pending_appointment_page={{ pending_appointments_page_obj.previous_page_number }}{{ pending_appointment_page_query }}#pending-appointments">Önceki</a>
+            {% endif %}
+            {% if pending_appointments_page_obj.has_next %}
+              <a class="btn btn-sm btn-outline-secondary" href="?pending_appointment_page={{ pending_appointments_page_obj.next_page_number }}{{ pending_appointment_page_query }}#pending-appointments">Sonraki</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     </div>
   </section>
 {% endif %}

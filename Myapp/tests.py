@@ -1904,6 +1904,53 @@ class MarketplaceTests(TestCase):
         self.assertContains(response, reverse("provider_withdraw_offer", args=[waiting_offer.id]))
         self.assertContains(response, reverse("provider_release_request", args=[matched_request.id]))
 
+    def test_provider_requests_supports_search_and_pending_offer_pagination(self):
+        for idx in range(11):
+            service_request = ServiceRequest.objects.create(
+                customer_name=f"Filtreli Musteri {idx}",
+                customer_phone=f"0500333{idx:04d}",
+                city="Lefkosa",
+                district="Ortakoy",
+                service_type=self.service,
+                details="Aranacak seri talep",
+                status="pending_provider",
+            )
+            ProviderOffer.objects.create(
+                service_request=service_request,
+                provider=self.provider_ali,
+                token=f"FILTERP{idx:02d}",
+                sequence=idx + 1,
+                status="pending",
+            )
+
+        other_request = ServiceRequest.objects.create(
+            customer_name="Disarida Kalacak",
+            customer_phone="05004445555",
+            city="Girne",
+            district="Karakum",
+            service_type=self.service,
+            details="Filtre disi talep",
+            status="pending_provider",
+        )
+        ProviderOffer.objects.create(
+            service_request=other_request,
+            provider=self.provider_ali,
+            token="FILTEROUT1",
+            sequence=99,
+            status="pending",
+        )
+
+        self.client.login(username="aliusta", password="GucluSifre123!")
+        response = self.client.get(reverse("provider_requests"), data={"provider_q": "Filtreli"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["provider_filter_query"], "Filtreli")
+        self.assertEqual(response.context["pending_offers_count"], 11)
+        self.assertTrue(response.context["pending_offers_page_obj"].has_next())
+        self.assertEqual(response.context["pending_offer_page_query"], "&provider_q=Filtreli")
+        self.assertContains(response, "?pending_offer_page=2&amp;provider_q=Filtreli#pending-offers")
+        self.assertNotContains(response, "Disarida Kalacak")
+
     def test_provider_can_withdraw_waiting_selection_offer(self):
         customer = User.objects.create_user(username="gericekucreti", password="GucluSifre123!")
         service_request = ServiceRequest.objects.create(
@@ -2855,6 +2902,68 @@ class MarketplaceTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, service_request.display_code, count=1)
+
+    def test_my_requests_supports_filters_and_pending_selection_pagination(self):
+        customer = User.objects.create_user(username="filtrelimusteri", password="GucluSifre123!")
+        for idx in range(6):
+            service_request = ServiceRequest.objects.create(
+                customer_name="Filtreli Musteri",
+                customer_phone=f"0500555{idx:04d}",
+                city="Lefkosa",
+                district="Ortakoy",
+                service_type=self.service,
+                details="Filtreli secim talebi",
+                customer=customer,
+                status="pending_customer",
+            )
+            ProviderOffer.objects.create(
+                service_request=service_request,
+                provider=self.provider_ali,
+                token=f"CUSTSEL{idx:02d}",
+                sequence=idx + 1,
+                status="accepted",
+            )
+
+        other_request = ServiceRequest.objects.create(
+            customer_name="Filtreli Musteri",
+            customer_phone="05006667777",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Baska bir talep",
+            customer=customer,
+            status="pending_customer",
+        )
+        ProviderOffer.objects.create(
+            service_request=other_request,
+            provider=self.provider_ali,
+            token="CUSTOUT01",
+            sequence=99,
+            status="accepted",
+        )
+
+        self.client.login(username="filtrelimusteri", password="GucluSifre123!")
+        response = self.client.get(
+            reverse("my_requests"),
+            data={"request_q": "Filtreli secim", "request_state": "pending_customer"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["customer_filter_query"], "Filtreli secim")
+        self.assertEqual(response.context["customer_filter_state"], "pending_customer")
+        self.assertEqual(response.context["customer_filtered_count"], 6)
+        self.assertTrue(response.context["pending_selection_page_obj"].has_next())
+        self.assertEqual(
+            response.context["pending_selection_page_query"],
+            "&request_q=Filtreli+secim&request_state=pending_customer",
+        )
+        visible_ids = {item.id for item in response.context["pending_selection_items"]}
+        self.assertEqual(len(visible_ids), 5)
+        self.assertNotIn(other_request.id, visible_ids)
+        self.assertContains(
+            response,
+            "?pending_selection_page=2&amp;request_q=Filtreli+secim&amp;request_state=pending_customer#customer-selection-hub",
+        )
 
     def test_my_requests_shows_recent_change_badge_for_new_message(self):
         customer = User.objects.create_user(username="rozetmusteri", password="GucluSifre123!")

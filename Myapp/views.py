@@ -204,6 +204,29 @@ def get_request_display_code(service_request):
     return f"TLP-{request_id}" if request_id else "-"
 
 
+def build_request_search_query(search_text, *, prefix="", include_matched_provider=False):
+    normalized = str(search_text or "").strip()
+    if not normalized:
+        return Q()
+
+    fields = [
+        f"{prefix}request_code__icontains",
+        f"{prefix}customer_name__icontains",
+        f"{prefix}customer_phone__icontains",
+        f"{prefix}service_type__name__icontains",
+        f"{prefix}city__icontains",
+        f"{prefix}district__icontains",
+        f"{prefix}details__icontains",
+    ]
+    if include_matched_provider:
+        fields.append(f"{prefix}matched_provider__full_name__icontains")
+
+    query = Q()
+    for field_name in fields:
+        query |= Q(**{field_name: normalized})
+    return query
+
+
 def parse_float(value):
     raw = str(value or "").strip()
     if not raw:
@@ -4303,6 +4326,18 @@ def build_customer_panel_context(request):
     calendar_enabled = is_calendar_enabled()
     highlight_request_raw = str(request.GET.get("highlight_request") or "").strip()
     highlight_request_id = int(highlight_request_raw) if highlight_request_raw.isdigit() else None
+    customer_filter_query = str(request.GET.get("request_q") or "").strip()
+    customer_filter_state = str(request.GET.get("request_state") or "all").strip()
+    customer_filter_options = {
+        "all": "Tümü",
+        "waiting_provider": "Yanıt bekliyor",
+        "pending_customer": "Seçmen gereken",
+        "matched": "Devam eden",
+        "completed": "Tamamlanan",
+        "cancelled": "İptal edilen",
+    }
+    if customer_filter_state not in customer_filter_options:
+        customer_filter_state = "all"
 
     requests_qs = request.user.service_requests.select_related(
         "service_type",
@@ -4314,12 +4349,32 @@ def build_customer_panel_context(request):
         "provider_offers__provider",
         "matched_provider__availability_slots",
     )
-    pending_selection_items = list(
-        requests_qs.filter(status="pending_customer").order_by("-created_at")
+
+    if customer_filter_query:
+        requests_qs = requests_qs.filter(
+            build_request_search_query(
+                customer_filter_query,
+                include_matched_provider=True,
+            )
+        )
+    if customer_filter_state == "waiting_provider":
+        requests_qs = requests_qs.filter(status__in=["new", "pending_provider"])
+    elif customer_filter_state != "all":
+        requests_qs = requests_qs.filter(status=customer_filter_state)
+
+    pending_selection_qs = requests_qs.filter(status="pending_customer").order_by("-created_at")
+    pending_selection_page_obj = paginate_items(
+        request,
+        pending_selection_qs,
+        per_page=5,
+        page_param="pending_selection_page",
     )
+    pending_selection_items = list(pending_selection_page_obj.object_list)
     main_requests_qs = requests_qs.exclude(status="pending_customer")
     requests_page_obj = paginate_items(request, main_requests_qs, per_page=10, page_param="page")
     requests = list(requests_page_obj.object_list)
+    requests_page_query = build_page_query_suffix(request, "page")
+    pending_selection_page_query = build_page_query_suffix(request, "pending_selection_page")
     request_ids = [item.id for item in requests + pending_selection_items]
     rating_map = {
         rating.service_request_id: rating
@@ -4454,7 +4509,14 @@ def build_customer_panel_context(request):
         "customer_requests_signature": customer_snapshot["signature"],
         "customer_snapshot": customer_snapshot,
         "customer_flow_summary": customer_flow_summary,
+        "customer_filter_query": customer_filter_query,
+        "customer_filter_state": customer_filter_state,
+        "customer_filter_options": customer_filter_options,
+        "customer_filtered_count": requests_qs.count(),
         "pending_selection_items": pending_selection_items,
+        "pending_selection_page_obj": pending_selection_page_obj,
+        "pending_selection_page_query": pending_selection_page_query,
+        "requests_page_query": requests_page_query,
         "appointment_min_lead_minutes": get_appointment_min_lead_minutes() if calendar_enabled else 0,
         "calendar_enabled": calendar_enabled,
         "customer_panel_partial_url": build_panel_partial_url(request),
@@ -5202,12 +5264,17 @@ def build_provider_panel_context(request, provider):
     highlight_request_id = int(highlight_request_raw) if highlight_request_raw.isdigit() else None
     highlight_appointment_raw = str(request.GET.get("highlight_appointment") or "").strip()
     highlight_appointment_id = int(highlight_appointment_raw) if highlight_appointment_raw.isdigit() else None
+    provider_filter_query = str(request.GET.get("provider_q") or "").strip()
 
     pending_offers_qs = (
         provider.offers.filter(status="pending")
         .select_related("service_request", "service_request__service_type")
         .order_by("-sent_at")
     )
+    if provider_filter_query:
+        pending_offers_qs = pending_offers_qs.filter(
+            build_request_search_query(provider_filter_query, prefix="service_request__")
+        )
     pending_offers_count = pending_offers_qs.count()
     latest_pending_offer_id = pending_offers_qs.values_list("id", flat=True).first() or 0
     pending_offers_page_obj = paginate_items(request, pending_offers_qs, per_page=10, page_param="pending_offer_page")
@@ -5229,6 +5296,10 @@ def build_provider_panel_context(request, provider):
         .select_related("service_request", "service_request__service_type")
         .order_by("-responded_at", "-sent_at")
     )
+    if provider_filter_query:
+        waiting_customer_selection_qs = waiting_customer_selection_qs.filter(
+            build_request_search_query(provider_filter_query, prefix="service_request__")
+        )
     waiting_customer_selection_count = waiting_customer_selection_qs.count()
     waiting_customer_selection_page_obj = paginate_items(
         request,
@@ -5251,6 +5322,10 @@ def build_provider_panel_context(request, provider):
         .select_related("service_request", "service_request__service_type")
         .order_by("-responded_at", "-sent_at")
     )
+    if provider_filter_query:
+        recent_offers_qs = recent_offers_qs.filter(
+            build_request_search_query(provider_filter_query, prefix="service_request__")
+        )
     recent_offers_page_obj = paginate_items(request, recent_offers_qs, per_page=10, page_param="recent_offer_page")
     recent_offers = list(recent_offers_page_obj.object_list)
     if calendar_enabled:
@@ -5259,6 +5334,10 @@ def build_provider_panel_context(request, provider):
             .select_related("service_request", "service_request__service_type")
             .order_by("scheduled_for")
         )
+        if provider_filter_query:
+            pending_appointments_qs = pending_appointments_qs.filter(
+                build_request_search_query(provider_filter_query, prefix="service_request__")
+            )
         pending_appointments_count = pending_appointments_qs.count()
         pending_appointments_page_obj = paginate_items(
             request,
@@ -5280,6 +5359,10 @@ def build_provider_panel_context(request, provider):
             .select_related("service_request", "service_request__service_type")
             .order_by("scheduled_for")
         )
+        if provider_filter_query:
+            confirmed_appointments_qs = confirmed_appointments_qs.filter(
+                build_request_search_query(provider_filter_query, prefix="service_request__")
+            )
         confirmed_appointments_page_obj = paginate_items(
             request,
             confirmed_appointments_qs,
@@ -5292,6 +5375,10 @@ def build_provider_panel_context(request, provider):
             .select_related("service_request", "service_request__service_type")
             .order_by("-updated_at")
         )
+        if provider_filter_query:
+            recent_appointments_qs = recent_appointments_qs.filter(
+                build_request_search_query(provider_filter_query, prefix="service_request__")
+            )
         recent_appointments_page_obj = paginate_items(
             request,
             recent_appointments_qs,
@@ -5321,6 +5408,10 @@ def build_provider_panel_context(request, provider):
         .select_related("service_type", "customer")
         .order_by("-created_at")
     )
+    if provider_filter_query:
+        active_threads_qs = active_threads_qs.filter(
+            build_request_search_query(provider_filter_query)
+        )
     active_threads_page_obj = paginate_items(request, active_threads_qs, per_page=10, page_param="active_thread_page")
     active_threads = list(active_threads_page_obj.object_list)
     active_thread_ids = [item.id for item in active_threads]
@@ -5457,6 +5548,7 @@ def build_provider_panel_context(request, provider):
     return {
         "provider": provider,
         "provider_membership": provider_membership,
+        "provider_filter_query": provider_filter_query,
         "pending_offers": pending_offers,
         "pending_offers_count": pending_offers_count,
         "latest_pending_offer_id": latest_pending_offer_id,

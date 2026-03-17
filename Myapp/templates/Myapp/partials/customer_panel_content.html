@@ -43,6 +43,37 @@
         </div>
       {% endif %}
     </div>
+
+    <form method="get" action="{% url 'my_requests' %}" class="row g-2 align-items-end mt-3">
+      <div class="col-12 col-lg-6">
+        <label class="form-label form-label-sm mb-1" for="customer-request-q">Talep ara</label>
+        <input
+          type="search"
+          id="customer-request-q"
+          name="request_q"
+          value="{{ customer_filter_query }}"
+          class="form-control form-control-sm"
+          placeholder="Talep kodu, hizmet, usta, şehir"
+        >
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+        <label class="form-label form-label-sm mb-1" for="customer-request-state">Durum</label>
+        <select id="customer-request-state" name="request_state" class="form-select form-select-sm">
+          {% for state_value, state_label in customer_filter_options.items %}
+            <option value="{{ state_value }}" {% if customer_filter_state == state_value %}selected{% endif %}>{{ state_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Filtrele</button>
+      </div>
+      <div class="col-6 col-md-3 col-lg-1">
+        <a href="{% url 'my_requests' %}" class="btn btn-sm btn-link w-100 px-0">Temizle</a>
+      </div>
+      <div class="col-12">
+        <div class="small text-muted">{{ customer_filtered_count }} talep listeleniyor.</div>
+      </div>
+    </form>
   </div>
 </section>
 
@@ -54,7 +85,7 @@
           <h2 class="h5 mb-1"><i class="bi bi-person-check-fill me-1"></i>Şimdi Seçmen Gereken Ustalar</h2>
           <p class="small text-muted mb-0">Karar vermen gereken işler burada tutulur.</p>
         </div>
-        <span class="request-card-code">{{ pending_selection_items|length }} talep</span>
+        <span class="request-card-code">{{ pending_selection_page_obj.paginator.count }} talep</span>
       </div>
 
       <div class="d-grid gap-3">
@@ -127,6 +158,20 @@
           </article>
         {% endfor %}
       </div>
+
+      {% if pending_selection_page_obj.has_other_pages %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+          <span class="small text-muted">Sayfa {{ pending_selection_page_obj.number }} / {{ pending_selection_page_obj.paginator.num_pages }}</span>
+          <div class="d-flex align-items-center gap-2">
+            {% if pending_selection_page_obj.has_previous %}
+              <a class="btn btn-sm btn-outline-secondary" href="?pending_selection_page={{ pending_selection_page_obj.previous_page_number }}{{ pending_selection_page_query }}#customer-selection-hub">Önceki</a>
+            {% endif %}
+            {% if pending_selection_page_obj.has_next %}
+              <a class="btn btn-sm btn-outline-secondary" href="?pending_selection_page={{ pending_selection_page_obj.next_page_number }}{{ pending_selection_page_query }}#customer-selection-hub">Sonraki</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     </div>
   </section>
 {% endif %}
@@ -312,10 +357,10 @@
           <span class="small text-muted">Sayfa {{ requests_page_obj.number }} / {{ requests_page_obj.paginator.num_pages }}</span>
           <div class="d-flex align-items-center gap-2">
             {% if requests_page_obj.has_previous %}
-              <a class="btn btn-sm btn-outline-secondary" href="?page={{ requests_page_obj.previous_page_number }}">Önceki</a>
+              <a class="btn btn-sm btn-outline-secondary" href="?page={{ requests_page_obj.previous_page_number }}{{ requests_page_query }}">Önceki</a>
             {% endif %}
             {% if requests_page_obj.has_next %}
-              <a class="btn btn-sm btn-outline-secondary" href="?page={{ requests_page_obj.next_page_number }}">Sonraki</a>
+              <a class="btn btn-sm btn-outline-secondary" href="?page={{ requests_page_obj.next_page_number }}{{ requests_page_query }}">Sonraki</a>
             {% endif %}
           </div>
         </div>
