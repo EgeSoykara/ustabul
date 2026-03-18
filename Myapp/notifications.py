@@ -566,6 +566,10 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
                     "created_at": item.created_at,
                     "is_unread": item.read_at is None,
                     "counterparty": counterparty,
+                    "service_request_id": item.service_request_id,
+                    "appointment_id": None,
+                    "target_type": "message",
+                    "target_status": "",
                 }
             )
 
@@ -614,6 +618,11 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
                 "created_at": event.created_at,
                 "is_unread": is_unread,
                 "counterparty": counterparty,
+                "service_request_id": event.service_request_id
+                or getattr(getattr(event, "appointment", None), "service_request_id", None),
+                "appointment_id": event.appointment_id,
+                "target_type": event.target_type,
+                "target_status": event.to_status or "",
             }
         )
 

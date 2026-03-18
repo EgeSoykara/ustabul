@@ -1,7 +1,7 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 
-from .models import MobileDevice, ServiceRequest
+from .models import MobileDevice, NotificationCursor, ServiceRequest
 
 
 class MobileLoginSerializer(serializers.Serializer):
@@ -15,7 +15,7 @@ class MobileLoginSerializer(serializers.Serializer):
 
         user = authenticate(request=request, username=username, password=password)
         if user is None:
-            raise serializers.ValidationError("Kullanici adi veya sifre hatali.")
+            raise serializers.ValidationError("Kullanıcı adı veya şifre hatalı.")
         if not user.is_active:
             raise serializers.ValidationError("Bu hesap pasif durumda.")
 
@@ -37,13 +37,13 @@ class MobileDeviceRegistrationSerializer(serializers.ModelSerializer):
         if not token:
             return None
         if len(token) < 32:
-            raise serializers.ValidationError("Push token gecersiz gorunuyor.")
+            raise serializers.ValidationError("Push token geçersiz görünüyor.")
         return token
 
     def validate_device_id(self, value):
         device_id = (value or "").strip()
         if len(device_id) < 6:
-            raise serializers.ValidationError("device_id en az 6 karakter olmalidir.")
+            raise serializers.ValidationError("device_id en az 6 karakter olmalıdır.")
         return device_id
 
 
@@ -83,3 +83,13 @@ class MobileServiceRequestSerializer(serializers.ModelSerializer):
     def get_unread_messages(self, obj):
         unread_map = self.context.get("unread_map") or {}
         return int(unread_map.get(obj.id, 0))
+
+
+class MobileNotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationCursor
+        fields = (
+            "allow_message_notifications",
+            "allow_request_notifications",
+            "allow_appointment_notifications",
+        )

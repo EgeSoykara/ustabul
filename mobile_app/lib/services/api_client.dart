@@ -60,6 +60,23 @@ class ApiClient {
     }
   }
 
+  Future<dynamic> put(
+    String path, {
+    String? accessToken,
+    dynamic data,
+  }) async {
+    try {
+      final response = await _dio.put<dynamic>(
+        path,
+        data: data,
+        options: Options(headers: _buildHeaders(accessToken)),
+      );
+      return response.data;
+    } on DioException catch (error) {
+      throw _toApiException(error);
+    }
+  }
+
   Map<String, String> _buildHeaders(String? accessToken) {
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (accessToken != null && accessToken.isNotEmpty) {
@@ -72,13 +89,35 @@ class ApiClient {
     final statusCode = error.response?.statusCode;
     final raw = error.response?.data;
     if (raw is Map<String, dynamic>) {
+      final fieldErrors = raw['errors'];
+      if (fieldErrors is Map) {
+        final messages = <String>[];
+        for (final value in fieldErrors.values) {
+          if (value is List) {
+            for (final item in value) {
+              final text = item.toString().trim();
+              if (text.isNotEmpty) {
+                messages.add(text);
+              }
+            }
+          } else {
+            final text = value.toString().trim();
+            if (text.isNotEmpty) {
+              messages.add(text);
+            }
+          }
+        }
+        if (messages.isNotEmpty) {
+          return ApiException(messages.join('\n'), statusCode: statusCode);
+        }
+      }
       final detail = (raw['message'] ?? raw['detail'] ?? '').toString();
       if (detail.isNotEmpty) {
         return ApiException(detail, statusCode: statusCode);
       }
     }
     return ApiException(
-      error.message ?? 'Sunucu hatasi olustu.',
+      error.message ?? 'Sunucu hatası oluştu.',
       statusCode: statusCode,
     );
   }

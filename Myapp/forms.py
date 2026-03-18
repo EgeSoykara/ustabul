@@ -209,7 +209,7 @@ class ServiceRequestForm(forms.ModelForm):
                 attrs={
                     "rows": 5,
                     "maxlength": str(SERVICE_REQUEST_DETAILS_MAX_LENGTH),
-                    "placeholder": "Sorunu veya ihtiyaci detayli anlatabilirsiniz.",
+                    "placeholder": "Sorunu veya ihtiyacı detaylı anlatabilirsiniz.",
                 }
             ),
         }
@@ -264,10 +264,10 @@ class ServiceRequestForm(forms.ModelForm):
             return
 
         self.fields["service_type"].queryset = preferred_provider.service_types.order_by("name")
-        self.fields["service_type"].error_messages["invalid_choice"] = "Secilen usta bu hizmet turunu sunmuyor."
+        self.fields["service_type"].error_messages["invalid_choice"] = "Seçilen usta bu hizmet türünü sunmuyor."
         if not self.is_bound:
             self.fields["service_type"].help_text = (
-                "Secili usta icin uygun hizmetler listeleniyor."
+                "Seçili usta için uygun hizmetler listeleniyor."
             )
 
     def _apply_preferred_provider_locks(self):
@@ -317,18 +317,18 @@ class ServiceRequestForm(forms.ModelForm):
                 )
                 self._preferred_provider = preferred_provider
             if not preferred_provider:
-                self.add_error("preferred_provider_id", "Secilen usta su an musait degil veya aktif degil.")
+                self.add_error("preferred_provider_id", "Seçilen usta şu an müsait değil veya aktif değil.")
                 return cleaned_data
 
             if not preferred_provider.service_types.exists():
-                self.add_error("service_type", "Secilen usta icin aktif hizmet bulunamadi.")
+                self.add_error("service_type", "Seçilen usta için aktif hizmet bulunamadı.")
                 return cleaned_data
 
             service_type = cleaned_data.get("service_type")
             if not service_type:
-                self.add_error("service_type", "Secilen usta icin bir hizmet secin.")
+                self.add_error("service_type", "Seçilen usta için bir hizmet seçin.")
             elif not preferred_provider.service_types.filter(id=service_type.id).exists():
-                self.add_error("service_type", "Secilen usta bu hizmet turunu sunmuyor.")
+                self.add_error("service_type", "Seçilen usta bu hizmet türünü sunmuyor.")
 
             city = cleaned_data.get("city")
             district = cleaned_data.get("district")
@@ -338,9 +338,9 @@ class ServiceRequestForm(forms.ModelForm):
             normalized_provider_district = normalize_choice_value(preferred_provider.district)
 
             if normalized_form_city and normalized_form_city != normalized_provider_city:
-                self.add_error("city", "Ozel usta modunda sehir degistirilemez. Genel forma donerek secim yapin.")
+                self.add_error("city", "Özel usta modunda şehir değiştirilemez. Genel forma dönerek seçim yapın.")
             if normalized_form_district and normalized_form_district != normalized_provider_district:
-                self.add_error("district", "Ozel usta modunda ilce degistirilemez. Genel forma donerek secim yapin.")
+                self.add_error("district", "Özel usta modunda ilçe değiştirilemez. Genel forma dönerek seçim yapın.")
 
             cleaned_data["city"] = preferred_provider.city
             cleaned_data["district"] = preferred_provider.district
@@ -354,12 +354,12 @@ class ServiceRequestForm(forms.ModelForm):
 
         city_key = resolve_city_value(city)
         if not city_key:
-            self.add_error("city", "Gecerli bir sehir secin.")
+            self.add_error("city", "Geçerli bir şehir seçin.")
             return cleaned_data
 
         resolved_district = resolve_district_value(city_key, district, include_any=True)
         if not resolved_district:
-            self.add_error("district", "Secilen ilce, sehir ile eslesmiyor.")
+            self.add_error("district", "Seçilen ilçe, şehir ile eşleşmiyor.")
             return cleaned_data
 
         cleaned_data["city"] = city_key

@@ -18,17 +18,20 @@ class AuthService {
       },
     );
     if (response is! Map<String, dynamic>) {
-      throw const ApiException('Giris yaniti gecersiz.');
+      throw const ApiException('Giriş yanıtı geçersiz.');
     }
     final userData = response['user'];
     if (userData is! Map<String, dynamic>) {
-      throw const ApiException('Kullanici bilgisi alinamadi.');
+      throw const ApiException('Kullanıcı bilgisi alınamadı.');
     }
     return AuthSession(
       accessToken: (response['access'] ?? '').toString(),
       refreshToken: (response['refresh'] ?? '').toString(),
       role: (userData['role'] ?? '').toString(),
       user: userData,
+      snapshot: response['snapshot'] is Map<String, dynamic>
+          ? response['snapshot'] as Map<String, dynamic>
+          : <String, dynamic>{},
     );
   }
 
@@ -38,11 +41,11 @@ class AuthService {
       data: {'refresh': refreshToken},
     );
     if (response is! Map<String, dynamic>) {
-      throw const ApiException('Token yenileme yaniti gecersiz.');
+      throw const ApiException('Token yenileme yanıtı geçersiz.');
     }
     final access = (response['access'] ?? '').toString();
     if (access.isEmpty) {
-      throw const ApiException('Yeni access token alinamadi.');
+      throw const ApiException('Yeni erişim anahtarı alınamadı.');
     }
     return access;
   }
@@ -53,7 +56,7 @@ class AuthService {
       accessToken: accessToken,
     );
     if (response is! Map<String, dynamic>) {
-      throw const ApiException('Profil yaniti gecersiz.');
+      throw const ApiException('Profil yanıtı geçersiz.');
     }
     return response;
   }

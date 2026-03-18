@@ -10,7 +10,26 @@ import '../config/brand_config.dart';
 import '../services/push_service.dart';
 
 class SiteShellScreen extends StatefulWidget {
-  const SiteShellScreen({super.key});
+  SiteShellScreen({
+    super.key,
+    Uri? initialUri,
+    this.pageTitle,
+  }) : initialUri = initialUri ?? AppConfig.siteUri;
+
+  factory SiteShellScreen.relativePath(
+    String path, {
+    Key? key,
+    String? pageTitle,
+  }) {
+    return SiteShellScreen(
+      key: key,
+      initialUri: AppConfig.siteUri.resolve(path),
+      pageTitle: pageTitle,
+    );
+  }
+
+  final Uri initialUri;
+  final String? pageTitle;
 
   @override
   State<SiteShellScreen> createState() => _SiteShellScreenState();
@@ -32,6 +51,7 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
   @override
   void initState() {
     super.initState();
+    _currentUri = widget.initialUri;
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
@@ -80,14 +100,14 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
             if (_hasRenderedFirstPage) {
               _showSnackBar(
                 description.isEmpty
-                    ? 'Sayfa yuklenirken bir baglanti hatasi olustu.'
+                    ? 'Sayfa yüklenirken bir bağlantı hatası oluştu.'
                     : description,
               );
               return;
             }
             setState(() {
               _loadError = description.isEmpty
-                  ? 'Siteye ulasilamadi. Baglantini kontrol edip yeniden dene.'
+                  ? 'Siteye ulaşılamadı. Bağlantını kontrol edip yeniden dene.'
                   : description;
             });
           },
@@ -99,7 +119,7 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
 
   Future<void> _bootstrapController() async {
     await _controller.setUserAgent(AppConfig.userAgent);
-    await _controller.loadRequest(AppConfig.siteUri);
+    await _controller.loadRequest(widget.initialUri);
   }
 
   Future<void> _bootstrapPushBridge() async {
@@ -125,7 +145,7 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
 
     final didLaunch = await _openExternally(
       uri,
-      failureMessage: 'Baglanti cihazda acilamadi.',
+      failureMessage: 'Bağlantı cihazda açılamadı.',
     );
     return didLaunch ? NavigationDecision.prevent : NavigationDecision.navigate;
   }
@@ -251,7 +271,8 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
     );
   }
 
-  Future<Map<String, dynamic>?> _runJsonRequest(String asyncFunctionSource) async {
+  Future<Map<String, dynamic>?> _runJsonRequest(
+      String asyncFunctionSource) async {
     try {
       final rawResult = await _controller.runJavaScriptReturningResult(
         '''
@@ -344,8 +365,8 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
       _loadError = null;
       _loadingProgress = 0;
     });
-    _currentUri = AppConfig.siteUri;
-    await _controller.loadRequest(AppConfig.siteUri);
+    _currentUri = widget.initialUri;
+    await _controller.loadRequest(widget.initialUri);
   }
 
   Future<void> _goToHome() async {
@@ -357,8 +378,8 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
       _loadError = null;
       _loadingProgress = 0;
     });
-    _currentUri = AppConfig.siteUri;
-    await _controller.loadRequest(AppConfig.siteUri);
+    _currentUri = widget.initialUri;
+    await _controller.loadRequest(widget.initialUri);
   }
 
   Future<void> _reloadPage() async {
@@ -385,7 +406,7 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
     HapticFeedback.selectionClick();
     await _openExternally(
       _currentUri,
-      failureMessage: 'Sayfa tarayicida acilamadi.',
+      failureMessage: 'Sayfa tarayıcıda açılamadı.',
     );
   }
 
@@ -405,7 +426,7 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
     }
 
     _lastExitAttemptAt = now;
-    _showSnackBar('Uygulamadan cikmak icin tekrar geri bas.');
+    _showSnackBar('Uygulamadan çıkmak için tekrar geri bas.');
   }
 
   @override
@@ -415,12 +436,7 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
     final showQuickActions = _hasRenderedFirstPage && _loadError == null;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: BrandConfig.background,
-        statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: BrandConfig.background,
-        systemNavigationBarIconBrightness: Brightness.light,
-      ),
+      value: BrandConfig.overlayStyleFor(Theme.of(context).brightness),
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) async {
@@ -430,7 +446,13 @@ class _SiteShellScreenState extends State<SiteShellScreen> {
           await _handleBackPressed();
         },
         child: Scaffold(
-          backgroundColor: BrandConfig.background,
+          appBar: widget.pageTitle == null
+              ? null
+              : AppBar(
+                  title: Text(widget.pageTitle!),
+                  backgroundColor: BrandConfig.backgroundOf(context),
+                ),
+          backgroundColor: BrandConfig.backgroundOf(context),
           body: Stack(
             children: [
               WebViewWidget(controller: _controller),
@@ -507,12 +529,12 @@ class _QuickActionsBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xD9121C2F),
+        color: BrandConfig.floatingSurfaceOf(context),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0x3329B6D1)),
-        boxShadow: const [
+        border: Border.all(color: BrandConfig.accentSoftOf(context)),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x55000000),
+            color: BrandConfig.floatingShadowOf(context),
             blurRadius: 18,
             offset: Offset(0, 10),
           ),
@@ -548,7 +570,7 @@ class _QuickActionsBar extends StatelessWidget {
             ),
             _QuickActionButton(
               icon: Icons.open_in_browser_rounded,
-              tooltip: 'Tarayicida ac',
+              tooltip: 'Tarayıcıda aç',
               onPressed: () {
                 onOpenInBrowser();
               },
@@ -581,8 +603,8 @@ class _QuickActionButton extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       style: IconButton.styleFrom(
         foregroundColor: isEnabled
-            ? BrandConfig.text
-            : BrandConfig.textMuted.withValues(alpha: 0.45),
+            ? BrandConfig.textOf(context)
+            : BrandConfig.textMutedOf(context).withValues(alpha: 0.45),
       ),
       icon: Icon(icon),
     );
@@ -603,7 +625,7 @@ class _ErrorOverlay extends StatelessWidget {
     final theme = Theme.of(context);
 
     return ColoredBox(
-      color: BrandConfig.background,
+      color: BrandConfig.backgroundOf(context),
       child: SafeArea(
         child: Center(
           child: Padding(
@@ -622,9 +644,9 @@ class _ErrorOverlay extends StatelessWidget {
                 ),
                 const SizedBox(height: 22),
                 Text(
-                  'Baglanti Sorunu',
+                  'Bağlantı Sorunu',
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    color: BrandConfig.text,
+                    color: BrandConfig.textOf(context),
                     fontWeight: FontWeight.w800,
                   ),
                   textAlign: TextAlign.center,
@@ -633,7 +655,7 @@ class _ErrorOverlay extends StatelessWidget {
                 Text(
                   message,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: BrandConfig.textMuted,
+                    color: BrandConfig.textMutedOf(context),
                     height: 1.45,
                   ),
                   textAlign: TextAlign.center,
@@ -666,7 +688,7 @@ class _LaunchOverlay extends StatelessWidget {
     final double? value = progress == 0 ? null : progress / 100;
 
     return ColoredBox(
-      color: BrandConfig.background,
+      color: BrandConfig.backgroundOf(context),
       child: SafeArea(
         child: Center(
           child: Padding(
@@ -687,16 +709,16 @@ class _LaunchOverlay extends StatelessWidget {
                 Text(
                   'UstaBul',
                   style: theme.textTheme.headlineMedium?.copyWith(
-                    color: BrandConfig.text,
+                    color: BrandConfig.textOf(context),
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.8,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Uygulama yukleniyor',
+                  'Uygulama yükleniyor',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: BrandConfig.textMuted,
+                    color: BrandConfig.textMutedOf(context),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -707,7 +729,7 @@ class _LaunchOverlay extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: value,
                       minHeight: 6,
-                      backgroundColor: BrandConfig.surface,
+                      backgroundColor: BrandConfig.surfaceOf(context),
                     ),
                   ),
                 ),
