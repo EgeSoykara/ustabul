@@ -1,4 +1,4 @@
-from collections import defaultdict
+﻿from collections import defaultdict
 from datetime import timedelta
 from urllib.parse import urlencode
 
@@ -228,7 +228,14 @@ def get_notification_workflow_events(
     workflow_qs = (
         get_workflow_event_queryset(user, provider=provider, now=now, days=days, include_all=include_all)
         .exclude(actor_user=user)
-        .select_related("service_request", "appointment", "actor_user", "appointment__service_request")
+        .select_related(
+            "service_request",
+            "service_request__matched_provider",
+            "appointment",
+            "appointment__provider",
+            "appointment__service_request",
+            "actor_user",
+        )
         .order_by("-created_at", "-id")
     )
     if limit is not None:
@@ -396,6 +403,39 @@ def build_workflow_notification_link(user, event, provider=None):
     return f"{panel_url}?{urlencode(params)}{hash_target}"
 
 
+def _build_counterparty_meta(user, provider=None, *, service_request=None, appointment=None, actor_user=None):
+    request_obj = service_request
+    if request_obj is None and appointment is not None:
+        request_obj = getattr(appointment, "service_request", None)
+    if request_obj is None:
+        return None
+
+    if provider:
+        label = "M\u00fc\u015fteri"
+        name = str(getattr(request_obj, "customer_name", "") or "").strip()
+        phone = str(getattr(request_obj, "customer_phone", "") or "").strip()
+    else:
+        provider_obj = getattr(request_obj, "matched_provider", None) or getattr(appointment, "provider", None)
+        if provider_obj is None and actor_user is not None:
+            provider_obj = get_provider_for_user(actor_user)
+        label = "Usta"
+        name = str(getattr(provider_obj, "full_name", "") or "").strip()
+        phone = str(getattr(provider_obj, "phone", "") or "").strip()
+
+    if not name and not phone:
+        return None
+
+    line = f"{label}: {name}" if name else label
+    if phone:
+        line = f"{line} \u00b7 {phone}"
+    return {
+        "label": label,
+        "name": name,
+        "phone": phone,
+        "line": line,
+    }
+
+
 def resolve_notification_entry(user, entry_id):
     if not user or not getattr(user, "is_authenticated", False):
         return None
@@ -497,7 +537,7 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
                 days=days,
                 include_all=include_all,
             )
-            .select_related("service_request")
+            .select_related("service_request", "service_request__matched_provider", "sender_user")
             .order_by("-created_at")
         )
         if unread_only:
@@ -505,6 +545,12 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
         messages = list(message_queryset[:limit])
         for item in messages:
             request_code = item.service_request.display_code if item.service_request_id else "-"
+            counterparty = _build_counterparty_meta(
+                user,
+                provider=provider,
+                service_request=item.service_request,
+                actor_user=item.sender_user,
+            )
             entries.append(
                 {
                     "entry_id": f"msg-{item.id}",
@@ -519,6 +565,7 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
                     "mark_read_url": reverse("notifications_mark_entry_read", args=[f"msg-{item.id}"]),
                     "created_at": item.created_at,
                     "is_unread": item.read_at is None,
+                    "counterparty": counterparty,
                 }
             )
 
@@ -545,6 +592,13 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
             body = _truncate(event.note, 220)
         else:
             body = f"{from_label} -> {to_label}"
+        counterparty = _build_counterparty_meta(
+            user,
+            provider=provider,
+            service_request=getattr(event, "service_request", None),
+            appointment=getattr(event, "appointment", None),
+            actor_user=event.actor_user,
+        )
         entries.append(
             {
                 "entry_id": f"wf-{event.id}",
@@ -559,6 +613,7 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
                 "mark_read_url": reverse("notifications_mark_entry_read", args=[f"wf-{event.id}"]),
                 "created_at": event.created_at,
                 "is_unread": is_unread,
+                "counterparty": counterparty,
             }
         )
 

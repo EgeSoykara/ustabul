@@ -79,6 +79,11 @@
                   </div>
                   <h3 class="h6 mb-1">{{ item.title }}</h3>
                   <p class="small text-muted mb-2">{{ item.body }}</p>
+                  {% if item.counterparty %}
+                    <div class="small text-muted mb-2">
+                      {{ item.counterparty.line }}
+                    </div>
+                  {% endif %}
                   <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap" data-notification-footer>
                     <a href="{{ item.open_link }}" class="btn btn-sm nav-ghost-btn">
                       <i class="bi bi-box-arrow-up-right me-1"></i>Detayı aç
