@@ -128,6 +128,46 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<Map<String, dynamic>> _fetchAllCustomerRequests({
+    required String accessToken,
+    String? scope,
+  }) async {
+    const pageSize = 100;
+    final firstPage = await widget.dataService.fetchCustomerRequests(
+      accessToken: accessToken,
+      limit: pageSize,
+      offset: 0,
+      scope: scope,
+    );
+
+    final totalCount = (firstPage['count'] as num?)?.toInt() ?? 0;
+    final combinedResults = <Map<String, dynamic>>[
+      ..._mapList(firstPage['results']),
+    ];
+
+    var offset = combinedResults.length;
+    while (offset < totalCount) {
+      final nextPage = await widget.dataService.fetchCustomerRequests(
+        accessToken: accessToken,
+        limit: pageSize,
+        offset: offset,
+        scope: scope,
+      );
+      final nextResults = _mapList(nextPage['results']);
+      if (nextResults.isEmpty) {
+        break;
+      }
+      combinedResults.addAll(nextResults);
+      offset = combinedResults.length;
+    }
+
+    return <String, dynamic>{
+      ...firstPage,
+      'count': totalCount,
+      'results': combinedResults,
+    };
+  }
+
   bool _isNotFoundError(Object error) {
     return error is ApiException && error.statusCode == 404;
   }
@@ -151,13 +191,11 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         await widget.sessionController.refreshProfile();
         final responses = await Future.wait<Map<String, dynamic>>([
-          widget.dataService.fetchCustomerRequests(
+          _fetchAllCustomerRequests(
             accessToken: accessToken,
-            limit: 50,
           ),
-          widget.dataService.fetchCustomerRequests(
+          _fetchAllCustomerRequests(
             accessToken: accessToken,
-            limit: 50,
             scope: 'agreements',
           ),
         ]);
