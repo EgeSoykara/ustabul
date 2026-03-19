@@ -127,10 +127,7 @@ class _AppGate extends StatelessWidget {
           return const _BootScreen();
         }
         if (!sessionController.isAuthenticated) {
-          return LoginScreen(
-            sessionController: sessionController,
-            themeController: themeController,
-          );
+          return LoginScreen(sessionController: sessionController);
         }
         return HomeScreen(
           sessionController: sessionController,

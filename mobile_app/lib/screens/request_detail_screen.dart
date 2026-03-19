@@ -56,6 +56,21 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           ? _payload['provider_offer'] as Map<String, dynamic>
           : null;
 
+  Map<String, dynamic> get _flowState =>
+      _payload['flow_state'] is Map<String, dynamic>
+          ? _payload['flow_state'] as Map<String, dynamic>
+          : const <String, dynamic>{};
+
+  Map<String, dynamic>? get _rating =>
+      _payload['rating'] is Map<String, dynamic>
+          ? _payload['rating'] as Map<String, dynamic>
+          : null;
+
+  Map<String, dynamic> get _ratingState =>
+      _payload['rating_state'] is Map<String, dynamic>
+          ? _payload['rating_state'] as Map<String, dynamic>
+          : const <String, dynamic>{};
+
   List<Map<String, dynamic>> get _acceptedOffers {
     final raw = _payload['accepted_offers'];
     if (raw is! List) {
@@ -69,6 +84,36 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   bool get _isProviderViewer => (_payload['viewer_role'] ?? '') == 'provider';
+
+  List<String> get _flowLabels {
+    final calendarEnabled = _payload['calendar_enabled'] == true;
+    if (_isProviderViewer) {
+      return calendarEnabled
+          ? const <String>[
+              'Talep kararı',
+              'Müşteri seçimi',
+              'Eşleşme',
+              'Randevu / Tamamlama',
+            ]
+          : const <String>[
+              'Talep kararı',
+              'Müşteri seçimi',
+              'Tamamlama',
+            ];
+    }
+    return calendarEnabled
+        ? const <String>[
+            'Talep gönderildi',
+            'Usta seçimi',
+            'Randevu',
+            'Tamamlama',
+          ]
+        : const <String>[
+            'Talep gönderildi',
+            'Usta seçimi',
+            'Tamamlama',
+          ];
+  }
 
   bool get _forceNativeProviderFlow =>
       widget.sessionController.session?.isProvider == true;
@@ -204,6 +249,42 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
   }
 
+  Future<void> _performAndReload(
+      Future<Map<String, dynamic>> Function() action) async {
+    setState(() {
+      _actionLoading = true;
+      _error = null;
+    });
+    try {
+      final payload = await action();
+      if (!mounted) {
+        return;
+      }
+      final message = (payload['message'] ?? 'İşlem tamamlandı.').toString();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+      await _load();
+    } catch (error) {
+      if (error is ApiException && error.statusCode == 404) {
+        await _handleMissingNativeEndpoint(duringAction: true);
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
   Future<String?> _promptForShortNote({
     required String title,
     required String hintText,
@@ -233,6 +314,86 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             child: const Text('Devam et'),
           ),
         ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<Map<String, dynamic>?> _promptForRating() async {
+    var selectedScore = ((_rating?['score'] as num?)?.toInt() ?? 5).clamp(1, 5);
+    final controller = TextEditingController(
+      text: (_rating?['comment'] ?? '').toString(),
+    );
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          backgroundColor: BrandConfig.surfaceOf(context),
+          title: Text(_rating == null ? 'Ustayı puanla' : 'Puanını güncelle'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Puan',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: List<Widget>.generate(5, (index) {
+                    final score = index + 1;
+                    final active = score <= selectedScore;
+                    return IconButton(
+                      onPressed: () {
+                        setModalState(() {
+                          selectedScore = score;
+                        });
+                      },
+                      iconSize: 28,
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(),
+                      icon: Icon(
+                        active ? Icons.star_rounded : Icons.star_border_rounded,
+                        color: active
+                            ? const Color(0xFFF59E0B)
+                            : BrandConfig.textMutedOf(context),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Yorum',
+                    hintText: 'İsteğe bağlı kısa yorum',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(
+                {
+                  'score': selectedScore,
+                  'comment': controller.text.trim(),
+                },
+              ),
+              child: Text(_rating == null ? 'Puanı kaydet' : 'Güncelle'),
+            ),
+          ],
+        ),
       ),
     );
     controller.dispose();
@@ -305,6 +466,140 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     final local = parsed.toLocal();
     String two(int value) => value.toString().padLeft(2, '0');
     return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  String _requestStatusLabel(String status) {
+    switch (status) {
+      case 'new':
+        return 'Yeni';
+      case 'pending_provider':
+        return 'Usta yanıtı bekleniyor';
+      case 'pending_customer':
+        return 'Karar bekleniyor';
+      case 'matched':
+        return 'Eşleşti';
+      case 'completed':
+        return 'Tamamlandı';
+      case 'cancelled':
+        return 'İptal edildi';
+      default:
+        return status.isEmpty ? 'Durum yok' : status;
+    }
+  }
+
+  String _appointmentStatusLabel(String status) {
+    switch (status) {
+      case 'pending':
+        return 'Usta onayı bekleniyor';
+      case 'pending_customer':
+        return 'Sizin onayınız bekleniyor';
+      case 'confirmed':
+        return 'Onaylandı';
+      case 'rejected':
+        return 'Reddedildi';
+      case 'cancelled':
+        return 'İptal edildi';
+      case 'completed':
+        return 'Tamamlandı';
+      default:
+        return status.isEmpty ? '' : status;
+    }
+  }
+
+  String _providerOfferStatusLabel(String status) {
+    switch (status) {
+      case 'pending':
+        return 'Bekliyor';
+      case 'accepted':
+        return 'Kabul edildi';
+      case 'rejected':
+        return 'Reddedildi';
+      case 'expired':
+        return 'Süresi doldu';
+      case 'failed':
+        return 'Gönderilemedi';
+      default:
+        return status.isEmpty ? 'Durum yok' : status;
+    }
+  }
+
+  String _requestStageSummary() {
+    final requestStatus = (_request['status'] ?? '').toString();
+    final appointmentStatus = (_appointment?['status'] ?? '').toString();
+
+    switch (requestStatus) {
+      case 'new':
+        return 'Talep oluşturuldu. Şu anda uygun ustalara yönlendirilmesi bekleniyor.';
+      case 'pending_provider':
+        return 'Talebiniz ustalara iletildi. Şu anda usta yanıtları bekleniyor.';
+      case 'pending_customer':
+        return 'Teklifler hazır. Bir usta seçerek süreci devam ettirebilirsiniz.';
+      case 'matched':
+        switch (appointmentStatus) {
+          case 'pending':
+            return 'Bir usta ile eşleştiniz. Randevu için usta onayı bekleniyor.';
+          case 'pending_customer':
+            return 'Bir usta ile eşleştiniz. Randevuyu sizin onaylamanız bekleniyor.';
+          case 'confirmed':
+            return 'İş aktif durumda. Randevu onaylandı ve süreç devam ediyor.';
+          case 'completed':
+            return 'İş tamamlandı. Bu kayıt geçmişe taşınacaktır.';
+          case 'rejected':
+          case 'cancelled':
+            return 'Randevu kapandı. Gerekirse yeni bir randevu planlayabilirsiniz.';
+          default:
+            return 'Bir usta ile eşleştiniz. İş şu anda aktif olarak devam ediyor.';
+        }
+      case 'completed':
+        return 'İş tamamlandı. Bu kayıt artık geçmişte gösterilir.';
+      case 'cancelled':
+        return 'Talep iptal edildi. Bu kayıt artık geçmişte gösterilir.';
+      default:
+        return 'Süreç bilgisi güncelleniyor.';
+    }
+  }
+
+  int _currentFlowStep() {
+    final rawStep = (_flowState['step'] ?? '').toString();
+    final match = RegExp(r'(\d+)\s*/\s*(\d+)').firstMatch(rawStep);
+    if (match != null) {
+      final parsed = int.tryParse(match.group(1) ?? '');
+      if (parsed != null) {
+        return parsed.clamp(0, _flowLabels.length).toInt();
+      }
+    }
+
+    final status = (_request['status'] ?? '').toString();
+    if (status == 'completed') {
+      return _flowLabels.length;
+    }
+    if (status == 'cancelled') {
+      return 0;
+    }
+    if (status == 'matched') {
+      return (_payload['calendar_enabled'] == true && _flowLabels.length >= 4)
+          ? 3
+          : _flowLabels.length;
+    }
+    if (status == 'pending_customer') {
+      return _flowLabels.length >= 2 ? 2 : 1;
+    }
+    return 1;
+  }
+
+  Color _flowToneColor(BuildContext context) {
+    switch ((_flowState['tone'] ?? '').toString()) {
+      case 'success':
+        return const Color(0xFF15803D);
+      case 'danger':
+        return const Color(0xFFB91C1C);
+      case 'waiting':
+        return const Color(0xFFD97706);
+      case 'action':
+        return BrandConfig.accentOf(context);
+      default:
+        return BrandConfig.textMutedOf(context);
+    }
   }
 
   Future<void> _pickAppointmentDateTime() async {
@@ -464,6 +759,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   style: TextStyle(color: BrandConfig.errorTextOf(context)),
                 ),
               ),
+            if (_flowState.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _FlowTimelineCard(
+                stepLabel: (_flowState['step'] ?? '').toString(),
+                title: (_flowState['title'] ?? '').toString(),
+                hint: (_flowState['hint'] ?? '').toString(),
+                nextAction: (_flowState['next_action'] ?? '').toString(),
+                labels: _flowLabels,
+                currentStep: _currentFlowStep(),
+                toneColor: _flowToneColor(context),
+              ),
+            ],
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -484,8 +791,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       children: [
                         _InfoChip(
                           label: 'Statü',
-                          value: (_request['status'] ?? '').toString(),
+                          value: _requestStatusLabel(
+                            (_request['status'] ?? '').toString(),
+                          ),
                         ),
+                        if ((_appointment?['status'] ?? '')
+                            .toString()
+                            .isNotEmpty)
+                          _InfoChip(
+                            label: 'Randevu',
+                            value: _appointmentStatusLabel(
+                              (_appointment?['status'] ?? '').toString(),
+                            ),
+                          ),
                         _InfoChip(
                           label: 'Okunmamış',
                           value: '${(_request['unread_messages'] ?? 0)}',
@@ -501,6 +819,16 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                           ),
                       ],
                     ),
+                    if (_flowState.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _requestStageSummary(),
+                        style: TextStyle(
+                          color: BrandConfig.textMutedOf(context),
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
                     if ((_actions['complete_block_reason'] ?? '')
                         .toString()
                         .isNotEmpty) ...[
@@ -576,7 +904,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       const SizedBox(height: 10),
                       _DetailLine(
                         label: 'Durum',
-                        value: (_appointment?['status'] ?? '').toString(),
+                        value: _appointmentStatusLabel(
+                          (_appointment?['status'] ?? '').toString(),
+                        ),
                       ),
                       if ((_appointment?['scheduled_for'] ?? '')
                           .toString()
@@ -626,7 +956,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       const SizedBox(height: 10),
                       _DetailLine(
                         label: 'Durum',
-                        value: (_providerOffer?['status'] ?? '').toString(),
+                        value: _providerOfferStatusLabel(
+                          (_providerOffer?['status'] ?? '').toString(),
+                        ),
                       ),
                       if ((_providerOffer?['quote_note'] ?? '')
                           .toString()
@@ -678,6 +1010,105 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     );
                   },
                 ),
+            ],
+            if (!_isProviderViewer &&
+                (_rating != null ||
+                    _ratingState['can_rate'] == true ||
+                    ((_ratingState['rate_block_reason'] ?? '')
+                        .toString()
+                        .isNotEmpty))) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Puanlama',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (_rating != null) ...[
+                        _DetailLine(
+                          label: 'Puanın',
+                          value: '${(_rating?['score'] ?? 0)}/5',
+                        ),
+                        if (((_rating?['comment'] ?? '').toString())
+                            .trim()
+                            .isNotEmpty)
+                          _DetailLine(
+                            label: 'Yorumun',
+                            value: (_rating?['comment'] ?? '').toString(),
+                          ),
+                        if (((_rating?['updated_at'] ?? '').toString())
+                            .trim()
+                            .isNotEmpty)
+                          _DetailLine(
+                            label: 'Güncellendi',
+                            value: _formatDateTime(
+                              (_rating?['updated_at'] ?? '').toString(),
+                            ),
+                          ),
+                      ] else
+                        Text(
+                          'İş tamamlandığında usta için puan ve yorum bırakabilirsiniz.',
+                          style: TextStyle(
+                            color: BrandConfig.textMutedOf(context),
+                            height: 1.4,
+                          ),
+                        ),
+                      if ((_ratingState['rate_block_reason'] ?? '')
+                          .toString()
+                          .isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          (_ratingState['rate_block_reason'] ?? '').toString(),
+                          style: TextStyle(
+                            color: BrandConfig.textMutedOf(context),
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                      if (_ratingState['can_rate'] == true) ...[
+                        const SizedBox(height: 12),
+                        FilledButton.tonalIcon(
+                          onPressed: _actionLoading
+                              ? null
+                              : () async {
+                                  final rating = await _promptForRating();
+                                  if (rating == null || !mounted) {
+                                    return;
+                                  }
+                                  final accessToken = await widget
+                                      .sessionController
+                                      .ensureAccessToken();
+                                  await _performAndReload(
+                                    () =>
+                                        widget.dataService.submitRequestRating(
+                                      accessToken: accessToken,
+                                      requestId: widget.requestId,
+                                      score:
+                                          (rating['score'] as num?)?.toInt() ??
+                                              5,
+                                      comment:
+                                          (rating['comment'] ?? '').toString(),
+                                    ),
+                                  );
+                                },
+                          icon: const Icon(Icons.star_rounded),
+                          label: Text(
+                            _rating == null ? 'Puan ver' : 'Puanı güncelle',
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
             ],
             const SizedBox(height: 12),
             Text(
@@ -1009,6 +1440,274 @@ class _InfoChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _FlowTimelineCard extends StatelessWidget {
+  const _FlowTimelineCard({
+    required this.stepLabel,
+    required this.title,
+    required this.hint,
+    required this.nextAction,
+    required this.labels,
+    required this.currentStep,
+    required this.toneColor,
+  });
+
+  final String stepLabel;
+  final String title;
+  final String hint;
+  final String nextAction;
+  final List<String> labels;
+  final int currentStep;
+  final Color toneColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final safeStep = currentStep.clamp(0, labels.length).toInt();
+    final currentIndex =
+        safeStep > 0 && safeStep <= labels.length ? safeStep - 1 : null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Süreç akışı',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const Spacer(),
+                if (stepLabel.trim().isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: toneColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: toneColor.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Text(
+                      stepLabel,
+                      style: TextStyle(
+                        color: toneColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            if (title.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+            ],
+            if (hint.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                hint,
+                style: TextStyle(
+                  color: BrandConfig.textMutedOf(context),
+                  height: 1.45,
+                ),
+              ),
+            ],
+            if (labels.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              for (var index = 0; index < labels.length; index++)
+                _FlowTimelineStep(
+                  label: labels[index],
+                  isCurrent: currentIndex == index,
+                  isComplete: currentIndex != null && index < currentIndex,
+                  isLast: index == labels.length - 1,
+                  accentColor: toneColor,
+                ),
+            ],
+            if (nextAction.trim().isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: toneColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: toneColor.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sıradaki adım',
+                      style: TextStyle(
+                        color: toneColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      nextAction,
+                      style: TextStyle(
+                        color: BrandConfig.textOf(context),
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FlowTimelineStep extends StatelessWidget {
+  const _FlowTimelineStep({
+    required this.label,
+    required this.isCurrent,
+    required this.isComplete,
+    required this.isLast,
+    required this.accentColor,
+  });
+
+  final String label;
+  final bool isCurrent;
+  final bool isComplete;
+  final bool isLast;
+  final Color accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = BrandConfig.textMutedOf(context);
+    final lineColor = isCurrent || isComplete
+        ? accentColor.withValues(alpha: isCurrent ? 0.65 : 0.3)
+        : BrandConfig.borderOf(context);
+    final markerColor = isCurrent
+        ? accentColor
+        : isComplete
+            ? accentColor.withValues(alpha: 0.2)
+            : Colors.transparent;
+    final markerBorderColor = isCurrent || isComplete ? accentColor : lineColor;
+    final textColor = isCurrent
+        ? BrandConfig.textOf(context)
+        : BrandConfig.textMutedOf(context);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 24,
+          child: Column(
+            children: [
+              Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: markerColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: markerBorderColor, width: 2),
+                ),
+                child: isComplete
+                    ? Icon(
+                        Icons.check_rounded,
+                        size: 9,
+                        color: accentColor,
+                      )
+                    : isCurrent
+                        ? Icon(
+                            Icons.circle,
+                            size: 6,
+                            color: Colors.white,
+                          )
+                        : null,
+              ),
+              if (!isLast)
+                Container(
+                  width: 2,
+                  height: 26,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  color: lineColor,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (isCurrent)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Şimdi',
+                      style: TextStyle(
+                        color: accentColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                if (!isCurrent && isComplete)
+                  Text(
+                    'Tamam',
+                    style: TextStyle(
+                      color: accentColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                if (!isCurrent && !isComplete)
+                  Text(
+                    'Sırada',
+                    style: TextStyle(
+                      color: baseColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

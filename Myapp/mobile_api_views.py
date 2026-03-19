@@ -20,6 +20,7 @@ from .forms import (
     AppointmentCreateForm,
     MIN_RATING_CHOICES,
     MIN_REVIEW_CHOICES,
+    ProviderRatingForm,
     SEARCH_SORT_CHOICES,
     SERVICE_REQUEST_DETAILS_MAX_LENGTH,
     ServiceRequestForm,
@@ -29,6 +30,7 @@ from .mobile_api_serializers import (
     MobileDeviceRegistrationSerializer,
     MobileLoginSerializer,
     MobileNotificationPreferenceSerializer,
+    MobileProviderRatingSerializer,
     MobileServiceRequestSerializer,
 )
 from .models import (
@@ -40,6 +42,7 @@ from .models import (
     ServiceMessage,
     ServiceRequest,
     ServiceType,
+    WorkflowEvent,
 )
 from .core_views import (
     build_create_request_fingerprint,
@@ -68,6 +71,8 @@ from .core_views import (
     get_preferred_provider,
     get_provider_for_user,
     get_request_display_code,
+    get_last_minute_cancel_hours,
+    get_no_show_grace_minutes,
     get_short_note_max_chars,
     infer_actor_role,
     is_calendar_enabled,
@@ -80,7 +85,15 @@ from .core_views import (
     transition_appointment_status,
     transition_service_request_status,
 )
-from .services.flow import provider_can_release_request_match, score_accepted_offers
+from .services.flow import (
+    build_customer_flow_state,
+    build_provider_pending_appointment_flow_state,
+    build_provider_pending_offer_flow_state,
+    build_provider_thread_flow_state,
+    build_provider_waiting_selection_flow_state,
+    provider_can_release_request_match,
+    score_accepted_offers,
+)
 from .notifications import (
     NOTIFICATION_CENTER_LIMIT,
     build_notification_entries,
@@ -173,6 +186,55 @@ def serialize_provider_rating(rating):
     }
 
 
+def serialize_request_rating(rating):
+    if not rating:
+        return None
+    return {
+        "id": rating.id,
+        "score": int(rating.score),
+        "comment": rating.comment or "",
+        "updated_at": rating.updated_at.isoformat() if rating.updated_at else None,
+    }
+
+
+def build_customer_rating_state(service_request, appointment):
+    can_rate = False
+    rate_block_reason = ""
+    calendar_enabled = bool(is_calendar_enabled())
+    has_confirmed_appointment = False
+
+    if calendar_enabled and service_request.id:
+        has_confirmed_appointment = WorkflowEvent.objects.filter(
+            target_type="appointment",
+            service_request=service_request,
+            to_status="confirmed",
+        ).exists()
+
+    if calendar_enabled:
+        can_rate = (
+            service_request.status == "completed"
+            and bool(service_request.matched_provider_id)
+            and bool(appointment)
+            and appointment.status == "completed"
+            and has_confirmed_appointment
+        )
+    else:
+        can_rate = service_request.status == "completed" and bool(service_request.matched_provider_id)
+
+    if calendar_enabled and service_request.status == "completed" and service_request.matched_provider_id and not can_rate:
+        if appointment is None:
+            rate_block_reason = "Randevu oluşturulmadan kapanan işlerde puanlama kapalıdır."
+        elif not has_confirmed_appointment:
+            rate_block_reason = "Randevu müşteri onayı olmadan kapatıldığı için puanlama kapalıdır."
+        elif appointment.status != "completed":
+            rate_block_reason = "Puanlama için randevunun tamamlanması gerekir."
+
+    return {
+        "can_rate": can_rate,
+        "rate_block_reason": rate_block_reason,
+    }
+
+
 def serialize_mobile_notification_entry(entry):
     created_at = entry.get("created_at")
     counterparty = entry.get("counterparty") or {}
@@ -194,7 +256,26 @@ def serialize_mobile_notification_entry(entry):
     }
 
 
+def serialize_flow_state_fields(flow_state):
+    return {
+        "flow_step": flow_state.get("step", ""),
+        "flow_title": flow_state.get("title", ""),
+        "flow_hint": flow_state.get("hint", ""),
+        "flow_next_action": flow_state.get("next_action", ""),
+        "flow_tone": flow_state.get("tone", "muted"),
+    }
+
+
 def serialize_provider_offer_card(offer):
+    flow_state = build_provider_pending_offer_flow_state()
+    if (
+        offer.status == "accepted"
+        and offer.service_request_id
+        and offer.service_request.status == "pending_customer"
+        and offer.service_request.matched_provider_id is None
+    ):
+        flow_state = build_provider_waiting_selection_flow_state()
+
     return {
         "id": offer.id,
         "service_request_id": offer.service_request_id,
@@ -217,10 +298,18 @@ def serialize_provider_offer_card(offer):
             and offer.service_request.status == "pending_customer"
             and offer.service_request.matched_provider_id is None
         ),
+        **serialize_flow_state_fields(flow_state),
     }
 
 
 def serialize_provider_appointment_card(appointment):
+    flow_state = build_provider_pending_appointment_flow_state()
+    if appointment.status != "pending":
+        flow_state = build_provider_thread_flow_state(
+            appointment,
+            calendar_enabled=is_calendar_enabled(),
+        )
+
     return {
         "id": appointment.id,
         "service_request_id": appointment.service_request_id,
@@ -238,6 +327,7 @@ def serialize_provider_appointment_card(appointment):
         "can_confirm": appointment.status == "pending",
         "can_reject": appointment.status == "pending",
         "can_complete": appointment.status in {"confirmed", "pending_customer"},
+        **serialize_flow_state_fields(flow_state),
     }
 
 
@@ -367,6 +457,75 @@ def build_provider_request_actions(*, provider, service_request, offer, appointm
     }
 
 
+def build_mobile_flow_state_payload(
+    *,
+    viewer_role,
+    service_request,
+    appointment,
+    provider=None,
+    provider_offer=None,
+    has_accepted_offers=False,
+):
+    calendar_enabled = bool(is_calendar_enabled())
+
+    if viewer_role == "customer":
+        return build_customer_flow_state(
+            service_request,
+            appointment,
+            has_accepted_offers=bool(has_accepted_offers),
+            now=timezone.now(),
+            calendar_enabled=calendar_enabled,
+            last_minute_cancel_hours=get_last_minute_cancel_hours(),
+            no_show_grace_minutes=get_no_show_grace_minutes(),
+        )
+
+    if service_request.status == "cancelled":
+        return {
+            "step": "Kapalı",
+            "title": "Talep kapandı",
+            "hint": "Bu iş artık aktif değil.",
+            "next_action": "Gerekirse yeni talepleri takip edin.",
+            "tone": "muted",
+        }
+
+    if service_request.status == "completed":
+        return {
+            "step": "Tamamlandı",
+            "title": "İş tamamlandı",
+            "hint": "Bu iş başarıyla kapatıldı.",
+            "next_action": "Gerekirse mesajlardan son detayları kontrol edin.",
+            "tone": "success",
+        }
+
+    if provider_offer and provider_offer.status == "pending":
+        return build_provider_pending_offer_flow_state()
+
+    if (
+        provider_offer
+        and provider_offer.status == "accepted"
+        and service_request.status == "pending_customer"
+        and service_request.matched_provider_id is None
+    ):
+        return build_provider_waiting_selection_flow_state()
+
+    if appointment and provider and appointment.provider_id == provider.id and appointment.status == "pending":
+        return build_provider_pending_appointment_flow_state()
+
+    if service_request.status == "matched" or appointment is not None:
+        return build_provider_thread_flow_state(
+            appointment,
+            calendar_enabled=calendar_enabled,
+        )
+
+    return {
+        "step": "Aktif",
+        "title": "Süreç devam ediyor",
+        "hint": "Bu talep üzerinde yeni hareketler olabilir.",
+        "next_action": "Talebin güncel durumunu takip edin.",
+        "tone": "info",
+    }
+
+
 def build_mobile_request_detail_payload(service_request, *, viewer_role, request_user, provider=None):
     appointment = (
         ServiceAppointment.objects.filter(service_request=service_request)
@@ -385,6 +544,7 @@ def build_mobile_request_detail_payload(service_request, *, viewer_role, request
     request_payload["matched_provider_phone"] = (
         service_request.matched_provider.phone if service_request.matched_provider_id else ""
     )
+    current_rating = getattr(service_request, "provider_rating", None)
 
     payload = {
         "viewer_role": viewer_role,
@@ -394,6 +554,8 @@ def build_mobile_request_detail_payload(service_request, *, viewer_role, request
         "appointment": serialize_appointment_detail(appointment),
         "calendar_enabled": bool(is_calendar_enabled()),
         "short_note_max_length": int(get_short_note_max_chars()),
+        "rating": None,
+        "rating_state": {"can_rate": False, "rate_block_reason": ""},
         "actions": {},
     }
 
@@ -422,6 +584,15 @@ def build_mobile_request_detail_payload(service_request, *, viewer_role, request
         else:
             payload["matched_offer"] = None
         payload["actions"] = build_customer_request_actions(service_request, appointment)
+        payload["rating"] = serialize_request_rating(current_rating)
+        payload["rating_state"] = build_customer_rating_state(service_request, appointment)
+        payload["actions"]["can_rate"] = payload["rating_state"]["can_rate"]
+        payload["flow_state"] = build_mobile_flow_state_payload(
+            viewer_role="customer",
+            service_request=service_request,
+            appointment=appointment,
+            has_accepted_offers=bool(accepted_offers),
+        )
         payload["snapshot"] = build_customer_snapshot_payload(request_user)
         return payload
 
@@ -440,6 +611,13 @@ def build_mobile_request_detail_payload(service_request, *, viewer_role, request
         offer=provider_offer,
         appointment=appointment,
         membership=membership,
+    )
+    payload["flow_state"] = build_mobile_flow_state_payload(
+        viewer_role="provider",
+        service_request=service_request,
+        appointment=appointment,
+        provider=provider,
+        provider_offer=provider_offer,
     )
     payload["snapshot"] = build_provider_snapshot_payload(provider)
     return payload
@@ -939,6 +1117,7 @@ class MobileCustomerRequestsView(APIView):
         qs = (
             ServiceRequest.objects.filter(customer=request.user)
             .select_related("service_type", "matched_provider")
+            .prefetch_related("provider_offers__provider")
             .order_by("-created_at")
         )
         if status_filter:
@@ -957,6 +1136,26 @@ class MobileCustomerRequestsView(APIView):
             many=True,
             context={"unread_map": unread_map, "appointment_map": appointment_map},
         ).data
+        calendar_enabled = bool(is_calendar_enabled())
+        now = timezone.now()
+        for service_request, item in zip(page_items, serialized):
+            appointment = appointment_map.get(service_request.id)
+            has_accepted_offers = any(
+                offer.status == "accepted"
+                and offer.provider_id
+                and getattr(offer.provider, "is_verified", False)
+                for offer in service_request.provider_offers.all()
+            )
+            flow_state = build_customer_flow_state(
+                service_request,
+                appointment,
+                has_accepted_offers=has_accepted_offers,
+                now=now,
+                calendar_enabled=calendar_enabled,
+                last_minute_cancel_hours=get_last_minute_cancel_hours(),
+                no_show_grace_minutes=get_no_show_grace_minutes(),
+            )
+            item.update(serialize_flow_state_fields(flow_state))
         return Response(
             {
                 "count": total_count,
@@ -1402,6 +1601,66 @@ class MobileCustomerCompleteRequestView(APIView):
         )
 
 
+class MobileCustomerRateRequestView(APIView):
+    def post(self, request, request_id):
+        if get_provider_for_user(request.user):
+            return Response({"detail": "forbidden-provider"}, status=status.HTTP_403_FORBIDDEN)
+
+        rate_limit_message = build_mobile_action_rate_limit_message(
+            request,
+            "rate-request",
+            identity=str(request_id),
+        )
+        if rate_limit_message:
+            return Response({"detail": rate_limit_message}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        service_request = get_mobile_request_for_customer(request.user, request_id)
+        appointment = ServiceAppointment.objects.filter(service_request=service_request).first()
+        rating_state = build_customer_rating_state(service_request, appointment)
+        if not rating_state["can_rate"]:
+            return Response(
+                {
+                    "detail": rating_state["rate_block_reason"]
+                    or "Puanlama sadece tamamlanmis ve uygun isler icin aciktir."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = MobileProviderRatingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        current_rating = getattr(service_request, "provider_rating", None)
+        form = ProviderRatingForm(serializer.validated_data, instance=current_rating)
+        if not form.is_valid():
+            return Response(
+                {
+                    "detail": "Puan kaydedilemedi. Lutfen gecerli bir puan secin.",
+                    "errors": serialize_form_errors(form),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        rating = form.save(commit=False)
+        rating.service_request = service_request
+        rating.provider = service_request.matched_provider
+        rating.customer = request.user
+        rating.save()
+
+        return Response(
+            {
+                "ok": True,
+                "message": (
+                    f"{service_request.matched_provider.full_name} için puanınız kaydedildi."
+                    if current_rating is None
+                    else f"{service_request.matched_provider.full_name} için yorumunuz güncellendi."
+                ),
+                "rating": serialize_request_rating(rating),
+                "snapshot": build_customer_snapshot_payload(request.user),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class MobileProviderDashboardView(APIView):
     def get(self, request):
         provider = get_provider_for_user(request.user)
@@ -1424,6 +1683,16 @@ class MobileProviderDashboardView(APIView):
         )
         thread_ids = [item.id for item in active_threads]
         unread_map = build_unread_message_map(thread_ids, "provider")
+        calendar_enabled = bool(is_calendar_enabled())
+        appointment_map = {}
+        if calendar_enabled and thread_ids:
+            appointment_map = {
+                item.service_request_id: item
+                for item in ServiceAppointment.objects.filter(
+                    service_request_id__in=thread_ids,
+                    provider=provider,
+                )
+            }
         pending_offers = list(
             provider.offers.filter(status="pending")
             .select_related("service_request", "service_request__service_type")
@@ -1439,7 +1708,7 @@ class MobileProviderDashboardView(APIView):
             .order_by("-responded_at", "-sent_at")[:10]
         )
         pending_appointments = []
-        if is_calendar_enabled():
+        if calendar_enabled:
             pending_appointments = list(
                 provider.appointments.filter(status="pending")
                 .select_related("service_request", "service_request__service_type")
@@ -1461,11 +1730,18 @@ class MobileProviderDashboardView(APIView):
                         "service_type": item.service_type.name,
                         "city": item.city,
                         "district": item.district,
+                        "details": item.details,
                         "customer_name": item.customer_name,
                         "customer_phone": item.customer_phone,
                         "status": item.status,
                         "created_at": item.created_at,
                         "unread_messages": int(unread_map.get(item.id, 0)),
+                        **serialize_flow_state_fields(
+                            build_provider_thread_flow_state(
+                                appointment_map.get(item.id),
+                                calendar_enabled=calendar_enabled,
+                            )
+                        ),
                     }
                     for item in active_threads
                 ],

@@ -32,7 +32,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  String _customerRequestFilter = 'all';
+  String _customerRequestFilter = 'active';
   final Set<String> _runningProviderActionKeys = <String>{};
 
   bool _dashboardLoading = true;
@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int get _moreTabIndex => _isProvider ? 3 : 4;
 
-  Future<void> _showCustomerRequests({String filter = 'all'}) async {
+  Future<void> _showCustomerRequests({String filter = 'active'}) async {
     setState(() {
       _customerRequestFilter = filter;
       _currentIndex = 1;
@@ -1140,6 +1140,9 @@ class _DashboardTab extends StatelessWidget {
   }
 
   List<Widget> _buildCustomerContent(BuildContext context) {
+    final activeCount = customerRequests
+        .where((item) => _matchesCustomerRequestFilter(item, 'active'))
+        .length;
     final matchedCount =
         customerRequests.where((item) => item['status'] == 'matched').length;
     final pendingCustomerCount = customerRequests
@@ -1155,7 +1158,10 @@ class _DashboardTab extends StatelessWidget {
               .contains((item['status'] ?? '').toString()),
         )
         .length;
-    final recentRequests = customerRequests.take(3).toList();
+    final recentRequests = customerRequests
+        .where((item) => _matchesCustomerRequestFilter(item, 'active'))
+        .take(3)
+        .toList();
     final useModernLayout = Theme.of(context).useMaterial3;
 
     if (useModernLayout) {
@@ -1192,9 +1198,9 @@ class _DashboardTab extends StatelessWidget {
           children: [
             Expanded(
               child: _MetricCard(
-                label: 'Yanıt bekleyen',
-                value: '$waitingProviderCount',
-                tone: 'muted',
+                label: 'Aktif talepler',
+                value: '$activeCount',
+                tone: 'primary',
               ),
             ),
             const SizedBox(width: 10),
@@ -1212,7 +1218,7 @@ class _DashboardTab extends StatelessWidget {
           children: [
             Expanded(
               child: _MetricCard(
-                label: 'Anlaşmalarım',
+                label: 'İş sürüyor',
                 value: '$matchedCount',
                 tone: 'success',
               ),
@@ -1240,7 +1246,7 @@ class _DashboardTab extends StatelessWidget {
                 icon: Icons.receipt_long_rounded,
                 title: 'Taleplerim',
                 body:
-                    'Açık işler, karar bekleyen teklifler ve geçmiş kayıtlar tek sekmede.',
+                    'Sadece aktif talepler burada kalır; iş kapanınca listeden düşer.',
                 actionLabel: 'Sekmeyi aç',
                 onTap: () => onOpenRequestsTab(),
               ),
@@ -1248,13 +1254,13 @@ class _DashboardTab extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _SpotlightCard(
-                icon: Icons.handshake_outlined,
-                title: 'Anlaşmalarım',
-                body: matchedCount > 0
-                    ? '$matchedCount aktif anlaşman hazır.'
-                    : 'Eşleşen işler burada ayrı alt görünümde toplanır.',
+                icon: Icons.history_rounded,
+                title: 'Geçmiş',
+                body: historyCount > 0
+                    ? '$historyCount kapanmış iş kaydın geçmiş görünümünde hazır.'
+                    : 'Biten veya iptal edilen işler burada toplanır.',
                 actionLabel: 'Görüntüle',
-                onTap: () => onOpenRequestsTab(filter: 'agreements'),
+                onTap: () => onOpenRequestsTab(filter: 'history'),
               ),
             ),
           ],
@@ -1273,7 +1279,7 @@ class _DashboardTab extends StatelessWidget {
         const _SectionTitle(
           title: 'Son hareketler',
           subtitle:
-              'Son açtığınız talepler burada özetlenir, tüm liste ise Taleplerim sekmesinde durur.',
+              'Son aktif talepleriniz burada özetlenir; tamamlanan işler ise geçmişe taşınır.',
         ),
         if (recentRequests.isEmpty)
           const _EmptyStateCard(
@@ -1288,6 +1294,10 @@ class _DashboardTab extends StatelessWidget {
             subtitle:
                 '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
             meta: _customerRequestMeta(item),
+            flowStepLabel: _requestFlowStepLabel(item),
+            flowTitle: _requestFlowTitle(item),
+            flowNextAction: _requestFlowNextAction(item),
+            flowTone: _requestFlowTone(item),
             body: _summarizeRequestDetails((item['details'] ?? '').toString()),
             actionLabel: 'Detayı aç',
             onPressed: () {
@@ -1405,11 +1415,15 @@ class _DashboardTab extends StatelessWidget {
       for (final item in customerRequests)
         _RequestCard(
           title: (item['service_type'] ?? 'Talep').toString(),
-          badge: (item['status'] ?? '').toString(),
+          badge: _customerRequestBadgeLabel(item),
           subtitle:
               '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
           meta:
               'Usta: ${(item['matched_provider_name'] ?? '-').toString()} · Okunmamış: ${(item['unread_messages'] ?? 0).toString()}',
+          flowStepLabel: _requestFlowStepLabel(item),
+          flowTitle: _requestFlowTitle(item),
+          flowNextAction: _requestFlowNextAction(item),
+          flowTone: _requestFlowTone(item),
           body: (item['details'] ?? '').toString(),
           actionLabel: 'Detayı aç',
           onPressed: () {
@@ -1528,8 +1542,11 @@ class _DashboardTab extends StatelessWidget {
           subtitle:
               '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
           meta: (item['customer_name'] ?? '').toString(),
-          body:
-              'Teklif detayını açıp kabul, red veya not işlemlerini uygulamadan yönetin.',
+          flowStepLabel: _requestFlowStepLabel(item),
+          flowTitle: _requestFlowTitle(item),
+          flowNextAction: _requestFlowNextAction(item),
+          flowTone: _requestFlowTone(item),
+          body: _summarizeRequestDetails((item['details'] ?? '').toString()),
           actionLabel: 'Detayı aç',
           extraActions: [
             if (item['can_accept'] == true)
@@ -1580,7 +1597,11 @@ class _DashboardTab extends StatelessWidget {
             subtitle:
                 '${(item['request_code'] ?? '').toString()} · ${(item['customer_name'] ?? '').toString()}',
             meta: 'Durum: müşteri seçimi bekleniyor',
-            body: 'Teklifinizi takip edin ve gerekirse bu ekrandan geri çekin.',
+            flowStepLabel: _requestFlowStepLabel(item),
+            flowTitle: _requestFlowTitle(item),
+            flowNextAction: _requestFlowNextAction(item),
+            flowTone: _requestFlowTone(item),
+            body: _summarizeRequestDetails((item['details'] ?? '').toString()),
             actionLabel: 'Detayı aç',
             extraActions: [
               if (item['can_withdraw'] == true)
@@ -1624,7 +1645,11 @@ class _DashboardTab extends StatelessWidget {
               '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
           meta:
               '${(item['customer_name'] ?? '').toString()} · Okunmamış: ${(item['unread_messages'] ?? 0).toString()}',
-          body: 'Mesajlar, randevu durumu ve iş bitirme aksiyonları burada.',
+          flowStepLabel: _requestFlowStepLabel(item),
+          flowTitle: _requestFlowTitle(item),
+          flowNextAction: _requestFlowNextAction(item),
+          flowTone: _requestFlowTone(item),
+          body: _summarizeRequestDetails((item['details'] ?? '').toString()),
           actionLabel: 'Mesajları aç',
           extraActions: [
             FilledButton.tonal(
@@ -1660,13 +1685,16 @@ class _DashboardTab extends StatelessWidget {
         for (final item in providerPendingAppointments)
           _RequestCard(
             title: (item['service_type'] ?? 'Randevu').toString(),
-            badge: (item['status'] ?? '').toString(),
+            badge: _appointmentStatusLabel((item['status'] ?? '').toString()),
             subtitle:
                 '${(item['request_code'] ?? '').toString()} · ${(item['customer_name'] ?? '').toString()}',
             meta:
                 'Planlanan zaman: ${(item['scheduled_for'] ?? '').toString()}',
-            body:
-                'Onay ve red işlemlerini bu karttan veya ayrıntı ekranından uygulayın.',
+            flowStepLabel: _requestFlowStepLabel(item),
+            flowTitle: _requestFlowTitle(item),
+            flowNextAction: _requestFlowNextAction(item),
+            flowTone: _requestFlowTone(item),
+            body: _summarizeRequestDetails((item['details'] ?? '').toString()),
             actionLabel: 'Detayı aç',
             extraActions: [
               if (item['can_confirm'] == true)
@@ -1758,14 +1786,14 @@ class _RequestsTab extends StatelessWidget {
       return _ErrorState(message: error!, onRetry: onRefresh);
     }
 
-    final waitingCount = customerRequests
-        .where((item) => _matchesCustomerRequestFilter(item, 'waiting'))
+    final activeCount = customerRequests
+        .where((item) => _matchesCustomerRequestFilter(item, 'active'))
         .length;
     final decisionCount = customerRequests
         .where((item) => _matchesCustomerRequestFilter(item, 'decision'))
         .length;
-    final agreementsCount = customerRequests
-        .where((item) => _matchesCustomerRequestFilter(item, 'agreements'))
+    final inProgressCount = customerRequests
+        .where((item) => (item['status'] ?? '').toString() == 'matched')
         .length;
     final historyCount = customerRequests
         .where((item) => _matchesCustomerRequestFilter(item, 'history'))
@@ -1779,16 +1807,16 @@ class _RequestsTab extends StatelessWidget {
           const _SectionHero(
             title: 'Taleplerim',
             subtitle:
-                'Açık talepler, karar bekleyen teklifler, anlaşmalar ve geçmiş kayıtlar tek sekmede ama düzenli bir yapıda.',
+                'Aktif işler burada kalır. Tamamlanan veya kapanan işler ise doğrudan geçmişe taşınır.',
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
                 child: _MetricCard(
-                  label: 'Yanıt bekleyen',
-                  value: '$waitingCount',
-                  tone: 'muted',
+                  label: 'Aktif talepler',
+                  value: '$activeCount',
+                  tone: 'primary',
                 ),
               ),
               const SizedBox(width: 10),
@@ -1806,8 +1834,8 @@ class _RequestsTab extends StatelessWidget {
             children: [
               Expanded(
                 child: _MetricCard(
-                  label: 'Anlaşmalarım',
-                  value: '$agreementsCount',
+                  label: 'İş sürüyor',
+                  value: '$inProgressCount',
                   tone: 'success',
                 ),
               ),
@@ -1827,24 +1855,14 @@ class _RequestsTab extends StatelessWidget {
             runSpacing: 8,
             children: [
               _CategoryChip(
-                label: 'Tümü • ${customerRequests.length}',
-                selected: selectedFilter == 'all',
-                onTap: () => onFilterChanged('all'),
+                label: 'Aktif talepler • $activeCount',
+                selected: selectedFilter == 'active',
+                onTap: () => onFilterChanged('active'),
               ),
               _CategoryChip(
-                label: 'Yanıt bekleyen • $waitingCount',
-                selected: selectedFilter == 'waiting',
-                onTap: () => onFilterChanged('waiting'),
-              ),
-              _CategoryChip(
-                label: 'Karar • $decisionCount',
+                label: 'Karar bekleyen • $decisionCount',
                 selected: selectedFilter == 'decision',
                 onTap: () => onFilterChanged('decision'),
-              ),
-              _CategoryChip(
-                label: 'Anlaşmalarım • $agreementsCount',
-                selected: selectedFilter == 'agreements',
-                onTap: () => onFilterChanged('agreements'),
               ),
               _CategoryChip(
                 label: 'Geçmiş • $historyCount',
@@ -1853,14 +1871,14 @@ class _RequestsTab extends StatelessWidget {
               ),
             ],
           ),
-          if (agreementsCount > 0 && selectedFilter != 'agreements') ...[
+          if (historyCount > 0 && selectedFilter != 'history') ...[
             const SizedBox(height: 16),
             _EmphasisBanner(
-              title: 'Anlaşmalarım ayrı görünümde hazır',
+              title: 'Geçmiş görünümü hazır',
               body:
-                  '$agreementsCount işte usta eşleşmesi veya tamamlanmış anlaşma var. Taleplerim içinden tek dokunuşla bu görünümü açabilirsiniz.',
-              actionLabel: 'Anlaşmalarımı aç',
-              onPressed: () => onFilterChanged('agreements'),
+                  '$historyCount kapanmış iş kaydınız aktif taleplerden ayrıldı. Tek dokunuşla geçmiş görünümüne geçebilirsiniz.',
+              actionLabel: 'Geçmişi aç',
+              onPressed: () => onFilterChanged('history'),
             ),
           ],
           const SizedBox(height: 24),
@@ -1881,6 +1899,10 @@ class _RequestsTab extends StatelessWidget {
               subtitle:
                   '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
               meta: _customerRequestMeta(item),
+              flowStepLabel: _requestFlowStepLabel(item),
+              flowTitle: _requestFlowTitle(item),
+              flowNextAction: _requestFlowNextAction(item),
+              flowTone: _requestFlowTone(item),
               body:
                   _summarizeRequestDetails((item['details'] ?? '').toString()),
               actionLabel: 'Detayı aç',
@@ -2469,16 +2491,28 @@ class _SectionTitle extends StatelessWidget {
 bool _matchesCustomerRequestFilter(Map<String, dynamic> item, String filter) {
   final status = (item['status'] ?? '').toString();
   switch (filter) {
+    case 'active':
+      return {
+        'new',
+        'pending_provider',
+        'pending_customer',
+        'matched',
+      }.contains(status);
     case 'waiting':
       return status == 'new' || status == 'pending_provider';
     case 'decision':
       return status == 'pending_customer';
     case 'agreements':
-      return status == 'matched' || status == 'completed';
+      return status == 'completed' || status == 'cancelled';
     case 'history':
       return status == 'completed' || status == 'cancelled';
     default:
-      return true;
+      return {
+        'new',
+        'pending_provider',
+        'pending_customer',
+        'matched',
+      }.contains(status);
   }
 }
 
@@ -2533,24 +2567,108 @@ String _customerRequestBadgeLabel(Map<String, dynamic> item) {
 
 String _customerRequestMeta(Map<String, dynamic> item) {
   final parts = <String>[];
+  final hasFlow = _requestFlowTitle(item).isNotEmpty ||
+      _requestFlowNextAction(item).isNotEmpty;
   final providerName = (item['matched_provider_name'] ?? '').toString().trim();
   final unreadMessages = (item['unread_messages'] as num?)?.toInt() ?? 0;
-  final appointmentStatus = _appointmentStatusLabel(
-    (item['appointment_status'] ?? '').toString(),
-  );
+
+  if (!hasFlow) {
+    parts.add(_customerRequestStageText(item));
+  }
 
   if (providerName.isNotEmpty) {
     parts.add('Usta: $providerName');
   } else {
     parts.add('Henüz usta seçilmedi');
   }
-  if (appointmentStatus.isNotEmpty) {
-    parts.add(appointmentStatus);
-  }
   if (unreadMessages > 0) {
     parts.add('$unreadMessages okunmamış');
   }
   return parts.join(' · ');
+}
+
+String _customerRequestStageText(Map<String, dynamic> item) {
+  final status = (item['status'] ?? '').toString();
+  final appointmentStatus = (item['appointment_status'] ?? '').toString();
+
+  switch (status) {
+    case 'new':
+      return 'Aşama: Talep oluşturuldu';
+    case 'pending_provider':
+      return 'Aşama: Usta yanıtı bekleniyor';
+    case 'pending_customer':
+      return 'Aşama: Teklifleri inceleyip seçim yapın';
+    case 'matched':
+      switch (appointmentStatus) {
+        case 'pending':
+          return 'Aşama: Randevu için usta onayı bekleniyor';
+        case 'pending_customer':
+          return 'Aşama: Randevuyu sizin onaylamanız bekleniyor';
+        case 'confirmed':
+          return 'Aşama: Randevu onaylandı, iş sürüyor';
+        case 'completed':
+          return 'Aşama: İş tamamlandı';
+        case 'rejected':
+        case 'cancelled':
+          return 'Aşama: Yeni randevu planlanabilir';
+        default:
+          return 'Aşama: Usta seçildi, iş sürüyor';
+      }
+    case 'completed':
+      return 'Aşama: İş tamamlandı';
+    case 'cancelled':
+      return 'Aşama: Talep iptal edildi';
+    default:
+      return 'Aşama: Süreç devam ediyor';
+  }
+}
+
+String _requestFlowStepLabel(Map<String, dynamic> item) {
+  return (item['flow_step'] ?? '').toString().trim();
+}
+
+String _requestFlowTitle(Map<String, dynamic> item) {
+  final value = (item['flow_title'] ?? '').toString().trim();
+  if (value.isNotEmpty) {
+    return value;
+  }
+
+  final stage = _customerRequestStageText(item);
+  return stage.startsWith('Aşama: ') ? stage.substring(7) : '';
+}
+
+String _requestFlowNextAction(Map<String, dynamic> item) {
+  return (item['flow_next_action'] ?? '').toString().trim();
+}
+
+String _requestFlowTone(Map<String, dynamic> item) {
+  final value = (item['flow_tone'] ?? '').toString().trim();
+  return value.isEmpty ? 'muted' : value;
+}
+
+int? _requestFlowCurrentStep(String stepLabel) {
+  final match = RegExp(r'(\d+)\s*/\s*(\d+)').firstMatch(stepLabel);
+  return int.tryParse(match?.group(1) ?? '');
+}
+
+int? _requestFlowTotalSteps(String stepLabel) {
+  final match = RegExp(r'(\d+)\s*/\s*(\d+)').firstMatch(stepLabel);
+  return int.tryParse(match?.group(2) ?? '');
+}
+
+Color _requestFlowToneColor(BuildContext context, String tone) {
+  switch (tone) {
+    case 'success':
+      return const Color(0xFF15803D);
+    case 'danger':
+      return const Color(0xFFB91C1C);
+    case 'waiting':
+      return const Color(0xFFD97706);
+    case 'action':
+      return BrandConfig.accentOf(context);
+    default:
+      return BrandConfig.textMutedOf(context);
+  }
 }
 
 String _summarizeRequestDetails(String text) {
@@ -2563,6 +2681,8 @@ String _summarizeRequestDetails(String text) {
 
 String _emptyStateTitleForFilter(String filter) {
   switch (filter) {
+    case 'active':
+      return 'Aktif talep yok';
     case 'waiting':
       return 'Yanıt bekleyen talep yok';
     case 'decision':
@@ -2578,6 +2698,8 @@ String _emptyStateTitleForFilter(String filter) {
 
 String _emptyStateBodyForFilter(String filter) {
   switch (filter) {
+    case 'active':
+      return 'Aktif talepleriniz burada görünür. İş tamamlandığında ya da kapandığında geçmişe taşınır.';
     case 'waiting':
       return 'Yeni açtığınız veya ustalardan yanıt bekleyen işler burada listelenir.';
     case 'decision':
@@ -2812,6 +2934,10 @@ class _RequestCard extends StatelessWidget {
     required this.actionLabel,
     required this.onPressed,
     this.extraActions = const <Widget>[],
+    this.flowStepLabel = '',
+    this.flowTitle = '',
+    this.flowNextAction = '',
+    this.flowTone = 'muted',
   });
 
   final String title;
@@ -2822,9 +2948,24 @@ class _RequestCard extends StatelessWidget {
   final String actionLabel;
   final Future<void> Function() onPressed;
   final List<Widget> extraActions;
+  final String flowStepLabel;
+  final String flowTitle;
+  final String flowNextAction;
+  final String flowTone;
 
   @override
   Widget build(BuildContext context) {
+    final hasFlow = flowStepLabel.trim().isNotEmpty ||
+        flowTitle.trim().isNotEmpty ||
+        flowNextAction.trim().isNotEmpty;
+    final flowColor = _requestFlowToneColor(context, flowTone);
+    final currentStep = _requestFlowCurrentStep(flowStepLabel);
+    final totalSteps = _requestFlowTotalSteps(flowStepLabel);
+    final progressValue =
+        currentStep != null && totalSteps != null && totalSteps > 0
+            ? (currentStep / totalSteps).clamp(0.0, 1.0)
+            : null;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -2856,29 +2997,120 @@ class _RequestCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: BrandConfig.accentSoftOf(context),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    badge,
-                    style: TextStyle(
-                      color: BrandConfig.textOf(context),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: BrandConfig.accentSoftOf(context),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(
+                          color: BrandConfig.textOf(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (flowStepLabel.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: flowColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: flowColor.withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: Text(
+                          flowStepLabel,
+                          style: TextStyle(
+                            color: flowColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              meta,
-              style: TextStyle(color: BrandConfig.textMutedOf(context)),
-            ),
+            if (hasFlow) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: flowColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: flowColor.withValues(alpha: 0.16),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (progressValue != null) ...[
+                      Text(
+                        '$currentStep / $totalSteps adım',
+                        style: TextStyle(
+                          color: flowColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: progressValue,
+                          minHeight: 7,
+                          backgroundColor: BrandConfig.surfaceAltOf(context),
+                          valueColor: AlwaysStoppedAnimation<Color>(flowColor),
+                        ),
+                      ),
+                    ],
+                    if (flowTitle.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        flowTitle,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                    ],
+                    if (flowNextAction.trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        flowNextAction,
+                        style: TextStyle(
+                          color: BrandConfig.textMutedOf(context),
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (meta.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                meta,
+                style: TextStyle(color: BrandConfig.textMutedOf(context)),
+              ),
+            ],
             const SizedBox(height: 10),
             Text(
               body,

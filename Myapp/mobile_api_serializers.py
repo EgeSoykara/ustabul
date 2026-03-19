@@ -85,6 +85,16 @@ class MobileServiceRequestSerializer(serializers.ModelSerializer):
         return int(unread_map.get(obj.id, 0))
 
 
+class MobileProviderRatingSerializer(serializers.Serializer):
+    score = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+        max_length=500,
+    )
+
+
 class MobileNotificationPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationCursor

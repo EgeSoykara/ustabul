@@ -179,6 +179,26 @@ class MobileDataService {
     return response;
   }
 
+  Future<Map<String, dynamic>> submitRequestRating({
+    required String accessToken,
+    required int requestId,
+    required int score,
+    String comment = '',
+  }) async {
+    final response = await _apiClient.post(
+      '/mobile/api/v1/customer/requests/$requestId/rating/',
+      accessToken: accessToken,
+      data: {
+        'score': score,
+        'comment': comment,
+      },
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const ApiException('Puan kaydedilemedi.');
+    }
+    return response;
+  }
+
   Future<Map<String, dynamic>> selectOffer({
     required String accessToken,
     required int requestId,

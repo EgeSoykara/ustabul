@@ -1,20 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../config/brand_config.dart';
-import '../services/theme_storage.dart';
 import '../state/session_controller.dart';
-import '../state/theme_controller.dart';
 import '../widgets/brand_backdrop.dart';
+import 'site_shell_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
     required this.sessionController,
-    required this.themeController,
   });
 
   final SessionController sessionController;
-  final ThemeController themeController;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -45,13 +42,24 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (!ok) {
       final message = widget.sessionController.error ?? 'Giriş başarısız.';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
-  Future<void> _setTheme(AppThemePreference preference) async {
-    await widget.themeController.setPreference(preference);
+  Future<void> _openSignupFlow({
+    required String path,
+    required String pageTitle,
+  }) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SiteShellScreen.relativePath(
+          path,
+          pageTitle: pageTitle,
+        ),
+      ),
+    );
   }
 
   @override
@@ -63,12 +71,9 @@ class _LoginScreenState extends State<LoginScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: const BoxConstraints(maxWidth: 440),
                 child: AnimatedBuilder(
-                  animation: Listenable.merge([
-                    widget.sessionController,
-                    widget.themeController,
-                  ]),
+                  animation: widget.sessionController,
                   builder: (context, _) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -84,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             children: [
                               Icon(
                                 Icons.home_repair_service_rounded,
-                                color: BrandConfig.text,
+                                color: BrandConfig.accentOf(context),
                                 size: 36,
                               ),
                               const SizedBox(height: 18),
@@ -98,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Müşteri ve usta deneyimini uygulama odaklı bir akışla sunar.',
+                                'Usta bulma, talep açma ve iş takibini webdeki premium deneyime yakın bir akışla sunar.',
                                 style: TextStyle(
                                   color: BrandConfig.heroTextMutedOf(context),
                                   height: 1.45,
@@ -108,62 +113,18 @@ class _LoginScreenState extends State<LoginScreen> {
                               Wrap(
                                 spacing: 10,
                                 runSpacing: 10,
-                                children: [
-                                  ChoiceChip(
-                                    label: const Text('Karanlık mod'),
-                                    selected:
-                                        widget.themeController.preference ==
-                                            AppThemePreference.dark,
-                                    labelStyle: TextStyle(
-                                      color:
-                                          widget.themeController.preference ==
-                                                  AppThemePreference.dark
-                                              ? BrandConfig.text
-                                              : BrandConfig.heroTextMutedOf(
-                                                  context),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                    side: BorderSide(
-                                      color:
-                                          BrandConfig.heroTextMutedOf(context)
-                                              .withValues(alpha: 0.35),
-                                    ),
-                                    selectedColor: Colors.white.withValues(
-                                      alpha: 0.16,
-                                    ),
-                                    backgroundColor: Colors.white.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    onSelected: (_) =>
-                                        _setTheme(AppThemePreference.dark),
+                                children: const [
+                                  _HeroTag(
+                                    icon: Icons.person_search_rounded,
+                                    label: 'Usta bul',
                                   ),
-                                  ChoiceChip(
-                                    label: const Text('Aydınlık mod'),
-                                    selected:
-                                        widget.themeController.preference ==
-                                            AppThemePreference.light,
-                                    labelStyle: TextStyle(
-                                      color:
-                                          widget.themeController.preference ==
-                                                  AppThemePreference.light
-                                              ? BrandConfig.text
-                                              : BrandConfig.heroTextMutedOf(
-                                                  context),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                    side: BorderSide(
-                                      color:
-                                          BrandConfig.heroTextMutedOf(context)
-                                              .withValues(alpha: 0.35),
-                                    ),
-                                    selectedColor: Colors.white.withValues(
-                                      alpha: 0.16,
-                                    ),
-                                    backgroundColor: Colors.white.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    onSelected: (_) =>
-                                        _setTheme(AppThemePreference.light),
+                                  _HeroTag(
+                                    icon: Icons.receipt_long_rounded,
+                                    label: 'Talep oluştur',
+                                  ),
+                                  _HeroTag(
+                                    icon: Icons.handshake_outlined,
+                                    label: 'Anlaşmaları yönet',
                                   ),
                                 ],
                               ),
@@ -200,8 +161,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     controller: _usernameController,
                                     decoration: const InputDecoration(
                                       labelText: 'Kullanıcı adı',
-                                      prefixIcon:
-                                          Icon(Icons.person_outline_rounded),
+                                      prefixIcon: Icon(
+                                        Icons.person_outline_rounded,
+                                      ),
                                     ),
                                     validator: (value) {
                                       if ((value ?? '').trim().isEmpty) {
@@ -216,8 +178,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     obscureText: true,
                                     decoration: const InputDecoration(
                                       labelText: 'Şifre',
-                                      prefixIcon:
-                                          Icon(Icons.lock_outline_rounded),
+                                      prefixIcon: Icon(
+                                        Icons.lock_outline_rounded,
+                                      ),
                                     ),
                                     validator: (value) {
                                       if ((value ?? '').isEmpty) {
@@ -245,6 +208,77 @@ class _LoginScreenState extends State<LoginScreen> {
                                           )
                                         : const Text('Giriş yap'),
                                   ),
+                                  const SizedBox(height: 18),
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration:
+                                        BrandConfig.glassPanelDecorationOf(
+                                      context,
+                                      radius: 24,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Hesabın yok mu?',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Kayıt akışı sitedeki doğrulama adımlarıyla uyumlu şekilde uygulama içinde açılır.',
+                                          style: TextStyle(
+                                            color: BrandConfig.textMutedOf(
+                                              context,
+                                            ),
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: OutlinedButton.icon(
+                                                onPressed: () =>
+                                                    _openSignupFlow(
+                                                  path: '/musteri/kayit/',
+                                                  pageTitle: 'Müşteri Kaydı',
+                                                ),
+                                                icon: const Icon(
+                                                  Icons
+                                                      .person_add_alt_1_rounded,
+                                                ),
+                                                label: const Text(
+                                                  'Müşteri kaydı',
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: FilledButton.tonalIcon(
+                                                onPressed: () =>
+                                                    _openSignupFlow(
+                                                  path: '/usta/kayit/',
+                                                  pageTitle: 'Usta Kaydı',
+                                                ),
+                                                icon: const Icon(
+                                                  Icons.engineering_rounded,
+                                                ),
+                                                label: const Text(
+                                                  'Usta kaydı',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -266,6 +300,42 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HeroTag extends StatelessWidget {
+  const _HeroTag({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: BrandConfig.surfaceAltOf(context).withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: BrandConfig.borderOf(context)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: BrandConfig.accentOf(context)),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: BrandConfig.textOf(context),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

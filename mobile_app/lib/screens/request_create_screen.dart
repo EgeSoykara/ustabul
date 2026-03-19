@@ -254,6 +254,82 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
     }
   }
 
+  Widget _buildLocationFields() {
+    final cityField = DropdownButtonFormField<String>(
+      key: ValueKey<String>(_selectedCity),
+      initialValue: _selectedCity.isEmpty ? null : _selectedCity,
+      isExpanded: true,
+      items: _cityOptions
+          .map(
+            (item) => DropdownMenuItem<String>(
+              value: item,
+              child: Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: _isPreferredProviderMode
+          ? null
+          : (value) {
+              setState(() {
+                _selectedCity = value ?? '';
+                _ensureDistrictConsistency();
+              });
+            },
+      decoration: const InputDecoration(labelText: 'Şehir'),
+    );
+
+    final districtField = DropdownButtonFormField<String>(
+      key: ValueKey<String>('$_selectedCity|$_selectedDistrict'),
+      initialValue: _selectedDistrict.isEmpty ? null : _selectedDistrict,
+      isExpanded: true,
+      items: _districtOptions
+          .map(
+            (item) => DropdownMenuItem<String>(
+              value: item,
+              child: Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: _isPreferredProviderMode
+          ? null
+          : (value) {
+              setState(() {
+                _selectedDistrict = value ?? '';
+              });
+            },
+      decoration: const InputDecoration(labelText: 'İlçe'),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 520) {
+          return Column(
+            children: [
+              cityField,
+              const SizedBox(height: 12),
+              districtField,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: cityField),
+            const SizedBox(width: 12),
+            Expanded(child: districtField),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -296,12 +372,16 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
                           color: BrandConfig.textOf(context),
                           fontWeight: FontWeight.w700,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 6),
                       Text(
                         '${(_preferredProvider?['city'] ?? '').toString()} / ${(_preferredProvider?['district'] ?? '').toString()}',
                         style:
                             TextStyle(color: BrandConfig.textMutedOf(context)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -349,11 +429,16 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
                     DropdownButtonFormField<int>(
                       key: ValueKey<int?>(_selectedServiceTypeId),
                       initialValue: _selectedServiceTypeId,
+                      isExpanded: true,
                       items: _serviceTypes
                           .map(
                             (item) => DropdownMenuItem<int>(
                               value: (item['id'] as num?)?.toInt(),
-                              child: Text((item['name'] ?? '').toString()),
+                              child: Text(
+                                (item['name'] ?? '').toString(),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
                             ),
                           )
                           .toList(),
@@ -367,63 +452,7 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey<String>(_selectedCity),
-                            initialValue:
-                                _selectedCity.isEmpty ? null : _selectedCity,
-                            items: _cityOptions
-                                .map(
-                                  (item) => DropdownMenuItem<String>(
-                                    value: item,
-                                    child: Text(item),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: _isPreferredProviderMode
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _selectedCity = value ?? '';
-                                      _ensureDistrictConsistency();
-                                    });
-                                  },
-                            decoration:
-                                const InputDecoration(labelText: 'Şehir'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey<String>(
-                              '$_selectedCity|$_selectedDistrict',
-                            ),
-                            initialValue: _selectedDistrict.isEmpty
-                                ? null
-                                : _selectedDistrict,
-                            items: _districtOptions
-                                .map(
-                                  (item) => DropdownMenuItem<String>(
-                                    value: item,
-                                    child: Text(item),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: _isPreferredProviderMode
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _selectedDistrict = value ?? '';
-                                    });
-                                  },
-                            decoration:
-                                const InputDecoration(labelText: 'İlçe'),
-                          ),
-                        ),
-                      ],
-                    ),
+                    _buildLocationFields(),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _detailsController,

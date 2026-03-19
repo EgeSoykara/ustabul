@@ -5193,6 +5193,12 @@ class MobileApiTests(TestCase):
         self.assertEqual(body["count"], 1)
         self.assertEqual(body["results"][0]["unread_messages"], 1)
         self.assertEqual(body["results"][0]["request_code"], service_request.request_code)
+        self.assertEqual(body["results"][0]["flow_step"], "Adım 3/4")
+        self.assertEqual(body["results"][0]["flow_title"], "Usta seçildi")
+        self.assertEqual(
+            body["results"][0]["flow_next_action"],
+            "Randevu saati seçip ustaya gönderin.",
+        )
 
     def test_mobile_register_device_creates_record(self):
         payload = self._login_mobile("mobile_customer", "GucluSifre123!")
@@ -5367,6 +5373,12 @@ class MobileApiTests(TestCase):
         self.assertEqual(len(body["waiting_customer_selection"]), 1)
         self.assertEqual(len(body["active_threads"]), 1)
         self.assertTrue(body["membership"]["can_receive_new_requests"])
+        self.assertEqual(body["pending_offers"][0]["flow_step"], "Adım 1/4")
+        self.assertEqual(
+            body["pending_offers"][0]["flow_next_action"],
+            "Talebi onaylayın veya reddedin.",
+        )
+        self.assertEqual(body["active_threads"][0]["flow_step"], "Adım 3/4")
 
     def test_mobile_shell_context_reports_auth_state(self):
         anonymous_response = self.client.get("/api/mobile-shell/context/")
@@ -5537,6 +5549,169 @@ class MobileApiTests(TestCase):
         self.assertTrue(body["actions"]["can_cancel_request"])
         self.assertEqual(len(body["accepted_offers"]), 1)
         self.assertEqual(body["accepted_offers"][0]["id"], accepted_offer.id)
+        self.assertEqual(body["flow_state"]["step"], "Adım 2/4")
+        self.assertEqual(body["flow_state"]["title"], "Usta seçimi sizde")
+        self.assertEqual(body["flow_state"]["next_action"], "Listeden bir ustayı seçin.")
+
+    def test_mobile_request_detail_returns_provider_flow_state(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Teklif Bekleyen Musteri",
+            customer_phone="05001235555",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Usta karar asamasi",
+            customer=self.customer_user,
+            status="pending_provider",
+        )
+        pending_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILEFLOW001",
+            sequence=1,
+            status="pending",
+        )
+
+        payload = self._login_mobile("mobile_provider", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            f"/mobile/api/v1/requests/{service_request.id}/detail/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["viewer_role"], "provider")
+        self.assertEqual(body["provider_offer"]["id"], pending_offer.id)
+        self.assertEqual(body["flow_state"]["step"], "Adım 1/4")
+        self.assertEqual(body["flow_state"]["title"], "Talep kararınız bekleniyor")
+        self.assertEqual(
+            body["flow_state"]["next_action"],
+            "Talebi onaylayın veya reddedin.",
+        )
+
+    def test_mobile_request_detail_returns_customer_rating_state(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Puan Verecek Musteri",
+            customer_phone="05007770011",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Puan detay testi",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="completed",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILERATEDETAIL001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = matched_offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+        appointment = ServiceAppointment.objects.create(
+            service_request=service_request,
+            customer=self.customer_user,
+            provider=self.provider,
+            scheduled_for=timezone.now() - timedelta(hours=2),
+            status="pending",
+        )
+        transition_appointment_status(
+            appointment,
+            "confirmed",
+            actor_user=self.customer_user,
+            actor_role="customer",
+            source="user",
+            note="Test: musteri onayladi",
+        )
+        transition_appointment_status(
+            appointment,
+            "completed",
+            actor_user=self.provider_user,
+            actor_role="provider",
+            source="user",
+            note="Test: usta tamamladi",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            f"/mobile/api/v1/requests/{service_request.id}/detail/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["actions"]["can_rate"])
+        self.assertTrue(body["rating_state"]["can_rate"])
+        self.assertEqual(body["rating_state"]["rate_block_reason"], "")
+        self.assertIsNone(body["rating"])
+
+    def test_mobile_customer_can_rate_completed_request(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Puanlayan Musteri",
+            customer_phone="05007770022",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Mobil puan testi",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="completed",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILERATE001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = matched_offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+        appointment = ServiceAppointment.objects.create(
+            service_request=service_request,
+            customer=self.customer_user,
+            provider=self.provider,
+            scheduled_for=timezone.now() - timedelta(hours=2),
+            status="pending",
+        )
+        transition_appointment_status(
+            appointment,
+            "confirmed",
+            actor_user=self.customer_user,
+            actor_role="customer",
+            source="user",
+            note="Test: musteri onayladi",
+        )
+        transition_appointment_status(
+            appointment,
+            "completed",
+            actor_user=self.provider_user,
+            actor_role="provider",
+            source="user",
+            note="Test: usta tamamladi",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.post(
+            f"/mobile/api/v1/customer/requests/{service_request.id}/rating/",
+            data=json.dumps({"score": 5, "comment": "Harika hizmet"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rating = ProviderRating.objects.get(service_request=service_request)
+        self.assertEqual(rating.score, 5)
+        self.assertEqual(rating.comment, "Harika hizmet")
+        self.assertEqual(response.json()["rating"]["score"], 5)
+        self.provider.refresh_from_db()
+        self.assertEqual(float(self.provider.rating), 5.0)
 
     def test_mobile_customer_can_select_offer(self):
         service_request = ServiceRequest.objects.create(
