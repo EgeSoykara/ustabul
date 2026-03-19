@@ -9,6 +9,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val googleServicesConfig = file("google-services.json")
+if (googleServicesConfig.exists()) {
+    apply(plugin = "com.google.gms.google-services")
+} else {
+    logger.warn(
+        "google-services.json bulunamadi. FCM push bildirimleri bu build'de devre disi kalabilir."
+    )
+}
+
 val keystoreProperties = Properties().apply {
     val propsFile = rootProject.file("key.properties")
     if (propsFile.exists()) {

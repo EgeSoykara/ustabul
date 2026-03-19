@@ -18,6 +18,7 @@ import 'widgets/brand_backdrop.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  PushService.registerBackgroundHandler();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);

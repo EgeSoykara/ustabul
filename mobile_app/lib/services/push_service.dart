@@ -11,6 +11,78 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../models/auth_session.dart';
 import 'auth_service.dart';
 
+const AndroidNotificationChannel _defaultNotificationChannel =
+    AndroidNotificationChannel(
+  'ustabul_general',
+  'UstaBul Bildirimleri',
+  description: 'Mesajlar, talepler ve randevular için UstaBul bildirimleri.',
+  importance: Importance.high,
+);
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    return;
+  }
+
+  final localNotifications = FlutterLocalNotificationsPlugin();
+  await _initializeLocalNotificationsPlugin(localNotifications);
+
+  final title = message.notification?.title ??
+      PushService.buildFallbackTitle(message.data);
+  final body =
+      message.notification?.body ?? PushService.buildFallbackBody(message.data);
+  if (title.isEmpty && body.isEmpty) {
+    return;
+  }
+
+  await localNotifications.show(
+    message.messageId.hashCode ^ title.hashCode ^ body.hashCode,
+    title,
+    body,
+    _notificationDetails(),
+    payload: jsonEncode(message.data),
+  );
+}
+
+Future<void> _initializeLocalNotificationsPlugin(
+  FlutterLocalNotificationsPlugin localNotifications,
+) async {
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const iosSettings = DarwinInitializationSettings();
+  await localNotifications.initialize(
+    const InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    ),
+  );
+
+  final androidPlugin =
+      localNotifications.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+  await androidPlugin?.createNotificationChannel(_defaultNotificationChannel);
+}
+
+NotificationDetails _notificationDetails() {
+  return NotificationDetails(
+    android: AndroidNotificationDetails(
+      _defaultNotificationChannel.id,
+      _defaultNotificationChannel.name,
+      channelDescription: _defaultNotificationChannel.description,
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+    ),
+    iOS: const DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    ),
+  );
+}
+
 class PushRegistration {
   const PushRegistration({
     required this.platform,
@@ -43,13 +115,7 @@ class PushRegistration {
 class PushService {
   PushService([this._authService]);
 
-  static const AndroidNotificationChannel _defaultChannel =
-      AndroidNotificationChannel(
-    'ustabul_general',
-    'UstaBul Bildirimleri',
-    description: 'Mesajlar, talepler ve randevular için UstaBul bildirimleri.',
-    importance: Importance.high,
-  );
+  static bool _backgroundHandlerRegistered = false;
 
   final AuthService? _authService;
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -59,6 +125,14 @@ class PushService {
   bool _initialized = false;
   bool _localNotificationsReady = false;
   PushRegistration? _lastRegistration;
+
+  static void registerBackgroundHandler() {
+    if (_backgroundHandlerRegistered) {
+      return;
+    }
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    _backgroundHandlerRegistered = true;
+  }
 
   Future<void> initializeAndRegister(AuthSession session) async {
     await initialize(
@@ -71,6 +145,8 @@ class PushService {
   Future<PushRegistration?> initialize({
     Future<void> Function(PushRegistration registration)? onRegistrationChanged,
   }) async {
+    registerBackgroundHandler();
+
     try {
       if (!_initialized) {
         await Firebase.initializeApp();
@@ -83,6 +159,7 @@ class PushService {
 
     try {
       await _initializeLocalNotifications();
+      await _requestLocalNotificationPermissions();
       await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
@@ -94,6 +171,7 @@ class PushService {
         badge: true,
         sound: true,
       );
+
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.isNotEmpty) {
         final registration = await _buildRegistration(token);
@@ -104,21 +182,25 @@ class PushService {
           }
         }
       }
+
       _tokenRefreshSubscription?.cancel();
       _tokenRefreshSubscription =
           FirebaseMessaging.instance.onTokenRefresh.listen(
         (nextToken) async {
-          if (nextToken.isNotEmpty) {
-            final registration = await _buildRegistration(nextToken);
-            if (registration != null) {
-              _lastRegistration = registration;
-              if (onRegistrationChanged != null) {
-                await onRegistrationChanged(registration);
-              }
-            }
+          if (nextToken.isEmpty) {
+            return;
+          }
+          final registration = await _buildRegistration(nextToken);
+          if (registration == null) {
+            return;
+          }
+          _lastRegistration = registration;
+          if (onRegistrationChanged != null) {
+            await onRegistrationChanged(registration);
           }
         },
       );
+
       _foregroundMessageSubscription?.cancel();
       _foregroundMessageSubscription =
           FirebaseMessaging.onMessage.listen(_showForegroundNotification);
@@ -126,6 +208,7 @@ class PushService {
       // Push registration is best-effort.
       return _lastRegistration;
     }
+
     return _lastRegistration;
   }
 
@@ -139,21 +222,32 @@ class PushService {
       return;
     }
 
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings();
-    await _localNotifications.initialize(
-      const InitializationSettings(
-        android: androidSettings,
-        iOS: iosSettings,
-      ),
-    );
+    await _initializeLocalNotificationsPlugin(_localNotifications);
+    _localNotificationsReady = true;
+  }
 
+  Future<void> _requestLocalNotificationPermissions() async {
     final androidPlugin =
         _localNotifications.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.createNotificationChannel(_defaultChannel);
-    _localNotificationsReady = true;
+    await androidPlugin?.requestNotificationsPermission();
+
+    final iosPlugin = _localNotifications.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await iosPlugin?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    final macOsPlugin =
+        _localNotifications.resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin>();
+    await macOsPlugin?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
   Future<PushRegistration?> _buildRegistration(String pushToken) async {
@@ -169,7 +263,6 @@ class PushService {
       final iosInfo = await deviceInfoPlugin.iosInfo;
       deviceId = iosInfo.identifierForVendor ?? iosInfo.utsname.machine;
     } else if (Platform.isAndroid) {
-      platform = 'android';
       final androidInfo = await deviceInfoPlugin.androidInfo;
       deviceId = androidInfo.id;
     }
@@ -185,7 +278,9 @@ class PushService {
   }
 
   Future<void> _registerToken(
-      AuthSession session, PushRegistration registration) async {
+    AuthSession session,
+    PushRegistration registration,
+  ) async {
     final authService = _authService;
     if (authService == null) {
       return;
@@ -207,8 +302,8 @@ class PushService {
     }
 
     final title =
-        message.notification?.title ?? _buildFallbackTitle(message.data);
-    final body = message.notification?.body ?? _buildFallbackBody(message.data);
+        message.notification?.title ?? buildFallbackTitle(message.data);
+    final body = message.notification?.body ?? buildFallbackBody(message.data);
     if (title.isEmpty && body.isEmpty) {
       return;
     }
@@ -217,26 +312,12 @@ class PushService {
       message.messageId.hashCode ^ title.hashCode ^ body.hashCode,
       title,
       body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _defaultChannel.id,
-          _defaultChannel.name,
-          channelDescription: _defaultChannel.description,
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-        ),
-        iOS: const DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      ),
+      _notificationDetails(),
       payload: jsonEncode(message.data),
     );
   }
 
-  String _buildFallbackTitle(Map<String, dynamic> data) {
+  static String buildFallbackTitle(Map<String, dynamic> data) {
     final type = (data['type'] ?? '').toString();
     if (type == 'message') {
       return 'Yeni mesaj';
@@ -250,7 +331,7 @@ class PushService {
     return 'UstaBul';
   }
 
-  String _buildFallbackBody(Map<String, dynamic> data) {
+  static String buildFallbackBody(Map<String, dynamic> data) {
     final requestCode = (data['request_code'] ?? '').toString();
     final status = (data['status'] ?? '').toString();
     if (requestCode.isNotEmpty && status.isNotEmpty) {
