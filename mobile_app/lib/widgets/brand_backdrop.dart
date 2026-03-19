@@ -12,8 +12,8 @@ class BrandBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryOrb = BrandConfig.orbPrimaryOf(context).withValues(alpha: 0.8);
-    final accentOrb = BrandConfig.orbAccentOf(context).withValues(alpha: 0.78);
+    final primaryOrb = BrandConfig.orbPrimaryOf(context);
+    final accentOrb = BrandConfig.orbAccentOf(context);
     return DecoratedBox(
       decoration: BrandConfig.backgroundDecorationOf(context),
       child: Stack(
@@ -23,19 +23,14 @@ class BrandBackdrop extends StatelessWidget {
             child: Stack(
               children: [
                 _GlowOrb(
-                  alignment: const Alignment(-1.04, -0.92),
-                  size: 180,
+                  alignment: const Alignment(-0.92, -0.82),
+                  size: 220,
                   color: primaryOrb,
                 ),
                 _GlowOrb(
-                  alignment: const Alignment(1.02, 0.88),
-                  size: 164,
+                  alignment: const Alignment(0.96, 0.86),
+                  size: 188,
                   color: accentOrb,
-                ),
-                _GlowOrb(
-                  alignment: const Alignment(0.82, -0.34),
-                  size: 92,
-                  color: primaryOrb.withValues(alpha: 0.38),
                 ),
               ],
             ),
@@ -70,8 +65,8 @@ class _GlowOrb extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: color,
-              blurRadius: size * 0.5,
-              spreadRadius: size * 0.03,
+              blurRadius: size * 0.72,
+              spreadRadius: size * 0.02,
             ),
           ],
         ),

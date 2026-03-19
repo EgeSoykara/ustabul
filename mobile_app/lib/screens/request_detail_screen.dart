@@ -30,6 +30,10 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   bool _actionLoading = false;
   String? _error;
   Map<String, dynamic> _payload = const {};
+  bool _isRatingEditorOpen = false;
+  int _ratingDraftScore = 5;
+  final TextEditingController _ratingCommentController =
+      TextEditingController();
 
   Map<String, dynamic> get _request =>
       _payload['request'] is Map<String, dynamic>
@@ -132,6 +136,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _ratingCommentController.dispose();
+    super.dispose();
+  }
+
   Future<void> _openWebFallback() async {
     final ready = await widget.sessionController.ensureWebSession();
     if (!mounted) {
@@ -192,6 +202,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       }
       setState(() {
         _payload = payload;
+        if (!_isRatingEditorOpen) {
+          _syncRatingDraftFromPayload();
+        }
       });
     } catch (error) {
       if (error is ApiException && error.statusCode == 404) {
@@ -313,9 +326,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           'actions': {
             ..._actions,
             if (payload['rating_state'] is Map<String, dynamic>)
-              'can_rate': (payload['rating_state'] as Map<String, dynamic>)['can_rate'] == true,
+              'can_rate': (payload['rating_state']
+                      as Map<String, dynamic>)['can_rate'] ==
+                  true,
           },
         };
+        _isRatingEditorOpen = false;
+        _syncRatingDraftFromPayload();
       });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -334,6 +351,25 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         });
       }
     }
+  }
+
+  void _syncRatingDraftFromPayload() {
+    _ratingDraftScore = ((_rating?['score'] as num?)?.toInt() ?? 5).clamp(1, 5);
+    _ratingCommentController.text = (_rating?['comment'] ?? '').toString();
+  }
+
+  void _openRatingEditor() {
+    setState(() {
+      _isRatingEditorOpen = true;
+      _syncRatingDraftFromPayload();
+    });
+  }
+
+  void _closeRatingEditor() {
+    setState(() {
+      _isRatingEditorOpen = false;
+      _syncRatingDraftFromPayload();
+    });
   }
 
   Future<String?> _promptForShortNote({
@@ -371,6 +407,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     return result;
   }
 
+  // ignore: unused_element
   Future<Map<String, dynamic>?> _promptForRating() async {
     var selectedScore = ((_rating?['score'] as num?)?.toInt() ?? 5).clamp(1, 5);
     final controller = TextEditingController(
@@ -781,7 +818,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   Text(
                     (_request['service_type'] ?? 'Talep').toString(),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: BrandConfig.text,
+                          color: BrandConfig.textOf(context),
                           fontWeight: FontWeight.w800,
                         ),
                   ),
@@ -1126,21 +1163,100 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       ],
                       if (_ratingState['can_rate'] == true) ...[
                         const SizedBox(height: 12),
-                        FilledButton.tonalIcon(
-                          onPressed: _actionLoading
-                              ? null
-                              : () async {
-                                  final rating = await _promptForRating();
-                                  if (rating == null || !mounted) {
-                                    return;
-                                  }
-                                  await _submitRating(rating);
-                                },
-                          icon: const Icon(Icons.star_rounded),
-                          label: Text(
-                            _rating == null ? 'Puan ver' : 'Puanı güncelle',
+                        if (_isRatingEditorOpen) ...[
+                          Text(
+                            _rating == null
+                                ? 'Ustayı puanla'
+                                : 'Puanını güncelle',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
                           ),
-                        ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 4,
+                            children: List<Widget>.generate(5, (index) {
+                              final score = index + 1;
+                              final active = score <= _ratingDraftScore;
+                              return IconButton(
+                                onPressed: _actionLoading
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _ratingDraftScore = score;
+                                        });
+                                      },
+                                iconSize: 28,
+                                padding: const EdgeInsets.all(4),
+                                constraints: const BoxConstraints(),
+                                icon: Icon(
+                                  active
+                                      ? Icons.star_rounded
+                                      : Icons.star_border_rounded,
+                                  color: active
+                                      ? const Color(0xFFF59E0B)
+                                      : BrandConfig.textMutedOf(context),
+                                ),
+                              );
+                            }),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _ratingCommentController,
+                            minLines: 2,
+                            maxLines: 4,
+                            enabled: !_actionLoading,
+                            decoration: const InputDecoration(
+                              labelText: 'Yorum',
+                              hintText: 'İsteğe bağlı kısa yorum',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: _actionLoading
+                                      ? null
+                                      : _closeRatingEditor,
+                                  child: const Text('Vazgeç'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: _actionLoading
+                                      ? null
+                                      : () => _submitRating(
+                                            {
+                                              'score': _ratingDraftScore,
+                                              'comment':
+                                                  _ratingCommentController.text
+                                                      .trim(),
+                                            },
+                                          ),
+                                  icon: const Icon(Icons.star_rounded),
+                                  label: Text(
+                                    _rating == null
+                                        ? 'Puanı kaydet'
+                                        : 'Güncelle',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else
+                          FilledButton.tonalIcon(
+                            onPressed:
+                                _actionLoading ? null : _openRatingEditor,
+                            icon: const Icon(Icons.star_rounded),
+                            label: Text(
+                              _rating == null ? 'Puan ver' : 'Puanı güncelle',
+                            ),
+                          ),
                       ],
                     ],
                   ),

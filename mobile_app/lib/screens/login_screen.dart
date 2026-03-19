@@ -93,10 +93,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 size: 36,
                               ),
                               const SizedBox(height: 18),
-                              const Text(
+                              Text(
                                 'UstaBul Mobil',
                                 style: TextStyle(
-                                  color: BrandConfig.text,
+                                  color: BrandConfig.textOf(context),
                                   fontSize: 28,
                                   fontWeight: FontWeight.w800,
                                 ),

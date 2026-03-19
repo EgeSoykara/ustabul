@@ -237,7 +237,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                       (_provider['full_name'] ?? 'Usta').toString(),
                       style:
                           Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                color: BrandConfig.text,
+                                color: BrandConfig.textOf(context),
                                 fontWeight: FontWeight.w800,
                               ),
                     ),

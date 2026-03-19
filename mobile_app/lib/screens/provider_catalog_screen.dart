@@ -613,7 +613,7 @@ class _HeroPanel extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: BrandConfig.text,
+                  color: BrandConfig.textOf(context),
                   fontWeight: FontWeight.w800,
                 ),
           ),
