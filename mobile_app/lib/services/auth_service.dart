@@ -24,15 +24,15 @@ class AuthService {
     if (userData is! Map<String, dynamic>) {
       throw const ApiException('Kullanıcı bilgisi alınamadı.');
     }
-    return AuthSession(
-      accessToken: (response['access'] ?? '').toString(),
-      refreshToken: (response['refresh'] ?? '').toString(),
-      role: (userData['role'] ?? '').toString(),
-      user: userData,
-      snapshot: response['snapshot'] is Map<String, dynamic>
+    return AuthSession.fromJson({
+      'access_token': response['access'],
+      'refresh_token': response['refresh'],
+      'role': userData['role'],
+      'user': userData,
+      'snapshot': response['snapshot'] is Map<String, dynamic>
           ? response['snapshot'] as Map<String, dynamic>
           : <String, dynamic>{},
-    );
+    });
   }
 
   Future<String> refreshAccessToken(String refreshToken) async {

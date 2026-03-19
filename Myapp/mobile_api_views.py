@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, Max, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -37,6 +37,7 @@ from .models import (
     CustomerProfile,
     MobileDevice,
     Provider,
+    ProviderRating,
     ProviderOffer,
     ServiceAppointment,
     ServiceMessage,
@@ -264,6 +265,125 @@ def serialize_flow_state_fields(flow_state):
         "flow_hint": flow_state.get("hint", ""),
         "flow_next_action": flow_state.get("next_action", ""),
         "flow_tone": flow_state.get("tone", "muted"),
+    }
+
+
+def _normalize_summary_value(value):
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {key: _normalize_summary_value(value[key]) for key in sorted(value.keys())}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_summary_value(item) for item in value]
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+
+def build_mobile_summary_version(summary):
+    normalized = _normalize_summary_value(summary)
+    raw = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def build_request_collection_summary(queryset):
+    summary = {
+        "count": queryset.count(),
+        **queryset.aggregate(
+            latest_request_created_at=Max("created_at"),
+            latest_match_at=Max("matched_at"),
+            latest_message_at=Max("messages__created_at"),
+            latest_workflow_at=Max("workflow_events__created_at"),
+            latest_appointment_at=Max("appointment__updated_at"),
+            latest_offer_sent_at=Max("provider_offers__sent_at"),
+            latest_offer_response_at=Max("provider_offers__responded_at"),
+        ),
+    }
+    return {
+        "summary": _normalize_summary_value(summary),
+        "version": build_mobile_summary_version(summary),
+    }
+
+
+def build_provider_dashboard_summary(
+    provider,
+    *,
+    pending_offers_qs,
+    waiting_customer_selection_qs,
+    active_threads_qs,
+    pending_appointments_qs,
+):
+    summary = {
+        "membership_status": provider.membership_status,
+        "is_verified": bool(provider.is_verified),
+        "is_available": bool(provider.is_available),
+        "pending_offers_count": pending_offers_qs.count(),
+        "waiting_customer_selection_count": waiting_customer_selection_qs.count(),
+        "active_threads_count": active_threads_qs.count(),
+        "pending_appointments_count": pending_appointments_qs.count(),
+        **pending_offers_qs.aggregate(
+            latest_pending_offer_sent_at=Max("sent_at"),
+            latest_pending_offer_response_at=Max("responded_at"),
+        ),
+        **waiting_customer_selection_qs.aggregate(
+            latest_waiting_selection_sent_at=Max("sent_at"),
+            latest_waiting_selection_response_at=Max("responded_at"),
+        ),
+        **active_threads_qs.aggregate(
+            latest_active_thread_created_at=Max("created_at"),
+            latest_active_thread_match_at=Max("matched_at"),
+            latest_active_thread_message_at=Max("messages__created_at"),
+            latest_active_thread_workflow_at=Max("workflow_events__created_at"),
+            latest_active_thread_appointment_at=Max("appointment__updated_at"),
+        ),
+        **pending_appointments_qs.aggregate(
+            latest_pending_appointment_updated_at=Max("updated_at"),
+            latest_pending_appointment_scheduled_for=Max("scheduled_for"),
+        ),
+    }
+    return {
+        "summary": _normalize_summary_value(summary),
+        "version": build_mobile_summary_version(summary),
+    }
+
+
+def build_request_detail_summary(service_request, *, viewer_role):
+    appointment = (
+        ServiceAppointment.objects.filter(service_request=service_request)
+        .values("status", "updated_at", "scheduled_for")
+        .first()
+    )
+    provider_offer = None
+    if viewer_role == "provider":
+        provider_offer = (
+            ProviderOffer.objects.filter(service_request=service_request)
+            .order_by("-id")
+            .values("status", "responded_at", "sent_at")
+            .first()
+        )
+    rating = None
+    if viewer_role == "customer":
+        rating = (
+            ProviderRating.objects.filter(service_request=service_request)
+            .values("score", "updated_at")
+            .first()
+        )
+    summary = {
+        "viewer_role": viewer_role,
+        "request_status": service_request.status,
+        "matched_provider_id": service_request.matched_provider_id,
+        "matched_offer_id": service_request.matched_offer_id,
+        "matched_at": service_request.matched_at,
+        "latest_message_at": service_request.messages.aggregate(latest=Max("created_at")).get("latest"),
+        "latest_message_id": service_request.messages.order_by("-id").values_list("id", flat=True).first() or 0,
+        "latest_workflow_at": service_request.workflow_events.aggregate(latest=Max("created_at")).get("latest"),
+        "appointment": appointment or {},
+        "provider_offer": provider_offer or {},
+        "rating": rating or {},
+    }
+    return {
+        "summary": _normalize_summary_value(summary),
+        "version": build_mobile_summary_version(summary),
     }
 
 
@@ -1111,16 +1231,13 @@ class MobileCustomerRequestsView(APIView):
 
         scope = (request.GET.get("scope") or "").strip()
         status_filter = (request.GET.get("status") or "").strip()
+        summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
         limit_raw = (request.GET.get("limit") or "20").strip()
         offset_raw = (request.GET.get("offset") or "0").strip()
         limit = min(100, max(1, int(limit_raw) if limit_raw.isdigit() else 20))
         offset = max(0, int(offset_raw) if offset_raw.isdigit() else 0)
 
-        qs = (
-            ServiceRequest.objects.filter(customer=request.user)
-            .select_related("service_type", "matched_provider", "matched_offer", "matched_offer__provider")
-            .prefetch_related("provider_offers__provider")
-        )
+        qs = ServiceRequest.objects.filter(customer=request.user)
         if scope == "agreements":
             qs = qs.filter(matched_offer__isnull=False).order_by(
                 F("matched_at").desc(nulls_last=True),
@@ -1131,6 +1248,21 @@ class MobileCustomerRequestsView(APIView):
         if status_filter:
             qs = qs.filter(status=status_filter)
 
+        if summary_only:
+            summary = build_request_collection_summary(qs)
+            return Response(
+                {
+                    "count": summary["summary"]["count"],
+                    "summary": summary["summary"],
+                    "version": summary["version"],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        summary = build_request_collection_summary(qs)
+        qs = qs.select_related("service_type", "matched_provider", "matched_offer", "matched_offer__provider").prefetch_related(
+            "provider_offers__provider"
+        )
         total_count = qs.count()
         page_items = list(qs[offset : offset + limit])
         request_ids = [item.id for item in page_items]
@@ -1180,6 +1312,8 @@ class MobileCustomerRequestsView(APIView):
                 "count": total_count,
                 "offset": offset,
                 "limit": limit,
+                "summary": summary["summary"],
+                "version": summary["version"],
                 "results": serialized,
             },
             status=status.HTTP_200_OK,
@@ -1188,6 +1322,7 @@ class MobileCustomerRequestsView(APIView):
 
 class MobileRequestDetailView(APIView):
     def get(self, request, request_id):
+        summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
         provider = get_provider_for_user(request.user)
         if provider:
             if not provider.is_verified:
@@ -1195,20 +1330,28 @@ class MobileRequestDetailView(APIView):
             service_request = get_mobile_request_for_provider(provider, request_id)
             if service_request is None:
                 return Response({"detail": "not-found"}, status=status.HTTP_404_NOT_FOUND)
+            if summary_only:
+                summary = build_request_detail_summary(service_request, viewer_role="provider")
+                return Response(summary, status=status.HTTP_200_OK)
             payload = build_mobile_request_detail_payload(
                 service_request,
                 viewer_role="provider",
                 request_user=request.user,
                 provider=provider,
             )
+            payload.update(build_request_detail_summary(service_request, viewer_role="provider"))
             return Response(payload, status=status.HTTP_200_OK)
 
         service_request = get_mobile_request_for_customer(request.user, request_id)
+        if summary_only:
+            summary = build_request_detail_summary(service_request, viewer_role="customer")
+            return Response(summary, status=status.HTTP_200_OK)
         payload = build_mobile_request_detail_payload(
             service_request,
             viewer_role="customer",
             request_user=request.user,
         )
+        payload.update(build_request_detail_summary(service_request, viewer_role="customer"))
         return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -1690,21 +1833,48 @@ class MobileProviderDashboardView(APIView):
         if not provider.is_verified:
             return Response({"detail": "pending-approval"}, status=status.HTTP_403_FORBIDDEN)
 
+        summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
         thread_limit_raw = (request.GET.get("thread_limit") or "20").strip()
         thread_limit = min(100, max(1, int(thread_limit_raw) if thread_limit_raw.isdigit() else 20))
 
-        active_threads = list(
-            provider.service_requests.filter(
-                status="matched",
-                matched_offer__isnull=False,
-                matched_offer__provider=provider,
+        active_threads_qs = provider.service_requests.filter(
+            status="matched",
+            matched_offer__isnull=False,
+            matched_offer__provider=provider,
+        )
+        pending_offers_qs = provider.offers.filter(status="pending")
+        waiting_customer_selection_qs = provider.offers.filter(
+            status="accepted",
+            service_request__status="pending_customer",
+            service_request__matched_provider__isnull=True,
+        )
+        pending_appointments_qs = provider.appointments.none()
+        calendar_enabled = bool(is_calendar_enabled())
+        if calendar_enabled:
+            pending_appointments_qs = provider.appointments.filter(status="pending")
+
+        if summary_only:
+            summary = build_provider_dashboard_summary(
+                provider,
+                pending_offers_qs=pending_offers_qs,
+                waiting_customer_selection_qs=waiting_customer_selection_qs,
+                active_threads_qs=active_threads_qs,
+                pending_appointments_qs=pending_appointments_qs,
             )
-            .select_related("service_type", "customer")
-            .order_by("-created_at")[:thread_limit]
+            return Response(summary, status=status.HTTP_200_OK)
+
+        summary = build_provider_dashboard_summary(
+            provider,
+            pending_offers_qs=pending_offers_qs,
+            waiting_customer_selection_qs=waiting_customer_selection_qs,
+            active_threads_qs=active_threads_qs,
+            pending_appointments_qs=pending_appointments_qs,
+        )
+        active_threads = list(
+            active_threads_qs.select_related("service_type", "customer").order_by("-created_at")[:thread_limit]
         )
         thread_ids = [item.id for item in active_threads]
         unread_map = build_unread_message_map(thread_ids, "provider")
-        calendar_enabled = bool(is_calendar_enabled())
         appointment_map = {}
         if calendar_enabled and thread_ids:
             appointment_map = {
@@ -1715,25 +1885,21 @@ class MobileProviderDashboardView(APIView):
                 )
             }
         pending_offers = list(
-            provider.offers.filter(status="pending")
-            .select_related("service_request", "service_request__service_type")
-            .order_by("-sent_at")[:10]
+            pending_offers_qs.select_related("service_request", "service_request__service_type").order_by("-sent_at")[
+                :10
+            ]
         )
         waiting_customer_selection = list(
-            provider.offers.filter(
-                status="accepted",
-                service_request__status="pending_customer",
-                service_request__matched_provider__isnull=True,
-            )
+            waiting_customer_selection_qs
             .select_related("service_request", "service_request__service_type")
             .order_by("-responded_at", "-sent_at")[:10]
         )
         pending_appointments = []
         if calendar_enabled:
             pending_appointments = list(
-                provider.appointments.filter(status="pending")
-                .select_related("service_request", "service_request__service_type")
-                .order_by("scheduled_for")[:10]
+                pending_appointments_qs.select_related("service_request", "service_request__service_type").order_by(
+                    "scheduled_for"
+                )[:10]
             )
         membership = build_provider_membership_context(provider)
 
@@ -1744,6 +1910,8 @@ class MobileProviderDashboardView(APIView):
                 "pending_offers": [serialize_provider_offer_card(item) for item in pending_offers],
                 "waiting_customer_selection": [serialize_provider_offer_card(item) for item in waiting_customer_selection],
                 "pending_appointments": [serialize_provider_appointment_card(item) for item in pending_appointments],
+                "summary": summary["summary"],
+                "version": summary["version"],
                 "active_threads": [
                     {
                         "id": item.id,
@@ -2450,15 +2618,46 @@ class MobileDeviceRegisterView(APIView):
 class MobileNotificationsView(APIView):
     def get(self, request):
         selected_category = normalize_notification_category(request.GET.get("category"))
+        summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
         limit_raw = (request.GET.get("limit") or str(NOTIFICATION_CENTER_LIMIT)).strip()
         limit = min(100, max(1, int(limit_raw) if limit_raw.isdigit() else NOTIFICATION_CENTER_LIMIT))
+        if summary_only:
+            summary_limit = 1 if selected_category == "all" else NOTIFICATION_CENTER_LIMIT
+            entries = build_notification_entries(request.user, limit=summary_limit, unread_only=True)
+            if selected_category != "all":
+                entries = [item for item in entries if item.get("category_key") == selected_category]
+            latest_entry = entries[0] if entries else {}
+            summary = {
+                "category": selected_category,
+                "unread_count": get_total_unread_notifications_count(request.user),
+                "latest_entry_id": latest_entry.get("entry_id") or "",
+                "latest_created_at": latest_entry.get("created_at"),
+                "latest_kind": latest_entry.get("kind") or "",
+            }
+            return Response(
+                {
+                    "summary": _normalize_summary_value(summary),
+                    "version": build_mobile_summary_version(summary),
+                },
+                status=status.HTTP_200_OK,
+            )
         entries = build_notification_entries(request.user, limit=limit, unread_only=True)
         if selected_category != "all":
             entries = [item for item in entries if item.get("category_key") == selected_category]
+        latest_entry = entries[0] if entries else {}
+        summary = {
+            "category": selected_category,
+            "unread_count": get_total_unread_notifications_count(request.user),
+            "latest_entry_id": latest_entry.get("entry_id") or "",
+            "latest_created_at": latest_entry.get("created_at"),
+            "latest_kind": latest_entry.get("kind") or "",
+        }
         return Response(
             {
                 "count": len(entries),
                 "unread_count": get_total_unread_notifications_count(request.user),
+                "summary": _normalize_summary_value(summary),
+                "version": build_mobile_summary_version(summary),
                 "results": [serialize_mobile_notification_entry(item) for item in entries],
             },
             status=status.HTTP_200_OK,

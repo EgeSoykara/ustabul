@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class AuthSession {
   const AuthSession({
     required this.accessToken,
@@ -5,6 +7,7 @@ class AuthSession {
     required this.role,
     required this.user,
     required this.snapshot,
+    required this.accessTokenExpiresAt,
   });
 
   final String accessToken;
@@ -12,8 +15,19 @@ class AuthSession {
   final String role;
   final Map<String, dynamic> user;
   final Map<String, dynamic> snapshot;
+  final DateTime? accessTokenExpiresAt;
 
   bool get isProvider => role == 'provider';
+
+  bool shouldRefreshAccessToken({
+    Duration leeway = const Duration(minutes: 2),
+  }) {
+    final expiry = accessTokenExpiresAt;
+    if (expiry == null) {
+      return false;
+    }
+    return DateTime.now().isAfter(expiry.subtract(leeway));
+  }
 
   AuthSession copyWith({
     String? accessToken,
@@ -21,6 +35,7 @@ class AuthSession {
     String? role,
     Map<String, dynamic>? user,
     Map<String, dynamic>? snapshot,
+    DateTime? accessTokenExpiresAt,
   }) {
     return AuthSession(
       accessToken: accessToken ?? this.accessToken,
@@ -28,6 +43,7 @@ class AuthSession {
       role: role ?? this.role,
       user: user ?? this.user,
       snapshot: snapshot ?? this.snapshot,
+      accessTokenExpiresAt: accessTokenExpiresAt ?? this.accessTokenExpiresAt,
     );
   }
 
@@ -38,14 +54,18 @@ class AuthSession {
       'role': role,
       'user': user,
       'snapshot': snapshot,
+      'access_token_expires_at': accessTokenExpiresAt?.toIso8601String(),
     };
   }
 
   factory AuthSession.fromJson(Map<String, dynamic> data) {
     final userData = data['user'];
     final snapshotData = data['snapshot'];
+    final accessToken =
+        (data['access_token'] ?? data['access'] ?? '').toString();
+    final rawExpiry = (data['access_token_expires_at'] ?? '').toString();
     return AuthSession(
-      accessToken: (data['access_token'] ?? data['access'] ?? '').toString(),
+      accessToken: accessToken,
       refreshToken: (data['refresh_token'] ?? data['refresh'] ?? '').toString(),
       role: (data['role'] ?? (userData is Map ? userData['role'] : '') ?? '')
           .toString(),
@@ -53,6 +73,37 @@ class AuthSession {
       snapshot: snapshotData is Map<String, dynamic>
           ? snapshotData
           : <String, dynamic>{},
+      accessTokenExpiresAt: rawExpiry.isNotEmpty
+          ? DateTime.tryParse(rawExpiry)?.toLocal()
+          : _extractJwtExpiry(accessToken),
     );
+  }
+
+  static DateTime? _extractJwtExpiry(String token) {
+    final segments = token.split('.');
+    if (segments.length < 2) {
+      return null;
+    }
+    final normalized = base64Url.normalize(segments[1]);
+    try {
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final payload = jsonDecode(decoded);
+      if (payload is! Map<String, dynamic>) {
+        return null;
+      }
+      final rawExp = payload['exp'];
+      final seconds = rawExp is int
+          ? rawExp
+          : rawExp is num
+              ? rawExp.toInt()
+              : int.tryParse(rawExp?.toString() ?? '');
+      if (seconds == null) {
+        return null;
+      }
+      return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true)
+          .toLocal();
+    } catch (_) {
+      return null;
+    }
   }
 }

@@ -140,6 +140,27 @@ class MobileDataService {
     return response;
   }
 
+  Future<Map<String, dynamic>> fetchCustomerRequestsSummary({
+    required String accessToken,
+    String? scope,
+  }) async {
+    final queryParameters = <String, dynamic>{
+      'summary_only': '1',
+    };
+    if ((scope ?? '').trim().isNotEmpty) {
+      queryParameters['scope'] = scope!.trim();
+    }
+    final response = await _apiClient.get(
+      '/mobile/api/v1/customer/requests/',
+      accessToken: accessToken,
+      queryParameters: queryParameters,
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const ApiException('Talep özeti yanıtı geçersiz.');
+    }
+    return response;
+  }
+
   Future<Map<String, dynamic>> fetchRequestDetail({
     required String accessToken,
     required int requestId,
@@ -150,6 +171,21 @@ class MobileDataService {
     );
     if (response is! Map<String, dynamic>) {
       throw const ApiException('Talep detayı okunamadı.');
+    }
+    return response;
+  }
+
+  Future<Map<String, dynamic>> fetchRequestDetailSummary({
+    required String accessToken,
+    required int requestId,
+  }) async {
+    final response = await _apiClient.get(
+      '/mobile/api/v1/requests/$requestId/detail/',
+      accessToken: accessToken,
+      queryParameters: const {'summary_only': '1'},
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const ApiException('Talep detay özeti okunamadı.');
     }
     return response;
   }
@@ -266,6 +302,20 @@ class MobileDataService {
     );
     if (response is! Map<String, dynamic>) {
       throw const ApiException('Usta paneli yanıtı geçersiz.');
+    }
+    return response;
+  }
+
+  Future<Map<String, dynamic>> fetchProviderDashboardSummary({
+    required String accessToken,
+  }) async {
+    final response = await _apiClient.get(
+      '/mobile/api/v1/provider/dashboard/',
+      accessToken: accessToken,
+      queryParameters: const {'summary_only': '1'},
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const ApiException('Usta paneli özeti okunamadı.');
     }
     return response;
   }
@@ -425,6 +475,24 @@ class MobileDataService {
     );
     if (response is! Map<String, dynamic>) {
       throw const ApiException('Bildirim yanıtı geçersiz.');
+    }
+    return response;
+  }
+
+  Future<Map<String, dynamic>> fetchNotificationsSummary({
+    required String accessToken,
+    String category = 'all',
+  }) async {
+    final response = await _apiClient.get(
+      '/mobile/api/v1/notifications/',
+      accessToken: accessToken,
+      queryParameters: {
+        'category': category,
+        'summary_only': '1',
+      },
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const ApiException('Bildirim özeti okunamadı.');
     }
     return response;
   }

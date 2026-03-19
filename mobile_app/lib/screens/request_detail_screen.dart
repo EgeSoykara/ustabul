@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../config/brand_config.dart';
@@ -25,13 +27,23 @@ class RequestDetailScreen extends StatefulWidget {
   State<RequestDetailScreen> createState() => _RequestDetailScreenState();
 }
 
-class _RequestDetailScreenState extends State<RequestDetailScreen> {
+class _RequestDetailScreenState extends State<RequestDetailScreen>
+    with WidgetsBindingObserver {
+  static const Duration _autoRefreshInterval = Duration(seconds: 15);
+
+  Timer? _autoRefreshTimer;
+  Timer? _liveUpdateTimer;
   bool _loading = true;
   bool _actionLoading = false;
+  bool _requestInFlight = false;
   String? _error;
   Map<String, dynamic> _payload = const {};
   bool _isRatingEditorOpen = false;
   int _ratingDraftScore = 5;
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
+  DateTime? _lastSyncAt;
+  String _detailVersion = '';
+  String? _liveUpdateMessage;
   final TextEditingController _ratingCommentController =
       TextEditingController();
 
@@ -133,13 +145,89 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startAutoRefresh();
     _load();
   }
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
+    _liveUpdateTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _ratingCommentController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
+    if (state == AppLifecycleState.resumed) {
+      _refreshSilently(force: true);
+    }
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(
+      _autoRefreshInterval,
+      (_) => _refreshSilently(),
+    );
+  }
+
+  bool _isVisibleRoute() {
+    if (!mounted) {
+      return false;
+    }
+    final route = ModalRoute.of(context);
+    return route?.isCurrent ?? true;
+  }
+
+  bool _isRefreshDue() {
+    if (_lastSyncAt == null) {
+      return true;
+    }
+    return DateTime.now().difference(_lastSyncAt!) >= _autoRefreshInterval;
+  }
+
+  void _showLiveUpdateCue(String message) {
+    if (!mounted) {
+      return;
+    }
+    _liveUpdateTimer?.cancel();
+    setState(() {
+      _liveUpdateMessage = message;
+    });
+    _liveUpdateTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _liveUpdateMessage = null;
+      });
+    });
+  }
+
+  void _clearLiveUpdateCue() {
+    _liveUpdateTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _liveUpdateMessage = null;
+    });
+  }
+
+  void _refreshSilently({bool force = false}) {
+    if (!mounted ||
+        _actionLoading ||
+        _appLifecycleState != AppLifecycleState.resumed ||
+        !_isVisibleRoute()) {
+      return;
+    }
+    if (force || _isRefreshDue()) {
+      unawaited(_load(silent: true));
+    }
   }
 
   Future<void> _openWebFallback() async {
@@ -186,39 +274,75 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (_requestInFlight) {
+      return;
+    }
+    _requestInFlight = true;
+    if (!silent) {
+      _clearLiveUpdateCue();
+    }
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final accessToken = await widget.sessionController.ensureAccessToken();
+      if (silent) {
+        final summary = await widget.dataService.fetchRequestDetailSummary(
+          accessToken: accessToken,
+          requestId: widget.requestId,
+        );
+        final nextVersion = (summary['version'] ?? '').toString();
+        final changed =
+            _detailVersion.isNotEmpty && nextVersion != _detailVersion;
+        _detailVersion = nextVersion;
+        _lastSyncAt = DateTime.now();
+        if (!changed) {
+          return;
+        }
+      }
       final payload = await widget.dataService.fetchRequestDetail(
         accessToken: accessToken,
         requestId: widget.requestId,
       );
+      final nextVersion = (payload['version'] ?? '').toString();
+      final changed =
+          _detailVersion.isNotEmpty && nextVersion != _detailVersion;
       if (!mounted) {
         return;
       }
       setState(() {
         _payload = payload;
+        _error = null;
+        _detailVersion = nextVersion;
         if (!_isRatingEditorOpen) {
           _syncRatingDraftFromPayload();
         }
       });
+      if (silent && changed) {
+        _showLiveUpdateCue('Talepte yeni bir gelişme algılandı');
+      }
+      _lastSyncAt = DateTime.now();
     } catch (error) {
       if (error is ApiException && error.statusCode == 404) {
+        if (silent) {
+          return;
+        }
         await _handleMissingNativeEndpoint();
         return;
       }
-      if (!mounted) {
+      if (!mounted || silent) {
         return;
       }
       setState(() {
         _error = error.toString();
       });
     } finally {
-      if (mounted) {
+      _requestInFlight = false;
+      if (mounted && !silent) {
         setState(() {
           _loading = false;
         });
@@ -809,6 +933,40 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
+            if (_liveUpdateMessage != null) ...[
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: BrandConfig.accentSoftOf(context),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: BrandConfig.borderOf(context)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.sync_rounded,
+                      size: 18,
+                      color: BrandConfig.accentOf(context),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _liveUpdateMessage!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: BrandConfig.textOf(context),
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BrandConfig.heroPanelDecorationOf(context),

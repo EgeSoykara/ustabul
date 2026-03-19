@@ -49,13 +49,24 @@ class SessionController extends ChangeNotifier {
 
     try {
       await _webAuthService.restoreSession();
-      final mePayload = await _authService.fetchMe(stored.accessToken);
+      var bootstrapSession = stored;
+      if (stored.shouldRefreshAccessToken()) {
+        final refreshed =
+            await _authService.refreshAccessToken(stored.refreshToken);
+        bootstrapSession = AuthSession.fromJson({
+          ...stored.toJson(),
+          'access_token': refreshed,
+          'access_token_expires_at': null,
+        });
+      }
+      final mePayload =
+          await _authService.fetchMe(bootstrapSession.accessToken);
       final userData = mePayload['user'];
       if (userData is! Map<String, dynamic>) {
         throw const ApiException('Profil verisi okunamadı.');
       }
       final snapshotData = mePayload['snapshot'];
-      _session = stored.copyWith(
+      _session = bootstrapSession.copyWith(
         role: (userData['role'] ?? '').toString(),
         user: userData,
         snapshot: snapshotData is Map<String, dynamic>
@@ -124,16 +135,21 @@ class SessionController extends ChangeNotifier {
     if (current == null) {
       throw const ApiException('Oturum bulunamadı.');
     }
-    try {
-      await _authService.fetchMe(current.accessToken);
+
+    if (!current.shouldRefreshAccessToken()) {
       return current.accessToken;
-    } catch (_) {
-      final refreshed =
-          await _authService.refreshAccessToken(current.refreshToken);
-      _session = current.copyWith(accessToken: refreshed);
-      await _authStorage.saveSession(_session!);
-      return refreshed;
     }
+
+    final refreshed =
+        await _authService.refreshAccessToken(current.refreshToken);
+    final nextSession = AuthSession.fromJson({
+      ...current.toJson(),
+      'access_token': refreshed,
+      'access_token_expires_at': null,
+    });
+    _session = nextSession;
+    await _authStorage.saveSession(nextSession);
+    return refreshed;
   }
 
   Future<AuthSession> refreshProfile() async {

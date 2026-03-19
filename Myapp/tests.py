@@ -5299,6 +5299,32 @@ class MobileApiTests(TestCase):
         self.assertEqual(body["results"][0]["matched_offer_id"], included_offer.id)
         self.assertNotEqual(body["results"][0]["id"], excluded_request.id)
 
+    def test_mobile_customer_requests_summary_only_returns_version(self):
+        ServiceRequest.objects.create(
+            customer_name="Ozet Musteri",
+            customer_phone="05006667788",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Sadece ozet cekilecek",
+            customer=self.customer_user,
+            status="new",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/customer/requests/?summary_only=1",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["summary"]["count"], 1)
+        self.assertEqual(len(body["version"]), 16)
+        self.assertNotIn("results", body)
+
     def test_mobile_register_device_creates_record(self):
         payload = self._login_mobile("mobile_customer", "GucluSifre123!")
         access = payload["access"]
@@ -5401,6 +5427,48 @@ class MobileApiTests(TestCase):
         incoming_message.refresh_from_db()
         self.assertIsNotNone(incoming_message.read_at)
 
+    def test_mobile_notifications_summary_only_returns_version(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Bildirim Ozet Musteri",
+            customer_phone="05005550011",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Bildirim ozet testi",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILENOTIFSUM001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+        ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=self.provider_user,
+            sender_role="provider",
+            body="Bildirim ozeti icin mesaj",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/notifications/?summary_only=1",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["summary"]["unread_count"], 1)
+        self.assertTrue(body["summary"]["latest_entry_id"].startswith("msg-"))
+        self.assertEqual(len(body["version"]), 16)
+
     def test_mobile_provider_dashboard_includes_pending_sections(self):
         pending_request = ServiceRequest.objects.create(
             customer_name="Bekleyen Musteri",
@@ -5478,6 +5546,37 @@ class MobileApiTests(TestCase):
             "Talebi onaylayın veya reddedin.",
         )
         self.assertEqual(body["active_threads"][0]["flow_step"], "Adım 3/4")
+
+    def test_mobile_provider_dashboard_summary_only_returns_version(self):
+        pending_request = ServiceRequest.objects.create(
+            customer_name="Dashboard Ozet Musteri",
+            customer_phone="05002220011",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Ozet icin bekleyen teklif",
+            customer=self.customer_user,
+            status="pending_provider",
+        )
+        ProviderOffer.objects.create(
+            service_request=pending_request,
+            provider=self.provider,
+            token="MOBILEDASHSUM001",
+            sequence=1,
+            status="pending",
+        )
+
+        payload = self._login_mobile("mobile_provider", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/provider/dashboard/?summary_only=1",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["summary"]["pending_offers_count"], 1)
+        self.assertEqual(len(body["version"]), 16)
 
     def test_mobile_shell_context_reports_auth_state(self):
         anonymous_response = self.client.get("/api/mobile-shell/context/")
@@ -5688,6 +5787,48 @@ class MobileApiTests(TestCase):
             body["flow_state"]["next_action"],
             "Talebi onaylayın veya reddedin.",
         )
+
+    def test_mobile_request_detail_summary_only_returns_version(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Detay Ozet Musteri",
+            customer_phone="05001236666",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Detay ozet testi",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILEDETAILSUM001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = matched_offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+        message = ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=self.provider_user,
+            sender_role="provider",
+            body="Ozet testi icin mesaj",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            f"/mobile/api/v1/requests/{service_request.id}/detail/?summary_only=1",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["summary"]["request_status"], "matched")
+        self.assertEqual(body["summary"]["latest_message_id"], message.id)
+        self.assertEqual(len(body["version"]), 16)
 
     def test_mobile_request_detail_returns_customer_rating_state(self):
         service_request = ServiceRequest.objects.create(

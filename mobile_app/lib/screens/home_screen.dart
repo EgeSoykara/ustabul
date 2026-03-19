@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/brand_config.dart';
@@ -30,10 +32,25 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  static const Duration _autoRefreshInterval = Duration(seconds: 15);
+
   int _currentIndex = 0;
   String _customerRequestFilter = 'active';
   final Set<String> _runningProviderActionKeys = <String>{};
+  Timer? _autoRefreshTimer;
+  Timer? _liveUpdateTimer;
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
+  DateTime? _lastDashboardSyncAt;
+  DateTime? _lastNotificationSyncAt;
+  bool _dashboardRequestInFlight = false;
+  bool _notificationsRequestInFlight = false;
+  String _providerDashboardVersion = '';
+  String _customerRequestsVersion = '';
+  String _customerAgreementsVersion = '';
+  String _notificationsVersion = '';
+  String? _liveUpdateMessage;
+  int? _liveUpdateTabIndex;
 
   bool _dashboardLoading = true;
   String? _dashboardError;
@@ -54,7 +71,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startAutoRefresh();
     _loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    _liveUpdateTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
+    if (state == AppLifecycleState.resumed) {
+      _refreshVisibleTabSilently(force: true);
+    }
   }
 
   bool get _isProvider => widget.sessionController.session?.isProvider == true;
@@ -172,24 +207,186 @@ class _HomeScreenState extends State<HomeScreen> {
     return error is ApiException && error.statusCode == 404;
   }
 
-  Future<void> _loadDashboard() async {
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(
+      _autoRefreshInterval,
+      (_) => _refreshVisibleTabSilently(),
+    );
+  }
+
+  bool _isVisibleRoute() {
+    if (!mounted) {
+      return false;
+    }
+    final route = ModalRoute.of(context);
+    return route?.isCurrent ?? true;
+  }
+
+  bool _shouldRefreshDashboardForTab(int index) {
+    return index < _notificationsTabIndex;
+  }
+
+  bool _isRefreshDue(DateTime? lastSyncAt) {
+    if (lastSyncAt == null) {
+      return true;
+    }
+    return DateTime.now().difference(lastSyncAt) >= _autoRefreshInterval;
+  }
+
+  String _dashboardRefreshMessage() {
+    if (_isProvider) {
+      return _currentIndex == 1
+          ? 'Usta mesaj ve iş durumu güncellendi'
+          : 'Usta paneli güncellendi';
+    }
+    switch (_currentIndex) {
+      case 1:
+        return 'Taleplerde yeni gelişme var';
+      case 2:
+        return 'Mesaj ve talep durumu güncellendi';
+      default:
+        return 'Ana ekran verileri güncellendi';
+    }
+  }
+
+  void _showLiveUpdateCue({
+    required String message,
+    required int tabIndex,
+  }) {
+    if (!mounted) {
+      return;
+    }
+    _liveUpdateTimer?.cancel();
     setState(() {
-      _dashboardLoading = true;
-      _dashboardError = null;
+      _liveUpdateMessage = message;
+      _liveUpdateTabIndex = tabIndex;
     });
+    _liveUpdateTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _liveUpdateMessage = null;
+        _liveUpdateTabIndex = null;
+      });
+    });
+  }
+
+  void _clearLiveUpdateCue() {
+    _liveUpdateTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _liveUpdateMessage = null;
+      _liveUpdateTabIndex = null;
+    });
+  }
+
+  void _refreshVisibleTabSilently({bool force = false}) {
+    if (!mounted ||
+        _appLifecycleState != AppLifecycleState.resumed ||
+        !_isVisibleRoute()) {
+      return;
+    }
+
+    if (_shouldRefreshDashboardForTab(_currentIndex) &&
+        (force || _isRefreshDue(_lastDashboardSyncAt))) {
+      unawaited(_loadDashboard(silent: true));
+    }
+
+    if (_currentIndex == _notificationsTabIndex &&
+        (force || _isRefreshDue(_lastNotificationSyncAt))) {
+      unawaited(_loadNotifications(silent: true));
+    }
+
+    if (_currentIndex == _moreTabIndex &&
+        _notificationPreferences.isEmpty &&
+        !_preferencesLoading) {
+      unawaited(_loadNotificationPreferences());
+    }
+  }
+
+  Future<void> _loadDashboard({bool silent = false}) async {
+    if (_dashboardRequestInFlight) {
+      return;
+    }
+    _dashboardRequestInFlight = true;
+    if (!silent) {
+      _clearLiveUpdateCue();
+    }
+    if (!silent) {
+      setState(() {
+        _dashboardLoading = true;
+        _dashboardError = null;
+      });
+    }
     try {
       final accessToken = await widget.sessionController.ensureAccessToken();
       if (_isProvider) {
+        if (silent) {
+          final summary =
+              await widget.dataService.fetchProviderDashboardSummary(
+            accessToken: accessToken,
+          );
+          final nextVersion = (summary['version'] ?? '').toString();
+          final changed = _providerDashboardVersion.isNotEmpty &&
+              nextVersion != _providerDashboardVersion;
+          _providerDashboardVersion = nextVersion;
+          _lastDashboardSyncAt = DateTime.now();
+          if (!changed) {
+            return;
+          }
+        }
         final payload = await widget.dataService
             .fetchProviderDashboard(accessToken: accessToken);
+        final nextVersion = (payload['version'] ?? '').toString();
+        final changed = _providerDashboardVersion.isNotEmpty &&
+            nextVersion != _providerDashboardVersion;
         if (!mounted) {
           return;
         }
         setState(() {
           _dashboardPayload = payload;
+          _dashboardError = null;
+          _providerDashboardVersion = nextVersion;
         });
+        if (silent && changed) {
+          _showLiveUpdateCue(
+            message: _dashboardRefreshMessage(),
+            tabIndex: _currentIndex,
+          );
+        }
       } else {
-        await widget.sessionController.refreshProfile();
+        if (!silent) {
+          await widget.sessionController.refreshProfile();
+        }
+        if (silent) {
+          final summaries = await Future.wait<Map<String, dynamic>>([
+            widget.dataService.fetchCustomerRequestsSummary(
+              accessToken: accessToken,
+            ),
+            widget.dataService.fetchCustomerRequestsSummary(
+              accessToken: accessToken,
+              scope: 'agreements',
+            ),
+          ]);
+          final nextRequestsVersion =
+              (summaries[0]['version'] ?? '').toString();
+          final nextAgreementsVersion =
+              (summaries[1]['version'] ?? '').toString();
+          final changed = (_customerRequestsVersion.isNotEmpty &&
+                  nextRequestsVersion != _customerRequestsVersion) ||
+              (_customerAgreementsVersion.isNotEmpty &&
+                  nextAgreementsVersion != _customerAgreementsVersion);
+          _customerRequestsVersion = nextRequestsVersion;
+          _customerAgreementsVersion = nextAgreementsVersion;
+          _lastDashboardSyncAt = DateTime.now();
+          if (!changed) {
+            return;
+          }
+        }
         final responses = await Future.wait<Map<String, dynamic>>([
           _fetchAllCustomerRequests(
             accessToken: accessToken,
@@ -206,22 +403,41 @@ class _HomeScreenState extends State<HomeScreen> {
           'agreements': agreementsPayload['results'] ?? const [],
           'agreements_count': agreementsPayload['count'] ?? 0,
         };
+        final nextRequestsVersion =
+            (requestsPayload['version'] ?? '').toString();
+        final nextAgreementsVersion =
+            (agreementsPayload['version'] ?? '').toString();
+        final changed = (_customerRequestsVersion.isNotEmpty &&
+                nextRequestsVersion != _customerRequestsVersion) ||
+            (_customerAgreementsVersion.isNotEmpty &&
+                nextAgreementsVersion != _customerAgreementsVersion);
         if (!mounted) {
           return;
         }
         setState(() {
           _dashboardPayload = payload;
+          _dashboardError = null;
+          _customerRequestsVersion = nextRequestsVersion;
+          _customerAgreementsVersion = nextAgreementsVersion;
         });
+        if (silent && changed) {
+          _showLiveUpdateCue(
+            message: _dashboardRefreshMessage(),
+            tabIndex: _currentIndex,
+          );
+        }
       }
+      _lastDashboardSyncAt = DateTime.now();
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || silent) {
         return;
       }
       setState(() {
         _dashboardError = error.toString();
       });
     } finally {
-      if (mounted) {
+      _dashboardRequestInFlight = false;
+      if (mounted && !silent) {
         setState(() {
           _dashboardLoading = false;
         });
@@ -229,26 +445,68 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadNotifications({String? category}) async {
+  Future<void> _loadNotifications({
+    String? category,
+    bool silent = false,
+  }) async {
+    if (_notificationsRequestInFlight) {
+      return;
+    }
+    _notificationsRequestInFlight = true;
+    if (!silent) {
+      _clearLiveUpdateCue();
+    }
     final nextCategory = category ?? _notificationCategory;
-    setState(() {
-      _notificationsLoading = true;
-      _notificationsError = null;
-      _notificationCategory = nextCategory;
-    });
+    if (!silent) {
+      setState(() {
+        _notificationsLoading = true;
+        _notificationsError = null;
+        _notificationCategory = nextCategory;
+      });
+    } else if (nextCategory != _notificationCategory && mounted) {
+      setState(() {
+        _notificationCategory = nextCategory;
+      });
+    }
     try {
       final accessToken = await widget.sessionController.ensureAccessToken();
+      if (silent) {
+        final summary = await widget.dataService.fetchNotificationsSummary(
+          accessToken: accessToken,
+          category: nextCategory,
+        );
+        final nextVersion = (summary['version'] ?? '').toString();
+        final changed = _notificationsVersion.isNotEmpty &&
+            nextVersion != _notificationsVersion;
+        _notificationsVersion = nextVersion;
+        _lastNotificationSyncAt = DateTime.now();
+        if (!changed) {
+          return;
+        }
+      }
       final payload = await widget.dataService.fetchNotifications(
         accessToken: accessToken,
         category: nextCategory,
       );
+      final nextVersion = (payload['version'] ?? '').toString();
+      final changed = _notificationsVersion.isNotEmpty &&
+          nextVersion != _notificationsVersion;
       if (!mounted) {
         return;
       }
       setState(() {
         _notificationsPayload = payload;
         _notificationsFallbackToWeb = false;
+        _notificationsError = null;
+        _notificationsVersion = nextVersion;
       });
+      if (silent && changed) {
+        _showLiveUpdateCue(
+          message: 'Yeni bildirimler alındı',
+          tabIndex: _notificationsTabIndex,
+        );
+      }
+      _lastNotificationSyncAt = DateTime.now();
     } catch (error) {
       if (_isNotFoundError(error)) {
         if (!mounted) {
@@ -260,14 +518,15 @@ class _HomeScreenState extends State<HomeScreen> {
         });
         return;
       }
-      if (!mounted) {
+      if (!mounted || silent) {
         return;
       }
       setState(() {
         _notificationsError = error.toString();
       });
     } finally {
-      if (mounted) {
+      _notificationsRequestInFlight = false;
+      if (mounted && !silent) {
         setState(() {
           _notificationsLoading = false;
         });
@@ -593,11 +852,16 @@ class _HomeScreenState extends State<HomeScreen> {
         _notificationsPayload.isEmpty &&
         !_notificationsLoading) {
       _loadNotifications();
+      return;
     }
     if (index == _moreTabIndex &&
         _notificationPreferences.isEmpty &&
         !_preferencesLoading) {
       _loadNotificationPreferences();
+      return;
+    }
+    if (_shouldRefreshDashboardForTab(index)) {
+      _refreshVisibleTabSilently(force: true);
     }
   }
 
@@ -881,6 +1145,41 @@ class _HomeScreenState extends State<HomeScreen> {
     return buffer.toString();
   }
 
+  Widget _buildLiveUpdateBanner() {
+    if (_liveUpdateMessage == null || _liveUpdateTabIndex != _currentIndex) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: BrandConfig.accentSoftOf(context),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: BrandConfig.borderOf(context)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.sync_rounded,
+            size: 18,
+            color: BrandConfig.accentOf(context),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _liveUpdateMessage!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: BrandConfig.textOf(context),
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.sessionController.session;
@@ -931,141 +1230,150 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: BrandBackdrop(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          child: switch (_currentIndex) {
-            0 => _DashboardTab(
-                key: const ValueKey('dashboard'),
-                isProvider: _isProvider,
-                loading: _dashboardLoading,
-                error: _dashboardError,
-                sessionSnapshot: _sessionSnapshot,
-                dashboardPayload: _dashboardPayload,
-                customerRequests: _customerRequests,
-                customerAgreementCount: _customerAgreementCount,
-                providerPendingOffers: _providerPendingOffers,
-                providerWaitingSelection: _providerWaitingSelection,
-                providerActiveThreads: _providerActiveThreads,
-                providerPendingAppointments: _providerPendingAppointments,
-                onRefresh: _loadDashboard,
-                onOpenThread: _openThread,
-                onOpenRequestDetail: _openRequestDetail,
-                onOpenRequestsTab: _showCustomerRequests,
-                onOpenProviderCatalog: _openProviderCatalog,
-                onCreateRequest: _openRequestCreate,
-                onOpenWebPanel: null,
-                isProviderActionBusy: _isProviderActionBusy,
-                onAcceptProviderOffer: _acceptProviderOfferFromDashboard,
-                onRejectProviderOffer: _rejectProviderOfferFromDashboard,
-                onWithdrawProviderOffer: _withdrawProviderOfferFromDashboard,
-                onConfirmProviderAppointment:
-                    _confirmProviderAppointmentFromDashboard,
-                onRejectProviderAppointment:
-                    _rejectProviderAppointmentFromDashboard,
-                onCompleteProviderAppointment:
-                    _completeProviderAppointmentFromDashboard,
-              ),
-            1 => _isProvider
-                ? _MessagesTab(
-                    key: const ValueKey('messages'),
-                    isProvider: true,
-                    loading: _dashboardLoading,
-                    error: _dashboardError,
-                    threads: _messageThreads,
-                    onRefresh: _loadDashboard,
-                    onOpenThread: _openThread,
-                  )
-                : _RequestsTab(
-                    key: const ValueKey('requests'),
-                    loading: _dashboardLoading,
-                    error: _dashboardError,
-                    selectedFilter: _customerRequestFilter,
-                    customerRequests: _customerRequests,
-                    customerAgreementCount: _customerAgreementCount,
-                    visibleRequests: _customerVisibleRequests,
-                    onRefresh: _loadDashboard,
-                    onFilterChanged: _setCustomerRequestFilter,
-                    onOpenRequestDetail: _openRequestDetail,
-                    onOpenProviderCatalog: _openProviderCatalog,
-                    onCreateRequest: _openRequestCreate,
-                  ),
-            2 => _isProvider
-                ? _NotificationsTab(
-                    key: const ValueKey('notifications'),
-                    loading: _notificationsLoading,
-                    error: _notificationsError,
-                    payload: _notificationsPayload,
-                    category: _notificationCategory,
-                    fallbackToWeb: _notificationsFallbackToWeb,
-                    onRefresh: _loadNotifications,
-                    onCategoryChanged: (value) =>
-                        _loadNotifications(category: value),
-                    onOpenNotification: _openNotification,
-                    onMarkAllRead: _markAllNotificationsRead,
-                    onOpenWebNotifications: () => _openSiteFallback(
-                      '/bildirimler/',
-                      pageTitle: 'Bildirimler',
+        child: Column(
+          children: [
+            _buildLiveUpdateBanner(),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: switch (_currentIndex) {
+                  0 => _DashboardTab(
+                      key: const ValueKey('dashboard'),
+                      isProvider: _isProvider,
+                      loading: _dashboardLoading,
+                      error: _dashboardError,
+                      sessionSnapshot: _sessionSnapshot,
+                      dashboardPayload: _dashboardPayload,
+                      customerRequests: _customerRequests,
+                      customerAgreementCount: _customerAgreementCount,
+                      providerPendingOffers: _providerPendingOffers,
+                      providerWaitingSelection: _providerWaitingSelection,
+                      providerActiveThreads: _providerActiveThreads,
+                      providerPendingAppointments: _providerPendingAppointments,
+                      onRefresh: _loadDashboard,
+                      onOpenThread: _openThread,
+                      onOpenRequestDetail: _openRequestDetail,
+                      onOpenRequestsTab: _showCustomerRequests,
+                      onOpenProviderCatalog: _openProviderCatalog,
+                      onCreateRequest: _openRequestCreate,
+                      onOpenWebPanel: null,
+                      isProviderActionBusy: _isProviderActionBusy,
+                      onAcceptProviderOffer: _acceptProviderOfferFromDashboard,
+                      onRejectProviderOffer: _rejectProviderOfferFromDashboard,
+                      onWithdrawProviderOffer:
+                          _withdrawProviderOfferFromDashboard,
+                      onConfirmProviderAppointment:
+                          _confirmProviderAppointmentFromDashboard,
+                      onRejectProviderAppointment:
+                          _rejectProviderAppointmentFromDashboard,
+                      onCompleteProviderAppointment:
+                          _completeProviderAppointmentFromDashboard,
                     ),
-                  )
-                : _MessagesTab(
-                    key: const ValueKey('messages'),
-                    isProvider: false,
-                    loading: _dashboardLoading,
-                    error: _dashboardError,
-                    threads: _messageThreads,
-                    onRefresh: _loadDashboard,
-                    onOpenThread: _openThread,
-                  ),
-            3 => _isProvider
-                ? _MoreTab(
-                    key: const ValueKey('more'),
-                    sessionController: widget.sessionController,
-                    themePreference: widget.themeController.preference,
-                    loading: _preferencesLoading,
-                    saving: _preferencesSaving,
-                    error: _preferencesError,
-                    notificationPreferences: _notificationPreferences,
-                    preferencesFallbackToWeb:
-                        _notificationPreferencesFallbackToWeb,
-                    onThemeChanged: _setThemePreference,
-                    onRetry: _loadNotificationPreferences,
-                    onTogglePreference: _updateNotificationPreference,
-                    onOpenFallback: _openSiteFallback,
-                    onLaunchExternal: _launchExternal,
-                  )
-                : _NotificationsTab(
-                    key: const ValueKey('notifications'),
-                    loading: _notificationsLoading,
-                    error: _notificationsError,
-                    payload: _notificationsPayload,
-                    category: _notificationCategory,
-                    fallbackToWeb: _notificationsFallbackToWeb,
-                    onRefresh: _loadNotifications,
-                    onCategoryChanged: (value) =>
-                        _loadNotifications(category: value),
-                    onOpenNotification: _openNotification,
-                    onMarkAllRead: _markAllNotificationsRead,
-                    onOpenWebNotifications: () => _openSiteFallback(
-                      '/bildirimler/',
-                      pageTitle: 'Bildirimler',
+                  1 => _isProvider
+                      ? _MessagesTab(
+                          key: const ValueKey('messages'),
+                          isProvider: true,
+                          loading: _dashboardLoading,
+                          error: _dashboardError,
+                          threads: _messageThreads,
+                          onRefresh: _loadDashboard,
+                          onOpenThread: _openThread,
+                        )
+                      : _RequestsTab(
+                          key: const ValueKey('requests'),
+                          loading: _dashboardLoading,
+                          error: _dashboardError,
+                          selectedFilter: _customerRequestFilter,
+                          customerRequests: _customerRequests,
+                          customerAgreementCount: _customerAgreementCount,
+                          visibleRequests: _customerVisibleRequests,
+                          onRefresh: _loadDashboard,
+                          onFilterChanged: _setCustomerRequestFilter,
+                          onOpenRequestDetail: _openRequestDetail,
+                          onOpenProviderCatalog: _openProviderCatalog,
+                          onCreateRequest: _openRequestCreate,
+                        ),
+                  2 => _isProvider
+                      ? _NotificationsTab(
+                          key: const ValueKey('notifications'),
+                          loading: _notificationsLoading,
+                          error: _notificationsError,
+                          payload: _notificationsPayload,
+                          category: _notificationCategory,
+                          fallbackToWeb: _notificationsFallbackToWeb,
+                          onRefresh: _loadNotifications,
+                          onCategoryChanged: (value) =>
+                              _loadNotifications(category: value),
+                          onOpenNotification: _openNotification,
+                          onMarkAllRead: _markAllNotificationsRead,
+                          onOpenWebNotifications: () => _openSiteFallback(
+                            '/bildirimler/',
+                            pageTitle: 'Bildirimler',
+                          ),
+                        )
+                      : _MessagesTab(
+                          key: const ValueKey('messages'),
+                          isProvider: false,
+                          loading: _dashboardLoading,
+                          error: _dashboardError,
+                          threads: _messageThreads,
+                          onRefresh: _loadDashboard,
+                          onOpenThread: _openThread,
+                        ),
+                  3 => _isProvider
+                      ? _MoreTab(
+                          key: const ValueKey('more'),
+                          sessionController: widget.sessionController,
+                          themePreference: widget.themeController.preference,
+                          loading: _preferencesLoading,
+                          saving: _preferencesSaving,
+                          error: _preferencesError,
+                          notificationPreferences: _notificationPreferences,
+                          preferencesFallbackToWeb:
+                              _notificationPreferencesFallbackToWeb,
+                          onThemeChanged: _setThemePreference,
+                          onRetry: _loadNotificationPreferences,
+                          onTogglePreference: _updateNotificationPreference,
+                          onOpenFallback: _openSiteFallback,
+                          onLaunchExternal: _launchExternal,
+                        )
+                      : _NotificationsTab(
+                          key: const ValueKey('notifications'),
+                          loading: _notificationsLoading,
+                          error: _notificationsError,
+                          payload: _notificationsPayload,
+                          category: _notificationCategory,
+                          fallbackToWeb: _notificationsFallbackToWeb,
+                          onRefresh: _loadNotifications,
+                          onCategoryChanged: (value) =>
+                              _loadNotifications(category: value),
+                          onOpenNotification: _openNotification,
+                          onMarkAllRead: _markAllNotificationsRead,
+                          onOpenWebNotifications: () => _openSiteFallback(
+                            '/bildirimler/',
+                            pageTitle: 'Bildirimler',
+                          ),
+                        ),
+                  _ => _MoreTab(
+                      key: const ValueKey('more'),
+                      sessionController: widget.sessionController,
+                      themePreference: widget.themeController.preference,
+                      loading: _preferencesLoading,
+                      saving: _preferencesSaving,
+                      error: _preferencesError,
+                      notificationPreferences: _notificationPreferences,
+                      preferencesFallbackToWeb:
+                          _notificationPreferencesFallbackToWeb,
+                      onThemeChanged: _setThemePreference,
+                      onRetry: _loadNotificationPreferences,
+                      onTogglePreference: _updateNotificationPreference,
+                      onOpenFallback: _openSiteFallback,
+                      onLaunchExternal: _launchExternal,
                     ),
-                  ),
-            _ => _MoreTab(
-                key: const ValueKey('more'),
-                sessionController: widget.sessionController,
-                themePreference: widget.themeController.preference,
-                loading: _preferencesLoading,
-                saving: _preferencesSaving,
-                error: _preferencesError,
-                notificationPreferences: _notificationPreferences,
-                preferencesFallbackToWeb: _notificationPreferencesFallbackToWeb,
-                onThemeChanged: _setThemePreference,
-                onRetry: _loadNotificationPreferences,
-                onTogglePreference: _updateNotificationPreference,
-                onOpenFallback: _openSiteFallback,
-                onLaunchExternal: _launchExternal,
+                },
               ),
-          },
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: NavigationBar(
