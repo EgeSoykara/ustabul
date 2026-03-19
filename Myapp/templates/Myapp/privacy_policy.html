@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h1 class="h4 mb-2"><i class="bi bi-shield-check me-2"></i>Gizlilik Politikası</h1>
+    <p class="text-muted mb-0">
+      UstaBul mobil uygulaması ve web platformu üzerinden işlenen kişisel verilerin nasıl toplandığını,
+      kullanıldığını, saklandığını ve silindiğini bu sayfada açık şekilde anlatıyoruz.
+    </p>
+  </div>
+</section>
+
+<section class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">Geliştirici</div>
+        <div class="fw-semibold">UstaBul</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">İletişim</div>
+        <div class="fw-semibold">ustabulcyprus@gmail.com</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card panel-card shadow-sm h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">Kapsam</div>
+        <div class="fw-semibold">Mobil uygulama + web sitesi</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3">Toplanan veriler</h2>
+    <ul class="mb-0">
+      <li>Hesap bilgileri: kullanıcı adı, e-posta, ad-soyad.</li>
+      <li>İletişim ve konum bilgileri: telefon, şehir, ilçe.</li>
+      <li>Talep ve iş verileri: hizmet türü, talep detayları, teklif, randevu ve anlaşma kayıtları.</li>
+      <li>Mesajlaşma verileri: müşteri ve usta arasındaki mesaj içerikleri.</li>
+      <li>Bildirim verileri: mobil push token, cihaz türü, uygulama sürümü, dil ve saat dilimi gibi teknik bilgiler.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3">Verileri neden kullanıyoruz?</h2>
+    <ul class="mb-0">
+      <li>Hesabınızı açmak, oturumunuzu sürdürmek ve güvenli giriş sağlamak.</li>
+      <li>Müşteri taleplerini uygun ustalarla eşleştirmek.</li>
+      <li>Teklif, randevu, mesaj ve iş takibini sağlamak.</li>
+      <li>Bildirim göndermek ve uygulama deneyimini güncel tutmak.</li>
+      <li>Destek taleplerini yanıtlamak, güvenlik ve dolandırıcılık önleme süreçlerini yürütmek.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3">Veri paylaşımı ve güvenlik</h2>
+    <p>
+      UstaBul, hizmetin çalışması için gerekli olduğu ölçüde verileri altyapı ve bildirim servis sağlayıcılarıyla paylaşabilir.
+      Veriler reklam satışı amacıyla üçüncü taraflara satılmaz. Uygulama ve web istekleri HTTPS üzerinden iletilir.
+    </p>
+    <p class="mb-0">
+      Güvenlik, dolandırıcılık önleme, yasal yükümlülükler veya uyuşmazlık çözümü gibi sebeplerle bazı kayıtlar belirli sürelerle tutulabilir.
+    </p>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3">Saklama ve silme</h2>
+    <p>
+      Hesabınızı uygulama içindeki hesap ayarlarından silebilirsiniz. Hesap silme sonrasında ilişkili hesap verileri kaldırılır;
+      ancak güvenlik, yasal yükümlülük veya dolandırıcılık önleme amaçlı bazı kayıtlar sınırlı süre boyunca saklanabilir.
+    </p>
+    <p class="mb-0">
+      Hesap silme ve veri silme talepleri için ayrıca <a href="{% url 'account_deletion_info' %}">Hesap Silme Talebi</a> sayfasını da kullanabilirsiniz.
+    </p>
+  </div>
+</section>
+
+<section class="card panel-card shadow-sm reveal-up">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3">İletişim</h2>
+    <p class="mb-2">
+      Gizlilik ve veri işleme konularındaki sorularınız için bize aşağıdaki kanaldan ulaşabilirsiniz:
+    </p>
+    <p class="mb-0">
+      <a href="mailto:ustabulcyprus@gmail.com">ustabulcyprus@gmail.com</a>
+    </p>
+  </div>
+</section>
+{% endblock %}

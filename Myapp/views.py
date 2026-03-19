@@ -38,6 +38,14 @@ def contact(request):
     return _dispatch("site", "contact", request)
 
 
+def privacy_policy(request):
+    return _dispatch("site", "privacy_policy", request)
+
+
+def account_deletion_info(request):
+    return _dispatch("site", "account_deletion_info", request)
+
+
 def offline(request):
     return _dispatch("site", "offline", request)
 

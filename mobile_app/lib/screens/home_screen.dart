@@ -3222,6 +3222,37 @@ class _MoreTab extends StatelessWidget {
         ],
         const SizedBox(height: 20),
         const _SectionTitle(
+          title: 'Gizlilik ve veri',
+          subtitle:
+              'Gizlilik politikası ve hesap silme yolları uygulama içinde görünür tutulur.',
+        ),
+        _ActionTile(
+          icon: Icons.privacy_tip_outlined,
+          title: 'Gizlilik politikası',
+          subtitle: 'Veri işleme ve saklama bilgilerini aç',
+          onTap: () => onOpenFallback(
+            '/gizlilik-politikasi/',
+            pageTitle: 'Gizlilik Politikası',
+          ),
+        ),
+        _ActionTile(
+          icon: Icons.delete_forever_outlined,
+          title: 'Hesabı sil',
+          subtitle: 'Kalıcı silme ekranını aç',
+          onTap: () => onOpenFallback(
+            '/hesap/ayarlar/?tab=danger',
+            pageTitle: 'Hesap Silme',
+          ),
+        ),
+        _ActionTile(
+          icon: Icons.manage_accounts_outlined,
+          title: 'Hesap silme talebi',
+          subtitle: 'Uygulama dışı silme bilgi sayfasını aç',
+          onTap: () =>
+              onOpenFallback('/hesap-silme/', pageTitle: 'Hesap Silme Talebi'),
+        ),
+        const SizedBox(height: 20),
+        const _SectionTitle(
           title: 'Destek',
           subtitle:
               'Ulaşılabilir destek bilgisi mağaza incelemesinde de güven veren bir işarettir.',

@@ -2854,6 +2854,26 @@ def contact(request):
     return render(request, "Myapp/Contact.html")
 
 
+def privacy_policy(request):
+    return render(request, "Myapp/privacy_policy.html")
+
+
+def account_deletion_info(request):
+    support_email = "ustabulcyprus@gmail.com"
+    mailto_link = (
+        "mailto:ustabulcyprus@gmail.com"
+        "?subject=UstaBul%20Hesap%20Silme%20Talebi"
+    )
+    return render(
+        request,
+        "Myapp/account_deletion_info.html",
+        {
+            "support_email": support_email,
+            "support_mailto_link": mailto_link,
+        },
+    )
+
+
 def offline(request):
     return render(request, "Myapp/offline.html")
 

@@ -4731,6 +4731,20 @@ class MarketplaceTests(TestCase):
         self.assertNotContains(response, "İletişim ve Konum Bilgileri")
         self.assertContains(response, "Usta Profili")
 
+    def test_privacy_policy_page_is_public_and_contains_support_email(self):
+        response = self.client.get(reverse("privacy_policy"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Gizlilik Politikası")
+        self.assertContains(response, "ustabulcyprus@gmail.com")
+
+    def test_account_deletion_info_page_is_public_and_links_to_delete_flow(self):
+        response = self.client.get(reverse("account_deletion_info"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hesap Silme Talebi")
+        self.assertContains(response, reverse("login"))
+        self.assertContains(response, reverse("privacy_policy"))
+        self.assertContains(response, "ustabulcyprus@gmail.com")
+
     def test_customer_can_update_notification_preferences_from_account_settings(self):
         customer = User.objects.create_user(username="bildirimayarli", password="GucluSifre123!")
         CustomerProfile.objects.create(user=customer, phone="05001112234", city="Lefkosa", district="Ortakoy")

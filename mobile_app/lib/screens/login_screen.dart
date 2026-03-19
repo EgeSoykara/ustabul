@@ -62,6 +62,20 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> _openInfoPage({
+    required String path,
+    required String pageTitle,
+  }) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SiteShellScreen.relativePath(
+          path,
+          pageTitle: pageTitle,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -285,6 +299,28 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 14),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            TextButton(
+                              onPressed: () => _openInfoPage(
+                                path: '/gizlilik-politikasi/',
+                                pageTitle: 'Gizlilik Politikası',
+                              ),
+                              child: const Text('Gizlilik politikası'),
+                            ),
+                            TextButton(
+                              onPressed: () => _openInfoPage(
+                                path: '/hesap-silme/',
+                                pageTitle: 'Hesap Silme',
+                              ),
+                              child: const Text('Hesap silme'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
                         Text(
                           'Destek: ustabulcyprus@gmail.com',
                           textAlign: TextAlign.center,
