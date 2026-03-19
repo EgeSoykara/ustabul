@@ -2222,13 +2222,6 @@ class _ProviderWorkTab extends StatelessWidget {
       'agreements_count',
       providerAgreements.length,
     );
-    final completedAgreementCount = _summaryCount(
-      summary,
-      'completed_agreements_count',
-      providerAgreements
-          .where((item) => (item['status'] ?? '').toString() == 'completed')
-          .length,
-    );
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -2238,7 +2231,7 @@ class _ProviderWorkTab extends StatelessWidget {
           const _SectionHero(
             title: 'İşlerim',
             subtitle:
-                'Biriken talepler, aktif işler ve webdeki Anlaşmalar geçmişi aynı akış içinde burada toplanır.',
+                'Biriken talepler, aktif işler ve tamamlananlar dahil tüm anlaşmalar burada birlikte takip edilir.',
           ),
           const SizedBox(height: 16),
           Row(
@@ -2261,24 +2254,10 @@ class _ProviderWorkTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _MetricCard(
-                  label: 'Anlaşmalar',
-                  value: '$agreementCount',
-                  tone: 'primary',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MetricCard(
-                  label: 'Tamamlanan',
-                  value: '$completedAgreementCount',
-                  tone: 'muted',
-                ),
-              ),
-            ],
+          _MetricCard(
+            label: 'Anlaşmalar',
+            value: '$agreementCount',
+            tone: 'primary',
           ),
           const SizedBox(height: 18),
           Wrap(
