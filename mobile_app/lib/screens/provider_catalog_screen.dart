@@ -336,6 +336,7 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
                             DropdownButtonFormField<int>(
                               key: ValueKey<int?>(_selectedServiceTypeId),
                               initialValue: _selectedServiceTypeId,
+                              isExpanded: true,
                               items: [
                                 const DropdownMenuItem<int>(
                                   value: null,
@@ -359,124 +360,125 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            Row(
+                            Column(
                               children: [
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    key: ValueKey<String>(_selectedCity),
-                                    initialValue: _selectedCity.isEmpty
-                                        ? null
-                                        : _selectedCity,
-                                    items: [
-                                      const DropdownMenuItem<String>(
-                                        value: null,
-                                        child: Text('Şehir seçin'),
+                                DropdownButtonFormField<String>(
+                                  key: ValueKey<String>(_selectedCity),
+                                  initialValue: _selectedCity.isEmpty
+                                      ? null
+                                      : _selectedCity,
+                                  isExpanded: true,
+                                  items: [
+                                    const DropdownMenuItem<String>(
+                                      value: null,
+                                      child: Text('Şehir seçin'),
+                                    ),
+                                    ..._cityOptions.map(
+                                      (item) => DropdownMenuItem<String>(
+                                        value: item,
+                                        child: Text(item),
                                       ),
-                                      ..._cityOptions.map(
-                                        (item) => DropdownMenuItem<String>(
-                                          value: item,
-                                          child: Text(item),
-                                        ),
-                                      ),
-                                    ],
-                                    onChanged: _handleCityChanged,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Şehir'),
+                                    ),
+                                  ],
+                                  onChanged: _handleCityChanged,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Şehir',
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    key: ValueKey<String>(
-                                      '$_selectedCity|$_selectedDistrict',
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  key: ValueKey<String>(
+                                    '$_selectedCity|$_selectedDistrict',
+                                  ),
+                                  initialValue: _selectedDistrict.isEmpty
+                                      ? null
+                                      : _selectedDistrict,
+                                  isExpanded: true,
+                                  items: [
+                                    const DropdownMenuItem<String>(
+                                      value: null,
+                                      child: Text('İlçe seçin'),
                                     ),
-                                    initialValue: _selectedDistrict.isEmpty
-                                        ? null
-                                        : _selectedDistrict,
-                                    items: [
-                                      const DropdownMenuItem<String>(
-                                        value: null,
-                                        child: Text('İlçe seçin'),
+                                    ..._districtOptions.map(
+                                      (item) => DropdownMenuItem<String>(
+                                        value: item,
+                                        child: Text(item),
                                       ),
-                                      ..._districtOptions.map(
-                                        (item) => DropdownMenuItem<String>(
-                                          value: item,
-                                          child: Text(item),
-                                        ),
-                                      ),
-                                    ],
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedDistrict = value ?? '';
-                                      });
-                                    },
-                                    decoration: const InputDecoration(
-                                        labelText: 'İlçe'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedDistrict = value ?? '';
+                                    });
+                                  },
+                                  decoration: const InputDecoration(
+                                    labelText: 'İlçe',
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 12),
-                            Row(
+                            Column(
                               children: [
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    key: ValueKey<String>(_selectedSortBy),
-                                    initialValue: _selectedSortBy,
-                                    items: _sortChoices
+                                DropdownButtonFormField<String>(
+                                  key: ValueKey<String>(_selectedSortBy),
+                                  initialValue: _selectedSortBy,
+                                  isExpanded: true,
+                                  items: _sortChoices
+                                      .map(
+                                        (item) => DropdownMenuItem<String>(
+                                          value:
+                                              (item['value'] ?? '').toString(),
+                                          child: Text(
+                                            (item['label'] ?? '').toString(),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedSortBy = value ?? 'relevance';
+                                    });
+                                  },
+                                  decoration: const InputDecoration(
+                                    labelText: 'Sıralama',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  key: ValueKey<String>(_selectedMinRating),
+                                  initialValue: _selectedMinRating.isEmpty
+                                      ? null
+                                      : _selectedMinRating,
+                                  isExpanded: true,
+                                  items: [
+                                    const DropdownMenuItem<String>(
+                                      value: null,
+                                      child: Text('Puan fark etmez'),
+                                    ),
+                                    ..._minRatingChoices
+                                        .where(
+                                          (item) => (item['value'] ?? '')
+                                              .toString()
+                                              .isNotEmpty,
+                                        )
                                         .map(
                                           (item) => DropdownMenuItem<String>(
                                             value: (item['value'] ?? '')
                                                 .toString(),
-                                            child: Text((item['label'] ?? '')
-                                                .toString()),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedSortBy = value ?? 'relevance';
-                                      });
-                                    },
-                                    decoration: const InputDecoration(
-                                        labelText: 'Sıralama'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    key: ValueKey<String>(_selectedMinRating),
-                                    initialValue: _selectedMinRating.isEmpty
-                                        ? null
-                                        : _selectedMinRating,
-                                    items: [
-                                      const DropdownMenuItem<String>(
-                                        value: null,
-                                        child: Text('Puan fark etmez'),
-                                      ),
-                                      ..._minRatingChoices
-                                          .where(
-                                            (item) => (item['value'] ?? '')
-                                                .toString()
-                                                .isNotEmpty,
-                                          )
-                                          .map(
-                                            (item) => DropdownMenuItem<String>(
-                                              value: (item['value'] ?? '')
-                                                  .toString(),
-                                              child: Text((item['label'] ?? '')
-                                                  .toString()),
+                                            child: Text(
+                                              (item['label'] ?? '').toString(),
                                             ),
                                           ),
-                                    ],
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedMinRating = value ?? '';
-                                      });
-                                    },
-                                    decoration: const InputDecoration(
-                                      labelText: 'Minimum puan',
-                                    ),
+                                        ),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedMinRating = value ?? '';
+                                    });
+                                  },
+                                  decoration: const InputDecoration(
+                                    labelText: 'Minimum puan',
                                   ),
                                 ),
                               ],
@@ -487,6 +489,7 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
                               initialValue: _selectedMinReviews.isEmpty
                                   ? null
                                   : _selectedMinReviews,
+                              isExpanded: true,
                               items: [
                                 const DropdownMenuItem<String>(
                                   value: null,
@@ -515,24 +518,21 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
                                   labelText: 'Minimum yorum'),
                             ),
                             const SizedBox(height: 16),
-                            Row(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Expanded(
-                                  child: FilledButton.icon(
-                                    onPressed: () =>
-                                        _loadProviders(reset: true),
-                                    icon: const Icon(Icons.search_rounded),
-                                    label: const Text('Filtrele'),
-                                  ),
+                                FilledButton.icon(
+                                  onPressed: () => _loadProviders(reset: true),
+                                  icon: const Icon(Icons.search_rounded),
+                                  label: const Text('Filtrele'),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: FilledButton.tonalIcon(
-                                    onPressed: _clearFilters,
-                                    icon: const Icon(
-                                        Icons.filter_alt_off_rounded),
-                                    label: const Text('Temizle'),
+                                const SizedBox(height: 10),
+                                FilledButton.tonalIcon(
+                                  onPressed: _clearFilters,
+                                  icon: const Icon(
+                                    Icons.filter_alt_off_rounded,
                                   ),
+                                  label: const Text('Temizle'),
                                 ),
                               ],
                             ),
@@ -667,6 +667,8 @@ class _ProviderCard extends StatelessWidget {
                     children: [
                       Text(
                         (provider['full_name'] ?? 'Usta').toString(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style:
                             Theme.of(context).textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w700,
@@ -675,6 +677,8 @@ class _ProviderCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         '${(provider['city'] ?? '').toString()} / ${(provider['district'] ?? '').toString()}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style:
                             TextStyle(color: BrandConfig.textMutedOf(context)),
                       ),
@@ -723,20 +727,17 @@ class _ProviderCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 14),
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: onOpenDetail,
-                    child: const Text('Detayı aç'),
-                  ),
+                FilledButton.tonal(
+                  onPressed: onOpenDetail,
+                  child: const Text('Detayı aç'),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: onCreateRequest,
-                    child: const Text('Talep aç'),
-                  ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  onPressed: onCreateRequest,
+                  child: const Text('Talep aç'),
                 ),
               ],
             ),
