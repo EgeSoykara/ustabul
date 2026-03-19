@@ -4,6 +4,7 @@ import '../config/brand_config.dart';
 import '../services/api_client.dart';
 import '../services/mobile_data_service.dart';
 import '../state/session_controller.dart';
+import '../widgets/brand_backdrop.dart';
 import 'provider_detail_screen.dart';
 import 'request_thread_screen.dart';
 import 'site_shell_screen.dart';
@@ -380,31 +381,35 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: BrandBackdrop(
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
     if (_error != null && _payload.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Talep detayı')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: BrandConfig.textMutedOf(context)),
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Tekrar dene'),
-                ),
-              ],
+        body: BrandBackdrop(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: BrandConfig.textMutedOf(context)),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Tekrar dene'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -417,98 +422,48 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Talep detayı')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: BrandConfig.heroGradientOf(context),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  (_request['service_type'] ?? 'Talep').toString(),
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: BrandConfig.text,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${(_request['request_code'] ?? '').toString()} · ${(_request['city'] ?? '').toString()} / ${(_request['district'] ?? '').toString()}',
-                  style: TextStyle(color: BrandConfig.heroTextMutedOf(context)),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  (_request['details'] ?? '').toString(),
-                  style: TextStyle(
-                    color: BrandConfig.heroTextMutedOf(context),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                _error!,
-                style: TextStyle(color: BrandConfig.errorTextOf(context)),
-              ),
-            ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
+      body: BrandBackdrop(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BrandConfig.heroPanelDecorationOf(context),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Durum',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
+                    (_request['service_type'] ?? 'Talep').toString(),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: BrandConfig.text,
+                          fontWeight: FontWeight.w800,
                         ),
                   ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      _InfoChip(
-                        label: 'Statü',
-                        value: (_request['status'] ?? '').toString(),
-                      ),
-                      _InfoChip(
-                        label: 'Okunmamış',
-                        value: '${(_request['unread_messages'] ?? 0)}',
-                      ),
-                      if ((_request['created_at'] ?? '').toString().isNotEmpty)
-                        _InfoChip(
-                          label: 'Oluşturuldu',
-                          value: _formatDateTime(
-                            (_request['created_at'] ?? '').toString(),
-                          ),
-                        ),
-                    ],
+                  const SizedBox(height: 8),
+                  Text(
+                    '${(_request['request_code'] ?? '').toString()} · ${(_request['city'] ?? '').toString()} / ${(_request['district'] ?? '').toString()}',
+                    style:
+                        TextStyle(color: BrandConfig.heroTextMutedOf(context)),
                   ),
-                  if ((_actions['complete_block_reason'] ?? '')
-                      .toString()
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      (_actions['complete_block_reason'] ?? '').toString(),
-                      style: TextStyle(color: BrandConfig.textMutedOf(context)),
+                  const SizedBox(height: 8),
+                  Text(
+                    (_request['details'] ?? '').toString(),
+                    style: TextStyle(
+                      color: BrandConfig.heroTextMutedOf(context),
+                      height: 1.4,
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
-          ),
-          if (_matchedProvider != null) ...[
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: BrandConfig.errorTextOf(context)),
+                ),
+              ),
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -517,441 +472,501 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Eşleşen usta',
+                      'Durum',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                     ),
                     const SizedBox(height: 10),
-                    Text(
-                      (_matchedProvider?['full_name'] ?? '').toString(),
-                      style: TextStyle(
-                        color: BrandConfig.textOf(context),
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _InfoChip(
+                          label: 'Statü',
+                          value: (_request['status'] ?? '').toString(),
+                        ),
+                        _InfoChip(
+                          label: 'Okunmamış',
+                          value: '${(_request['unread_messages'] ?? 0)}',
+                        ),
+                        if ((_request['created_at'] ?? '')
+                            .toString()
+                            .isNotEmpty)
+                          _InfoChip(
+                            label: 'Oluşturuldu',
+                            value: _formatDateTime(
+                              (_request['created_at'] ?? '').toString(),
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${(_matchedProvider?['city'] ?? '').toString()} / ${(_matchedProvider?['district'] ?? '').toString()}',
-                      style: TextStyle(color: BrandConfig.textMutedOf(context)),
-                    ),
-                    if (matchedProviderId != null) ...[
+                    if ((_actions['complete_block_reason'] ?? '')
+                        .toString()
+                        .isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      FilledButton.tonalIcon(
-                        onPressed: () =>
-                            _openProviderProfile(matchedProviderId),
-                        icon: const Icon(Icons.person_search_rounded),
-                        label: const Text('Profilini aç'),
+                      Text(
+                        (_actions['complete_block_reason'] ?? '').toString(),
+                        style:
+                            TextStyle(color: BrandConfig.textMutedOf(context)),
                       ),
                     ],
                   ],
                 ),
               ),
             ),
-          ],
-          if (_appointment != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Randevu',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 10),
-                    _DetailLine(
-                      label: 'Durum',
-                      value: (_appointment?['status'] ?? '').toString(),
-                    ),
-                    if ((_appointment?['scheduled_for'] ?? '')
-                        .toString()
-                        .isNotEmpty)
-                      _DetailLine(
-                        label: 'Tarih',
-                        value: _formatDateTime(
-                          (_appointment?['scheduled_for'] ?? '').toString(),
+            if (_matchedProvider != null) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Eşleşen usta',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        (_matchedProvider?['full_name'] ?? '').toString(),
+                        style: TextStyle(
+                          color: BrandConfig.textOf(context),
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    if ((_appointment?['customer_note'] ?? '')
-                        .toString()
-                        .isNotEmpty)
-                      _DetailLine(
-                        label: 'Müşteri notu',
-                        value:
-                            (_appointment?['customer_note'] ?? '').toString(),
+                      const SizedBox(height: 6),
+                      Text(
+                        '${(_matchedProvider?['city'] ?? '').toString()} / ${(_matchedProvider?['district'] ?? '').toString()}',
+                        style:
+                            TextStyle(color: BrandConfig.textMutedOf(context)),
                       ),
-                    if ((_appointment?['provider_note'] ?? '')
-                        .toString()
-                        .isNotEmpty)
-                      _DetailLine(
-                        label: 'Usta notu',
-                        value:
-                            (_appointment?['provider_note'] ?? '').toString(),
-                      ),
-                  ],
+                      if (matchedProviderId != null) ...[
+                        const SizedBox(height: 12),
+                        FilledButton.tonalIcon(
+                          onPressed: () =>
+                              _openProviderProfile(matchedProviderId),
+                          icon: const Icon(Icons.person_search_rounded),
+                          label: const Text('Profilini aç'),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-          if (_providerOffer != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Teklif durumu',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
+            ],
+            if (_appointment != null) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Randevu',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 10),
+                      _DetailLine(
+                        label: 'Durum',
+                        value: (_appointment?['status'] ?? '').toString(),
+                      ),
+                      if ((_appointment?['scheduled_for'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                        _DetailLine(
+                          label: 'Tarih',
+                          value: _formatDateTime(
+                            (_appointment?['scheduled_for'] ?? '').toString(),
                           ),
-                    ),
-                    const SizedBox(height: 10),
-                    _DetailLine(
-                      label: 'Durum',
-                      value: (_providerOffer?['status'] ?? '').toString(),
-                    ),
-                    if ((_providerOffer?['quote_note'] ?? '')
-                        .toString()
-                        .isNotEmpty)
-                      _DetailLine(
-                        label: 'Not',
-                        value: (_providerOffer?['quote_note'] ?? '').toString(),
-                      ),
-                  ],
+                        ),
+                      if ((_appointment?['customer_note'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                        _DetailLine(
+                          label: 'Müşteri notu',
+                          value:
+                              (_appointment?['customer_note'] ?? '').toString(),
+                        ),
+                      if ((_appointment?['provider_note'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                        _DetailLine(
+                          label: 'Usta notu',
+                          value:
+                              (_appointment?['provider_note'] ?? '').toString(),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-          if (_acceptedOffers.isNotEmpty) ...[
+            ],
+            if (_providerOffer != null) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Teklif durumu',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 10),
+                      _DetailLine(
+                        label: 'Durum',
+                        value: (_providerOffer?['status'] ?? '').toString(),
+                      ),
+                      if ((_providerOffer?['quote_note'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                        _DetailLine(
+                          label: 'Not',
+                          value:
+                              (_providerOffer?['quote_note'] ?? '').toString(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (_acceptedOffers.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Hazır teklifler',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              for (final offer in _acceptedOffers)
+                _AcceptedOfferCard(
+                  offer: offer,
+                  canSelect:
+                      _actions['can_select_offer'] == true && !_actionLoading,
+                  onOpenProfile: () async {
+                    final providerId =
+                        (((offer['provider'] as Map?)?['id']) as num?)?.toInt();
+                    if (providerId != null) {
+                      await _openProviderProfile(providerId);
+                    }
+                  },
+                  onSelect: () async {
+                    final accessToken =
+                        await widget.sessionController.ensureAccessToken();
+                    final offerId = (offer['id'] as num?)?.toInt();
+                    if (offerId == null) {
+                      return;
+                    }
+                    await _performAndPop(
+                      () => widget.dataService.selectOffer(
+                        accessToken: accessToken,
+                        requestId: widget.requestId,
+                        offerId: offerId,
+                      ),
+                    );
+                  },
+                ),
+            ],
             const SizedBox(height: 12),
             Text(
-              'Hazır teklifler',
+              'Aksiyonlar',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
             ),
             const SizedBox(height: 10),
-            for (final offer in _acceptedOffers)
-              _AcceptedOfferCard(
-                offer: offer,
-                canSelect:
-                    _actions['can_select_offer'] == true && !_actionLoading,
-                onOpenProfile: () async {
-                  final providerId =
-                      (((offer['provider'] as Map?)?['id']) as num?)?.toInt();
-                  if (providerId != null) {
-                    await _openProviderProfile(providerId);
-                  }
-                },
-                onSelect: () async {
-                  final accessToken =
-                      await widget.sessionController.ensureAccessToken();
-                  final offerId = (offer['id'] as num?)?.toInt();
-                  if (offerId == null) {
-                    return;
-                  }
-                  await _performAndPop(
-                    () => widget.dataService.selectOffer(
-                      accessToken: accessToken,
-                      requestId: widget.requestId,
-                      offerId: offerId,
-                    ),
-                  );
-                },
+            _ActionWrap(
+              actions: [
+                if (_actions['can_open_messages'] == true)
+                  _ActionSpec(
+                    label: 'Mesajlar',
+                    icon: Icons.forum_outlined,
+                    onTap: _openThread,
+                    primary: false,
+                  ),
+                if (!_isProviderViewer &&
+                    _actions['can_cancel_request'] == true)
+                  _ActionSpec(
+                    label: 'Talebi iptal et',
+                    icon: Icons.cancel_outlined,
+                    onTap: () async {
+                      final confirmed = await _confirm(
+                        title: 'Talebi iptal et',
+                        message:
+                            'Bu talep için mevcut akışı sonlandırmak istiyor musunuz?',
+                      );
+                      if (!confirmed || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.cancelRequest(
+                          accessToken: accessToken,
+                          requestId: widget.requestId,
+                        ),
+                      );
+                    },
+                    primary: false,
+                  ),
+                if (!_isProviderViewer &&
+                    _actions['can_create_appointment'] == true)
+                  _ActionSpec(
+                    label: 'Randevu planla',
+                    icon: Icons.event_available_rounded,
+                    onTap: _pickAppointmentDateTime,
+                    primary: false,
+                  ),
+                if (!_isProviderViewer &&
+                    _actions['can_cancel_appointment'] == true)
+                  _ActionSpec(
+                    label: 'Randevuyu iptal et',
+                    icon: Icons.event_busy_rounded,
+                    onTap: () async {
+                      final confirmed = await _confirm(
+                        title: 'Randevuyu iptal et',
+                        message: 'Bu randevuyu iptal etmek istiyor musunuz?',
+                      );
+                      if (!confirmed || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.cancelAppointment(
+                          accessToken: accessToken,
+                          requestId: widget.requestId,
+                        ),
+                      );
+                    },
+                    primary: false,
+                  ),
+                if (!_isProviderViewer &&
+                    _actions['can_complete_request'] == true)
+                  _ActionSpec(
+                    label: 'İşi bitir',
+                    icon: Icons.task_alt_rounded,
+                    onTap: () async {
+                      final confirmed = await _confirm(
+                        title: 'İşi tamamla',
+                        message:
+                            'Bu işi tamamlandı olarak işaretlemek istiyor musunuz?',
+                      );
+                      if (!confirmed || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.completeRequest(
+                          accessToken: accessToken,
+                          requestId: widget.requestId,
+                        ),
+                      );
+                    },
+                    primary: true,
+                  ),
+                if (_isProviderViewer &&
+                    _actions['can_accept_offer'] == true &&
+                    providerOfferId != null)
+                  _ActionSpec(
+                    label: 'Teklifi onayla',
+                    icon: Icons.check_circle_outline_rounded,
+                    onTap: () async {
+                      final note = await _promptForShortNote(
+                        title: 'Teklifi onayla',
+                        hintText: 'Kısa not (opsiyonel)',
+                      );
+                      if (note == null || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.acceptProviderOffer(
+                          accessToken: accessToken,
+                          offerId: providerOfferId,
+                          quoteNote: note,
+                        ),
+                      );
+                    },
+                    primary: true,
+                  ),
+                if (_isProviderViewer &&
+                    _actions['can_reject_offer'] == true &&
+                    providerOfferId != null)
+                  _ActionSpec(
+                    label: 'Teklifi reddet',
+                    icon: Icons.close_rounded,
+                    onTap: () async {
+                      final confirmed = await _confirm(
+                        title: 'Teklifi reddet',
+                        message: 'Bu teklifi reddetmek istiyor musunuz?',
+                      );
+                      if (!confirmed || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.rejectProviderOffer(
+                          accessToken: accessToken,
+                          offerId: providerOfferId,
+                        ),
+                      );
+                    },
+                    primary: false,
+                  ),
+                if (_isProviderViewer &&
+                    _actions['can_withdraw_offer'] == true &&
+                    providerOfferId != null)
+                  _ActionSpec(
+                    label: 'Teklifi geri çek',
+                    icon: Icons.undo_rounded,
+                    onTap: () async {
+                      final confirmed = await _confirm(
+                        title: 'Teklifi geri çek',
+                        message: 'Bu teklifi geri çekmek istiyor musunuz?',
+                      );
+                      if (!confirmed || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.withdrawProviderOffer(
+                          accessToken: accessToken,
+                          offerId: providerOfferId,
+                        ),
+                      );
+                    },
+                    primary: false,
+                  ),
+                if (_isProviderViewer &&
+                    _actions['can_confirm_appointment'] == true &&
+                    appointmentId != null)
+                  _ActionSpec(
+                    label: 'Randevuyu onayla',
+                    icon: Icons.event_available_rounded,
+                    onTap: () async {
+                      final note = await _promptForShortNote(
+                        title: 'Randevuyu onayla',
+                        hintText: 'Kısa not (opsiyonel)',
+                      );
+                      if (note == null || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.confirmProviderAppointment(
+                          accessToken: accessToken,
+                          appointmentId: appointmentId,
+                          providerNote: note,
+                        ),
+                      );
+                    },
+                    primary: true,
+                  ),
+                if (_isProviderViewer &&
+                    _actions['can_reject_appointment'] == true &&
+                    appointmentId != null)
+                  _ActionSpec(
+                    label: 'Randevuyu reddet',
+                    icon: Icons.event_busy_rounded,
+                    onTap: () async {
+                      final note = await _promptForShortNote(
+                        title: 'Randevuyu reddet',
+                        hintText: 'Kısa not (opsiyonel)',
+                      );
+                      if (note == null || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.rejectProviderAppointment(
+                          accessToken: accessToken,
+                          appointmentId: appointmentId,
+                          providerNote: note,
+                        ),
+                      );
+                    },
+                    primary: false,
+                  ),
+                if (_isProviderViewer &&
+                    _actions['can_complete_appointment'] == true &&
+                    appointmentId != null)
+                  _ActionSpec(
+                    label: 'İşi bitir',
+                    icon: Icons.task_alt_rounded,
+                    onTap: () async {
+                      final confirmed = await _confirm(
+                        title: 'İşi tamamla',
+                        message:
+                            'Bu işi tamamlandı olarak işaretlemek istiyor musunuz?',
+                      );
+                      if (!confirmed || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.completeProviderAppointment(
+                          accessToken: accessToken,
+                          appointmentId: appointmentId,
+                        ),
+                      );
+                    },
+                    primary: true,
+                  ),
+                if (_isProviderViewer &&
+                    _actions['can_release_request'] == true)
+                  _ActionSpec(
+                    label: 'Eşleşmeyi sonlandır',
+                    icon: Icons.link_off_rounded,
+                    onTap: () async {
+                      final confirmed = await _confirm(
+                        title: 'Eşleşmeyi sonlandır',
+                        message:
+                            'Bu işi sonlandırıp tekrar yönlendirmek istiyor musunuz?',
+                      );
+                      if (!confirmed || !mounted) {
+                        return;
+                      }
+                      final accessToken =
+                          await widget.sessionController.ensureAccessToken();
+                      await _performAndPop(
+                        () => widget.dataService.releaseProviderRequest(
+                          accessToken: accessToken,
+                          requestId: widget.requestId,
+                        ),
+                      );
+                    },
+                    primary: false,
+                  ),
+              ],
+              disabled: _actionLoading,
+            ),
+            if (_actionLoading)
+              const Padding(
+                padding: EdgeInsets.only(top: 16),
+                child: Center(child: CircularProgressIndicator()),
               ),
           ],
-          const SizedBox(height: 12),
-          Text(
-            'Aksiyonlar',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: 10),
-          _ActionWrap(
-            actions: [
-              if (_actions['can_open_messages'] == true)
-                _ActionSpec(
-                  label: 'Mesajlar',
-                  icon: Icons.forum_outlined,
-                  onTap: _openThread,
-                  primary: false,
-                ),
-              if (!_isProviderViewer && _actions['can_cancel_request'] == true)
-                _ActionSpec(
-                  label: 'Talebi iptal et',
-                  icon: Icons.cancel_outlined,
-                  onTap: () async {
-                    final confirmed = await _confirm(
-                      title: 'Talebi iptal et',
-                      message:
-                          'Bu talep için mevcut akışı sonlandırmak istiyor musunuz?',
-                    );
-                    if (!confirmed || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.cancelRequest(
-                        accessToken: accessToken,
-                        requestId: widget.requestId,
-                      ),
-                    );
-                  },
-                  primary: false,
-                ),
-              if (!_isProviderViewer &&
-                  _actions['can_create_appointment'] == true)
-                _ActionSpec(
-                  label: 'Randevu planla',
-                  icon: Icons.event_available_rounded,
-                  onTap: _pickAppointmentDateTime,
-                  primary: false,
-                ),
-              if (!_isProviderViewer &&
-                  _actions['can_cancel_appointment'] == true)
-                _ActionSpec(
-                  label: 'Randevuyu iptal et',
-                  icon: Icons.event_busy_rounded,
-                  onTap: () async {
-                    final confirmed = await _confirm(
-                      title: 'Randevuyu iptal et',
-                      message: 'Bu randevuyu iptal etmek istiyor musunuz?',
-                    );
-                    if (!confirmed || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.cancelAppointment(
-                        accessToken: accessToken,
-                        requestId: widget.requestId,
-                      ),
-                    );
-                  },
-                  primary: false,
-                ),
-              if (!_isProviderViewer &&
-                  _actions['can_complete_request'] == true)
-                _ActionSpec(
-                  label: 'İşi bitir',
-                  icon: Icons.task_alt_rounded,
-                  onTap: () async {
-                    final confirmed = await _confirm(
-                      title: 'İşi tamamla',
-                      message:
-                          'Bu işi tamamlandı olarak işaretlemek istiyor musunuz?',
-                    );
-                    if (!confirmed || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.completeRequest(
-                        accessToken: accessToken,
-                        requestId: widget.requestId,
-                      ),
-                    );
-                  },
-                  primary: true,
-                ),
-              if (_isProviderViewer &&
-                  _actions['can_accept_offer'] == true &&
-                  providerOfferId != null)
-                _ActionSpec(
-                  label: 'Teklifi onayla',
-                  icon: Icons.check_circle_outline_rounded,
-                  onTap: () async {
-                    final note = await _promptForShortNote(
-                      title: 'Teklifi onayla',
-                      hintText: 'Kısa not (opsiyonel)',
-                    );
-                    if (note == null || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.acceptProviderOffer(
-                        accessToken: accessToken,
-                        offerId: providerOfferId,
-                        quoteNote: note,
-                      ),
-                    );
-                  },
-                  primary: true,
-                ),
-              if (_isProviderViewer &&
-                  _actions['can_reject_offer'] == true &&
-                  providerOfferId != null)
-                _ActionSpec(
-                  label: 'Teklifi reddet',
-                  icon: Icons.close_rounded,
-                  onTap: () async {
-                    final confirmed = await _confirm(
-                      title: 'Teklifi reddet',
-                      message: 'Bu teklifi reddetmek istiyor musunuz?',
-                    );
-                    if (!confirmed || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.rejectProviderOffer(
-                        accessToken: accessToken,
-                        offerId: providerOfferId,
-                      ),
-                    );
-                  },
-                  primary: false,
-                ),
-              if (_isProviderViewer &&
-                  _actions['can_withdraw_offer'] == true &&
-                  providerOfferId != null)
-                _ActionSpec(
-                  label: 'Teklifi geri çek',
-                  icon: Icons.undo_rounded,
-                  onTap: () async {
-                    final confirmed = await _confirm(
-                      title: 'Teklifi geri çek',
-                      message: 'Bu teklifi geri çekmek istiyor musunuz?',
-                    );
-                    if (!confirmed || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.withdrawProviderOffer(
-                        accessToken: accessToken,
-                        offerId: providerOfferId,
-                      ),
-                    );
-                  },
-                  primary: false,
-                ),
-              if (_isProviderViewer &&
-                  _actions['can_confirm_appointment'] == true &&
-                  appointmentId != null)
-                _ActionSpec(
-                  label: 'Randevuyu onayla',
-                  icon: Icons.event_available_rounded,
-                  onTap: () async {
-                    final note = await _promptForShortNote(
-                      title: 'Randevuyu onayla',
-                      hintText: 'Kısa not (opsiyonel)',
-                    );
-                    if (note == null || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.confirmProviderAppointment(
-                        accessToken: accessToken,
-                        appointmentId: appointmentId,
-                        providerNote: note,
-                      ),
-                    );
-                  },
-                  primary: true,
-                ),
-              if (_isProviderViewer &&
-                  _actions['can_reject_appointment'] == true &&
-                  appointmentId != null)
-                _ActionSpec(
-                  label: 'Randevuyu reddet',
-                  icon: Icons.event_busy_rounded,
-                  onTap: () async {
-                    final note = await _promptForShortNote(
-                      title: 'Randevuyu reddet',
-                      hintText: 'Kısa not (opsiyonel)',
-                    );
-                    if (note == null || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.rejectProviderAppointment(
-                        accessToken: accessToken,
-                        appointmentId: appointmentId,
-                        providerNote: note,
-                      ),
-                    );
-                  },
-                  primary: false,
-                ),
-              if (_isProviderViewer &&
-                  _actions['can_complete_appointment'] == true &&
-                  appointmentId != null)
-                _ActionSpec(
-                  label: 'İşi bitir',
-                  icon: Icons.task_alt_rounded,
-                  onTap: () async {
-                    final confirmed = await _confirm(
-                      title: 'İşi tamamla',
-                      message:
-                          'Bu işi tamamlandı olarak işaretlemek istiyor musunuz?',
-                    );
-                    if (!confirmed || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.completeProviderAppointment(
-                        accessToken: accessToken,
-                        appointmentId: appointmentId,
-                      ),
-                    );
-                  },
-                  primary: true,
-                ),
-              if (_isProviderViewer && _actions['can_release_request'] == true)
-                _ActionSpec(
-                  label: 'Eşleşmeyi sonlandır',
-                  icon: Icons.link_off_rounded,
-                  onTap: () async {
-                    final confirmed = await _confirm(
-                      title: 'Eşleşmeyi sonlandır',
-                      message:
-                          'Bu işi sonlandırıp tekrar yönlendirmek istiyor musunuz?',
-                    );
-                    if (!confirmed || !mounted) {
-                      return;
-                    }
-                    final accessToken =
-                        await widget.sessionController.ensureAccessToken();
-                    await _performAndPop(
-                      () => widget.dataService.releaseProviderRequest(
-                        accessToken: accessToken,
-                        requestId: widget.requestId,
-                      ),
-                    );
-                  },
-                  primary: false,
-                ),
-            ],
-            disabled: _actionLoading,
-          ),
-          if (_actionLoading)
-            const Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-        ],
+        ),
       ),
     );
   }

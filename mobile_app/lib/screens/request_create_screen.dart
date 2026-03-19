@@ -4,6 +4,7 @@ import '../config/brand_config.dart';
 import '../services/api_client.dart';
 import '../services/mobile_data_service.dart';
 import '../state/session_controller.dart';
+import '../widgets/brand_backdrop.dart';
 import 'site_shell_screen.dart';
 
 class RequestCreateScreen extends StatefulWidget {
@@ -257,7 +258,9 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: BrandBackdrop(
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -265,196 +268,204 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
       appBar: AppBar(
         title: const Text('Talep oluştur'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          if (_isPreferredProviderMode)
+      body: BrandBackdrop(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            if (_isPreferredProviderMode)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Seçili usta',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        (_preferredProvider?['full_name'] ??
+                                widget.preferredProviderName ??
+                                '')
+                            .toString(),
+                        style: TextStyle(
+                          color: BrandConfig.textOf(context),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '${(_preferredProvider?['city'] ?? '').toString()} / ${(_preferredProvider?['district'] ?? '').toString()}',
+                        style:
+                            TextStyle(color: BrandConfig.textMutedOf(context)),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Bu modda şehir ve ilçe sabittir. Hizmet seçimi sadece bu ustanın sunduğu alanlarla sınırlıdır.',
+                        style: TextStyle(
+                          color: BrandConfig.textMutedOf(context),
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (_isPreferredProviderMode) const SizedBox(height: 16),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Seçili usta',
+                      'Talep bilgileri',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      (_preferredProvider?['full_name'] ??
-                              widget.preferredProviderName ??
-                              '')
-                          .toString(),
-                      style: TextStyle(
-                        color: BrandConfig.textOf(context),
-                        fontWeight: FontWeight.w700,
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Ad Soyad',
+                        prefixIcon: Icon(Icons.person_outline_rounded),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Telefon',
+                        prefixIcon: Icon(Icons.phone_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      key: ValueKey<int?>(_selectedServiceTypeId),
+                      initialValue: _selectedServiceTypeId,
+                      items: _serviceTypes
+                          .map(
+                            (item) => DropdownMenuItem<int>(
+                              value: (item['id'] as num?)?.toInt(),
+                              child: Text((item['name'] ?? '').toString()),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedServiceTypeId = value;
+                        });
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'İstenen hizmet',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey<String>(_selectedCity),
+                            initialValue:
+                                _selectedCity.isEmpty ? null : _selectedCity,
+                            items: _cityOptions
+                                .map(
+                                  (item) => DropdownMenuItem<String>(
+                                    value: item,
+                                    child: Text(item),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _isPreferredProviderMode
+                                ? null
+                                : (value) {
+                                    setState(() {
+                                      _selectedCity = value ?? '';
+                                      _ensureDistrictConsistency();
+                                    });
+                                  },
+                            decoration:
+                                const InputDecoration(labelText: 'Şehir'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey<String>(
+                              '$_selectedCity|$_selectedDistrict',
+                            ),
+                            initialValue: _selectedDistrict.isEmpty
+                                ? null
+                                : _selectedDistrict,
+                            items: _districtOptions
+                                .map(
+                                  (item) => DropdownMenuItem<String>(
+                                    value: item,
+                                    child: Text(item),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _isPreferredProviderMode
+                                ? null
+                                : (value) {
+                                    setState(() {
+                                      _selectedDistrict = value ?? '';
+                                    });
+                                  },
+                            decoration:
+                                const InputDecoration(labelText: 'İlçe'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _detailsController,
+                      minLines: 4,
+                      maxLines: 7,
+                      decoration: const InputDecoration(
+                        labelText: 'Arıza / iş detayı',
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     Text(
-                      '${(_preferredProvider?['city'] ?? '').toString()} / ${(_preferredProvider?['district'] ?? '').toString()}',
+                      'Sorunu mümkün olduğunca net anlatın. Böylece doğru ustalara daha hızlı iletilir.',
                       style: TextStyle(color: BrandConfig.textMutedOf(context)),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Bu modda şehir ve ilçe sabittir. Hizmet seçimi sadece bu ustanın sunduğu alanlarla sınırlıdır.',
-                      style: TextStyle(
-                        color: BrandConfig.textMutedOf(context),
-                        height: 1.4,
+                    if (_error != null) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        _error!,
+                        style:
+                            TextStyle(color: BrandConfig.errorTextOf(context)),
                       ),
+                    ],
+                    const SizedBox(height: 18),
+                    FilledButton.icon(
+                      onPressed: _submitting ? null : _submit,
+                      icon: _submitting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send_rounded),
+                      label:
+                          Text(_submitting ? 'Gönderiliyor' : 'Talebi gönder'),
                     ),
                   ],
                 ),
               ),
             ),
-          if (_isPreferredProviderMode) const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Talep bilgileri',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Ad Soyad',
-                      prefixIcon: Icon(Icons.person_outline_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Telefon',
-                      prefixIcon: Icon(Icons.phone_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    key: ValueKey<int?>(_selectedServiceTypeId),
-                    initialValue: _selectedServiceTypeId,
-                    items: _serviceTypes
-                        .map(
-                          (item) => DropdownMenuItem<int>(
-                            value: (item['id'] as num?)?.toInt(),
-                            child: Text((item['name'] ?? '').toString()),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedServiceTypeId = value;
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'İstenen hizmet',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey<String>(_selectedCity),
-                          initialValue:
-                              _selectedCity.isEmpty ? null : _selectedCity,
-                          items: _cityOptions
-                              .map(
-                                (item) => DropdownMenuItem<String>(
-                                  value: item,
-                                  child: Text(item),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: _isPreferredProviderMode
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _selectedCity = value ?? '';
-                                    _ensureDistrictConsistency();
-                                  });
-                                },
-                          decoration: const InputDecoration(labelText: 'Şehir'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey<String>(
-                            '$_selectedCity|$_selectedDistrict',
-                          ),
-                          initialValue: _selectedDistrict.isEmpty
-                              ? null
-                              : _selectedDistrict,
-                          items: _districtOptions
-                              .map(
-                                (item) => DropdownMenuItem<String>(
-                                  value: item,
-                                  child: Text(item),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: _isPreferredProviderMode
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _selectedDistrict = value ?? '';
-                                  });
-                                },
-                          decoration: const InputDecoration(labelText: 'İlçe'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _detailsController,
-                    minLines: 4,
-                    maxLines: 7,
-                    decoration: const InputDecoration(
-                      labelText: 'Arıza / iş detayı',
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Sorunu mümkün olduğunca net anlatın. Böylece doğru ustalara daha hızlı iletilir.',
-                    style: TextStyle(color: BrandConfig.textMutedOf(context)),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      _error!,
-                      style: TextStyle(color: BrandConfig.errorTextOf(context)),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  FilledButton.icon(
-                    onPressed: _submitting ? null : _submit,
-                    icon: _submitting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send_rounded),
-                    label: Text(_submitting ? 'Gönderiliyor' : 'Talebi gönder'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

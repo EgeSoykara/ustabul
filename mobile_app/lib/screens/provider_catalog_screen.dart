@@ -4,6 +4,7 @@ import '../config/brand_config.dart';
 import '../services/api_client.dart';
 import '../services/mobile_data_service.dart';
 import '../state/session_controller.dart';
+import '../widgets/brand_backdrop.dart';
 import 'provider_detail_screen.dart';
 import 'request_create_screen.dart';
 import 'site_shell_screen.dart';
@@ -296,167 +297,133 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
       appBar: AppBar(
         title: const Text('Ustalar'),
       ),
-      body: _loading && _providers.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () => _loadProviders(reset: true),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                children: [
-                  const _HeroPanel(
-                    title: 'Usta keşfet',
-                    subtitle:
-                        'Şehir, ilçe ve hizmet filtresiyle uygun ustaları inceleyin; ardından doğrudan talep oluşturun.',
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Filtreler',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 14),
-                          TextField(
-                            controller: _queryController,
-                            decoration: const InputDecoration(
-                              labelText: 'Usta veya hizmet ara',
-                              prefixIcon: Icon(Icons.search_rounded),
+      body: BrandBackdrop(
+        child: _loading && _providers.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () => _loadProviders(reset: true),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  children: [
+                    const _HeroPanel(
+                      title: 'Usta keşfet',
+                      subtitle:
+                          'Şehir, ilçe ve hizmet filtresiyle uygun ustaları inceleyin; ardından doğrudan talep oluşturun.',
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Filtreler',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<int>(
-                            key: ValueKey<int?>(_selectedServiceTypeId),
-                            initialValue: _selectedServiceTypeId,
-                            items: [
-                              const DropdownMenuItem<int>(
-                                value: null,
-                                child: Text('Tüm hizmetler'),
+                            const SizedBox(height: 14),
+                            TextField(
+                              controller: _queryController,
+                              decoration: const InputDecoration(
+                                labelText: 'Usta veya hizmet ara',
+                                prefixIcon: Icon(Icons.search_rounded),
                               ),
-                              ..._serviceTypes.map(
-                                (item) => DropdownMenuItem<int>(
-                                  value: (item['id'] as num?)?.toInt(),
-                                  child: Text((item['name'] ?? '').toString()),
-                                ),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedServiceTypeId = value;
-                              });
-                            },
-                            decoration: const InputDecoration(
-                              labelText: 'Hizmet türü',
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey<String>(_selectedCity),
-                                  initialValue: _selectedCity.isEmpty
-                                      ? null
-                                      : _selectedCity,
-                                  items: [
-                                    const DropdownMenuItem<String>(
-                                      value: null,
-                                      child: Text('Şehir seçin'),
-                                    ),
-                                    ..._cityOptions.map(
-                                      (item) => DropdownMenuItem<String>(
-                                        value: item,
-                                        child: Text(item),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: _handleCityChanged,
-                                  decoration:
-                                      const InputDecoration(labelText: 'Şehir'),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<int>(
+                              key: ValueKey<int?>(_selectedServiceTypeId),
+                              initialValue: _selectedServiceTypeId,
+                              items: [
+                                const DropdownMenuItem<int>(
+                                  value: null,
+                                  child: Text('Tüm hizmetler'),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey<String>(
-                                    '$_selectedCity|$_selectedDistrict',
+                                ..._serviceTypes.map(
+                                  (item) => DropdownMenuItem<int>(
+                                    value: (item['id'] as num?)?.toInt(),
+                                    child:
+                                        Text((item['name'] ?? '').toString()),
                                   ),
-                                  initialValue: _selectedDistrict.isEmpty
-                                      ? null
-                                      : _selectedDistrict,
-                                  items: [
-                                    const DropdownMenuItem<String>(
-                                      value: null,
-                                      child: Text('İlçe seçin'),
-                                    ),
-                                    ..._districtOptions.map(
-                                      (item) => DropdownMenuItem<String>(
-                                        value: item,
-                                        child: Text(item),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedServiceTypeId = value;
+                                });
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Hizmet türü',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    key: ValueKey<String>(_selectedCity),
+                                    initialValue: _selectedCity.isEmpty
+                                        ? null
+                                        : _selectedCity,
+                                    items: [
+                                      const DropdownMenuItem<String>(
+                                        value: null,
+                                        child: Text('Şehir seçin'),
                                       ),
-                                    ),
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedDistrict = value ?? '';
-                                    });
-                                  },
-                                  decoration:
-                                      const InputDecoration(labelText: 'İlçe'),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey<String>(_selectedSortBy),
-                                  initialValue: _selectedSortBy,
-                                  items: _sortChoices
-                                      .map(
+                                      ..._cityOptions.map(
                                         (item) => DropdownMenuItem<String>(
-                                          value:
-                                              (item['value'] ?? '').toString(),
-                                          child: Text(
-                                              (item['label'] ?? '').toString()),
+                                          value: item,
+                                          child: Text(item),
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedSortBy = value ?? 'relevance';
-                                    });
-                                  },
-                                  decoration: const InputDecoration(
-                                      labelText: 'Sıralama'),
+                                      ),
+                                    ],
+                                    onChanged: _handleCityChanged,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Şehir'),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey<String>(_selectedMinRating),
-                                  initialValue: _selectedMinRating.isEmpty
-                                      ? null
-                                      : _selectedMinRating,
-                                  items: [
-                                    const DropdownMenuItem<String>(
-                                      value: null,
-                                      child: Text('Puan fark etmez'),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    key: ValueKey<String>(
+                                      '$_selectedCity|$_selectedDistrict',
                                     ),
-                                    ..._minRatingChoices
-                                        .where(
-                                          (item) => (item['value'] ?? '')
-                                              .toString()
-                                              .isNotEmpty,
-                                        )
+                                    initialValue: _selectedDistrict.isEmpty
+                                        ? null
+                                        : _selectedDistrict,
+                                    items: [
+                                      const DropdownMenuItem<String>(
+                                        value: null,
+                                        child: Text('İlçe seçin'),
+                                      ),
+                                      ..._districtOptions.map(
+                                        (item) => DropdownMenuItem<String>(
+                                          value: item,
+                                          child: Text(item),
+                                        ),
+                                      ),
+                                    ],
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedDistrict = value ?? '';
+                                      });
+                                    },
+                                    decoration: const InputDecoration(
+                                        labelText: 'İlçe'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    key: ValueKey<String>(_selectedSortBy),
+                                    initialValue: _selectedSortBy,
+                                    items: _sortChoices
                                         .map(
                                           (item) => DropdownMenuItem<String>(
                                             value: (item['value'] ?? '')
@@ -464,125 +431,164 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
                                             child: Text((item['label'] ?? '')
                                                 .toString()),
                                           ),
-                                        ),
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedMinRating = value ?? '';
-                                    });
-                                  },
-                                  decoration: const InputDecoration(
-                                    labelText: 'Minimum puan',
+                                        )
+                                        .toList(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedSortBy = value ?? 'relevance';
+                                      });
+                                    },
+                                    decoration: const InputDecoration(
+                                        labelText: 'Sıralama'),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            key: ValueKey<String>(_selectedMinReviews),
-                            initialValue: _selectedMinReviews.isEmpty
-                                ? null
-                                : _selectedMinReviews,
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: null,
-                                child: Text('Yorum sayısı fark etmez'),
-                              ),
-                              ..._minReviewChoices
-                                  .where(
-                                    (item) => (item['value'] ?? '')
-                                        .toString()
-                                        .isNotEmpty,
-                                  )
-                                  .map(
-                                    (item) => DropdownMenuItem<String>(
-                                      value: (item['value'] ?? '').toString(),
-                                      child: Text(
-                                          (item['label'] ?? '').toString()),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    key: ValueKey<String>(_selectedMinRating),
+                                    initialValue: _selectedMinRating.isEmpty
+                                        ? null
+                                        : _selectedMinRating,
+                                    items: [
+                                      const DropdownMenuItem<String>(
+                                        value: null,
+                                        child: Text('Puan fark etmez'),
+                                      ),
+                                      ..._minRatingChoices
+                                          .where(
+                                            (item) => (item['value'] ?? '')
+                                                .toString()
+                                                .isNotEmpty,
+                                          )
+                                          .map(
+                                            (item) => DropdownMenuItem<String>(
+                                              value: (item['value'] ?? '')
+                                                  .toString(),
+                                              child: Text((item['label'] ?? '')
+                                                  .toString()),
+                                            ),
+                                          ),
+                                    ],
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedMinRating = value ?? '';
+                                      });
+                                    },
+                                    decoration: const InputDecoration(
+                                      labelText: 'Minimum puan',
                                     ),
                                   ),
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedMinReviews = value ?? '';
-                              });
-                            },
-                            decoration: const InputDecoration(
-                                labelText: 'Minimum yorum'),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: () => _loadProviders(reset: true),
-                                  icon: const Icon(Icons.search_rounded),
-                                  label: const Text('Filtrele'),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: FilledButton.tonalIcon(
-                                  onPressed: _clearFilters,
-                                  icon:
-                                      const Icon(Icons.filter_alt_off_rounded),
-                                  label: const Text('Temizle'),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              key: ValueKey<String>(_selectedMinReviews),
+                              initialValue: _selectedMinReviews.isEmpty
+                                  ? null
+                                  : _selectedMinReviews,
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('Yorum sayısı fark etmez'),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                                ..._minReviewChoices
+                                    .where(
+                                      (item) => (item['value'] ?? '')
+                                          .toString()
+                                          .isNotEmpty,
+                                    )
+                                    .map(
+                                      (item) => DropdownMenuItem<String>(
+                                        value: (item['value'] ?? '').toString(),
+                                        child: Text(
+                                            (item['label'] ?? '').toString()),
+                                      ),
+                                    ),
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedMinReviews = value ?? '';
+                                });
+                              },
+                              decoration: const InputDecoration(
+                                  labelText: 'Minimum yorum'),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed: () =>
+                                        _loadProviders(reset: true),
+                                    icon: const Icon(Icons.search_rounded),
+                                    label: const Text('Filtrele'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: FilledButton.tonalIcon(
+                                    onPressed: _clearFilters,
+                                    icon: const Icon(
+                                        Icons.filter_alt_off_rounded),
+                                    label: const Text('Temizle'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_error != null)
-                    _InlineError(
-                      message: _error!,
-                      onRetry: () => _loadProviders(reset: true),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      'Toplam $_totalCount uygun usta bulundu.',
-                      style: TextStyle(color: BrandConfig.textMutedOf(context)),
-                    ),
-                  ),
-                  if (_providers.isEmpty && !_loading)
-                    const _EmptyPanel(
-                      title: 'Uygun usta bulunamadı',
-                      body:
-                          'Filtreleri gevşetip yeniden arayabilir ya da doğrudan genel talep oluşturabilirsiniz.',
-                    ),
-                  for (final item in _providers)
-                    _ProviderCard(
-                      provider: item,
-                      onOpenDetail: () => _openProviderDetail(
-                          (item['id'] as num?)?.toInt() ?? 0),
-                      onCreateRequest: () => _openRequestCreate(
-                        preferredProviderId: (item['id'] as num?)?.toInt(),
-                        preferredProviderName:
-                            (item['full_name'] ?? '').toString(),
+                    const SizedBox(height: 16),
+                    if (_error != null)
+                      _InlineError(
+                        message: _error!,
+                        onRetry: () => _loadProviders(reset: true),
                       ),
-                    ),
-                  if (_loadingMore)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                  if (_hasMore && !_loadingMore)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: FilledButton.tonalIcon(
-                        onPressed: () => _loadProviders(reset: false),
-                        icon: const Icon(Icons.expand_more_rounded),
-                        label: const Text('Daha fazla göster'),
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Toplam $_totalCount uygun usta bulundu.',
+                        style:
+                            TextStyle(color: BrandConfig.textMutedOf(context)),
                       ),
                     ),
-                ],
+                    if (_providers.isEmpty && !_loading)
+                      const _EmptyPanel(
+                        title: 'Uygun usta bulunamadı',
+                        body:
+                            'Filtreleri gevşetip yeniden arayabilir ya da doğrudan genel talep oluşturabilirsiniz.',
+                      ),
+                    for (final item in _providers)
+                      _ProviderCard(
+                        provider: item,
+                        onOpenDetail: () => _openProviderDetail(
+                            (item['id'] as num?)?.toInt() ?? 0),
+                        onCreateRequest: () => _openRequestCreate(
+                          preferredProviderId: (item['id'] as num?)?.toInt(),
+                          preferredProviderName:
+                              (item['full_name'] ?? '').toString(),
+                        ),
+                      ),
+                    if (_loadingMore)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    if (_hasMore && !_loadingMore)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: FilledButton.tonalIcon(
+                          onPressed: () => _loadProviders(reset: false),
+                          icon: const Icon(Icons.expand_more_rounded),
+                          label: const Text('Daha fazla göster'),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 }
@@ -600,10 +606,7 @@ class _HeroPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: BrandConfig.heroGradientOf(context),
-      ),
+      decoration: BrandConfig.heroPanelDecorationOf(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

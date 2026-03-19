@@ -7,6 +7,7 @@ import '../services/mobile_data_service.dart';
 import '../services/theme_storage.dart';
 import '../state/session_controller.dart';
 import '../state/theme_controller.dart';
+import '../widgets/brand_backdrop.dart';
 import 'provider_catalog_screen.dart';
 import 'request_detail_screen.dart';
 import 'request_thread_screen.dart';
@@ -31,6 +32,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  String _customerRequestFilter = 'all';
   final Set<String> _runningProviderActionKeys = <String>{};
 
   bool _dashboardLoading = true;
@@ -82,6 +84,32 @@ class _HomeScreenState extends State<HomeScreen> {
     return _customerRequests
         .where((item) => (item['status'] ?? '').toString() == 'matched')
         .toList();
+  }
+
+  List<Map<String, dynamic>> get _customerVisibleRequests => _customerRequests
+      .where(
+        (item) => _matchesCustomerRequestFilter(item, _customerRequestFilter),
+      )
+      .toList();
+
+  int get _notificationsTabIndex => _isProvider ? 2 : 3;
+
+  int get _moreTabIndex => _isProvider ? 3 : 4;
+
+  Future<void> _showCustomerRequests({String filter = 'all'}) async {
+    setState(() {
+      _customerRequestFilter = filter;
+      _currentIndex = 1;
+    });
+  }
+
+  Future<void> _setCustomerRequestFilter(String filter) async {
+    if (_customerRequestFilter == filter) {
+      return;
+    }
+    setState(() {
+      _customerRequestFilter = filter;
+    });
   }
 
   bool _isNotFoundError(Object error) {
@@ -491,10 +519,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _currentIndex = index;
     });
-    if (index == 2 && _notificationsPayload.isEmpty && !_notificationsLoading) {
+    if (index == _notificationsTabIndex &&
+        _notificationsPayload.isEmpty &&
+        !_notificationsLoading) {
       _loadNotifications();
     }
-    if (index == 3 &&
+    if (index == _moreTabIndex &&
         _notificationPreferences.isEmpty &&
         !_preferencesLoading) {
       _loadNotificationPreferences();
@@ -788,24 +818,41 @@ class _HomeScreenState extends State<HomeScreen> {
       return const SizedBox.shrink();
     }
 
-    final titles = <String>[
+    final _ = <String>[
       _isProvider ? 'UstaBul Usta' : 'UstaBul Müşteri',
       'Mesajlar',
       'Bildirimler',
       'Daha Fazla',
     ];
 
+    final screenTitles = _isProvider
+        ? const <String>[
+            'Usta paneli',
+            'Mesajlar',
+            'Bildirimler',
+            'Daha Fazla',
+          ]
+        : const <String>[
+            'Ana Sayfa',
+            'Taleplerim',
+            'Mesajlar',
+            'Bildirimler',
+            'Daha Fazla',
+          ];
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(titles[_currentIndex]),
+        title: Text(screenTitles[_currentIndex]),
         actions: [
-          if (_currentIndex == 0 || _currentIndex == 1)
+          if (_currentIndex == 0 ||
+              _currentIndex == 1 ||
+              (!_isProvider && _currentIndex == 2))
             IconButton(
               onPressed: _dashboardLoading ? null : _loadDashboard,
               icon: const Icon(Icons.refresh_rounded),
               tooltip: 'Yenile',
             ),
-          if (_currentIndex == 2)
+          if (_currentIndex == _notificationsTabIndex)
             IconButton(
               onPressed: _notificationsLoading ? null : _loadNotifications,
               icon: const Icon(Icons.refresh_rounded),
@@ -813,108 +860,195 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        child: switch (_currentIndex) {
-          0 => _DashboardTab(
-              key: const ValueKey('dashboard'),
-              isProvider: _isProvider,
-              loading: _dashboardLoading,
-              error: _dashboardError,
-              sessionSnapshot: _sessionSnapshot,
-              dashboardPayload: _dashboardPayload,
-              customerRequests: _customerRequests,
-              providerPendingOffers: _providerPendingOffers,
-              providerWaitingSelection: _providerWaitingSelection,
-              providerActiveThreads: _providerActiveThreads,
-              providerPendingAppointments: _providerPendingAppointments,
-              onRefresh: _loadDashboard,
-              onOpenThread: _openThread,
-              onOpenRequestDetail: _openRequestDetail,
-              onOpenWebPanel: _isProvider
-                  ? null
-                  : () => _openSiteFallback(
-                        '/taleplerim/',
-                        pageTitle: 'Taleplerim',
-                      ),
-              onOpenProviderCatalog: _openProviderCatalog,
-              onCreateRequest: _openRequestCreate,
-              isProviderActionBusy: _isProviderActionBusy,
-              onAcceptProviderOffer: _acceptProviderOfferFromDashboard,
-              onRejectProviderOffer: _rejectProviderOfferFromDashboard,
-              onWithdrawProviderOffer: _withdrawProviderOfferFromDashboard,
-              onConfirmProviderAppointment:
-                  _confirmProviderAppointmentFromDashboard,
-              onRejectProviderAppointment:
-                  _rejectProviderAppointmentFromDashboard,
-              onCompleteProviderAppointment:
-                  _completeProviderAppointmentFromDashboard,
-            ),
-          1 => _MessagesTab(
-              key: const ValueKey('messages'),
-              isProvider: _isProvider,
-              loading: _dashboardLoading,
-              error: _dashboardError,
-              threads: _messageThreads,
-              onRefresh: _loadDashboard,
-              onOpenThread: _openThread,
-            ),
-          2 => _NotificationsTab(
-              key: const ValueKey('notifications'),
-              loading: _notificationsLoading,
-              error: _notificationsError,
-              payload: _notificationsPayload,
-              category: _notificationCategory,
-              fallbackToWeb: _notificationsFallbackToWeb,
-              onRefresh: _loadNotifications,
-              onCategoryChanged: (value) => _loadNotifications(category: value),
-              onOpenNotification: _openNotification,
-              onMarkAllRead: _markAllNotificationsRead,
-              onOpenWebNotifications: () =>
-                  _openSiteFallback('/bildirimler/', pageTitle: 'Bildirimler'),
-            ),
-          _ => _MoreTab(
-              key: const ValueKey('more'),
-              sessionController: widget.sessionController,
-              themePreference: widget.themeController.preference,
-              loading: _preferencesLoading,
-              saving: _preferencesSaving,
-              error: _preferencesError,
-              notificationPreferences: _notificationPreferences,
-              preferencesFallbackToWeb: _notificationPreferencesFallbackToWeb,
-              onThemeChanged: _setThemePreference,
-              onRetry: _loadNotificationPreferences,
-              onTogglePreference: _updateNotificationPreference,
-              onOpenFallback: _openSiteFallback,
-              onLaunchExternal: _launchExternal,
-            ),
-        },
+      body: BrandBackdrop(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: switch (_currentIndex) {
+            0 => _DashboardTab(
+                key: const ValueKey('dashboard'),
+                isProvider: _isProvider,
+                loading: _dashboardLoading,
+                error: _dashboardError,
+                sessionSnapshot: _sessionSnapshot,
+                dashboardPayload: _dashboardPayload,
+                customerRequests: _customerRequests,
+                providerPendingOffers: _providerPendingOffers,
+                providerWaitingSelection: _providerWaitingSelection,
+                providerActiveThreads: _providerActiveThreads,
+                providerPendingAppointments: _providerPendingAppointments,
+                onRefresh: _loadDashboard,
+                onOpenThread: _openThread,
+                onOpenRequestDetail: _openRequestDetail,
+                onOpenRequestsTab: _showCustomerRequests,
+                onOpenProviderCatalog: _openProviderCatalog,
+                onCreateRequest: _openRequestCreate,
+                onOpenWebPanel: null,
+                isProviderActionBusy: _isProviderActionBusy,
+                onAcceptProviderOffer: _acceptProviderOfferFromDashboard,
+                onRejectProviderOffer: _rejectProviderOfferFromDashboard,
+                onWithdrawProviderOffer: _withdrawProviderOfferFromDashboard,
+                onConfirmProviderAppointment:
+                    _confirmProviderAppointmentFromDashboard,
+                onRejectProviderAppointment:
+                    _rejectProviderAppointmentFromDashboard,
+                onCompleteProviderAppointment:
+                    _completeProviderAppointmentFromDashboard,
+              ),
+            1 => _isProvider
+                ? _MessagesTab(
+                    key: const ValueKey('messages'),
+                    isProvider: true,
+                    loading: _dashboardLoading,
+                    error: _dashboardError,
+                    threads: _messageThreads,
+                    onRefresh: _loadDashboard,
+                    onOpenThread: _openThread,
+                  )
+                : _RequestsTab(
+                    key: const ValueKey('requests'),
+                    loading: _dashboardLoading,
+                    error: _dashboardError,
+                    selectedFilter: _customerRequestFilter,
+                    customerRequests: _customerRequests,
+                    visibleRequests: _customerVisibleRequests,
+                    onRefresh: _loadDashboard,
+                    onFilterChanged: _setCustomerRequestFilter,
+                    onOpenRequestDetail: _openRequestDetail,
+                    onOpenProviderCatalog: _openProviderCatalog,
+                    onCreateRequest: _openRequestCreate,
+                  ),
+            2 => _isProvider
+                ? _NotificationsTab(
+                    key: const ValueKey('notifications'),
+                    loading: _notificationsLoading,
+                    error: _notificationsError,
+                    payload: _notificationsPayload,
+                    category: _notificationCategory,
+                    fallbackToWeb: _notificationsFallbackToWeb,
+                    onRefresh: _loadNotifications,
+                    onCategoryChanged: (value) =>
+                        _loadNotifications(category: value),
+                    onOpenNotification: _openNotification,
+                    onMarkAllRead: _markAllNotificationsRead,
+                    onOpenWebNotifications: () => _openSiteFallback(
+                      '/bildirimler/',
+                      pageTitle: 'Bildirimler',
+                    ),
+                  )
+                : _MessagesTab(
+                    key: const ValueKey('messages'),
+                    isProvider: false,
+                    loading: _dashboardLoading,
+                    error: _dashboardError,
+                    threads: _messageThreads,
+                    onRefresh: _loadDashboard,
+                    onOpenThread: _openThread,
+                  ),
+            3 => _isProvider
+                ? _MoreTab(
+                    key: const ValueKey('more'),
+                    sessionController: widget.sessionController,
+                    themePreference: widget.themeController.preference,
+                    loading: _preferencesLoading,
+                    saving: _preferencesSaving,
+                    error: _preferencesError,
+                    notificationPreferences: _notificationPreferences,
+                    preferencesFallbackToWeb:
+                        _notificationPreferencesFallbackToWeb,
+                    onThemeChanged: _setThemePreference,
+                    onRetry: _loadNotificationPreferences,
+                    onTogglePreference: _updateNotificationPreference,
+                    onOpenFallback: _openSiteFallback,
+                    onLaunchExternal: _launchExternal,
+                  )
+                : _NotificationsTab(
+                    key: const ValueKey('notifications'),
+                    loading: _notificationsLoading,
+                    error: _notificationsError,
+                    payload: _notificationsPayload,
+                    category: _notificationCategory,
+                    fallbackToWeb: _notificationsFallbackToWeb,
+                    onRefresh: _loadNotifications,
+                    onCategoryChanged: (value) =>
+                        _loadNotifications(category: value),
+                    onOpenNotification: _openNotification,
+                    onMarkAllRead: _markAllNotificationsRead,
+                    onOpenWebNotifications: () => _openSiteFallback(
+                      '/bildirimler/',
+                      pageTitle: 'Bildirimler',
+                    ),
+                  ),
+            _ => _MoreTab(
+                key: const ValueKey('more'),
+                sessionController: widget.sessionController,
+                themePreference: widget.themeController.preference,
+                loading: _preferencesLoading,
+                saving: _preferencesSaving,
+                error: _preferencesError,
+                notificationPreferences: _notificationPreferences,
+                preferencesFallbackToWeb: _notificationPreferencesFallbackToWeb,
+                onThemeChanged: _setThemePreference,
+                onRetry: _loadNotificationPreferences,
+                onTogglePreference: _updateNotificationPreference,
+                onOpenFallback: _openSiteFallback,
+                onLaunchExternal: _launchExternal,
+              ),
+          },
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: _handleTabChange,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
-            label: 'Ana Ekran',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.forum_outlined),
-            selectedIcon: Icon(Icons.forum_rounded),
-            label: 'Mesajlar',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.notifications_none_rounded),
-            selectedIcon: Icon(Icons.notifications_rounded),
-            label: 'Bildirimler',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.tune_outlined),
-            selectedIcon: Icon(Icons.tune_rounded),
-            label: 'Daha Fazla',
-          ),
-        ],
+        destinations: _isProvider
+            ? const [
+                NavigationDestination(
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard_rounded),
+                  label: 'Ana Ekran',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.forum_outlined),
+                  selectedIcon: Icon(Icons.forum_rounded),
+                  label: 'Mesajlar',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.notifications_none_rounded),
+                  selectedIcon: Icon(Icons.notifications_rounded),
+                  label: 'Bildirimler',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.tune_outlined),
+                  selectedIcon: Icon(Icons.tune_rounded),
+                  label: 'Daha Fazla',
+                ),
+              ]
+            : const [
+                NavigationDestination(
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard_rounded),
+                  label: 'Ana Sayfa',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  selectedIcon: Icon(Icons.receipt_long_rounded),
+                  label: 'Taleplerim',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.forum_outlined),
+                  selectedIcon: Icon(Icons.forum_rounded),
+                  label: 'Mesajlar',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.notifications_none_rounded),
+                  selectedIcon: Icon(Icons.notifications_rounded),
+                  label: 'Bildirimler',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.tune_outlined),
+                  selectedIcon: Icon(Icons.tune_rounded),
+                  label: 'Daha Fazla',
+                ),
+              ],
       ),
     );
   }
@@ -936,6 +1070,7 @@ class _DashboardTab extends StatelessWidget {
     required this.onRefresh,
     required this.onOpenThread,
     required this.onOpenRequestDetail,
+    required this.onOpenRequestsTab,
     required this.isProviderActionBusy,
     required this.onAcceptProviderOffer,
     required this.onRejectProviderOffer,
@@ -965,11 +1100,10 @@ class _DashboardTab extends StatelessWidget {
     required String subtitle,
   }) onOpenThread;
   final Future<void> Function(int requestId) onOpenRequestDetail;
+  final Future<void> Function({String filter}) onOpenRequestsTab;
   final bool Function(String key) isProviderActionBusy;
-  final Future<void> Function(Map<String, dynamic> item)
-      onAcceptProviderOffer;
-  final Future<void> Function(Map<String, dynamic> item)
-      onRejectProviderOffer;
+  final Future<void> Function(Map<String, dynamic> item) onAcceptProviderOffer;
+  final Future<void> Function(Map<String, dynamic> item) onRejectProviderOffer;
   final Future<void> Function(Map<String, dynamic> item)
       onWithdrawProviderOffer;
   final Future<void> Function(Map<String, dynamic> item)
@@ -1015,6 +1149,171 @@ class _DashboardTab extends StatelessWidget {
         .where((item) => {'new', 'pending_provider'}
             .contains((item['status'] ?? '').toString()))
         .length;
+    final historyCount = customerRequests
+        .where(
+          (item) => {'completed', 'cancelled'}
+              .contains((item['status'] ?? '').toString()),
+        )
+        .length;
+    final recentRequests = customerRequests.take(3).toList();
+    final useModernLayout = Theme.of(context).useMaterial3;
+
+    if (useModernLayout) {
+      return [
+        const _SectionHero(
+          title: 'Müşteri paneli',
+          subtitle:
+              'Web sitesindeki akışa yakın şekilde, ama daha sade bir mobil düzenle ilerleyin.',
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionCard(
+                icon: Icons.search_rounded,
+                title: 'Usta bul',
+                subtitle: 'Filtrele, karşılaştır ve uygun ustayı seç.',
+                onTap: onOpenProviderCatalog,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _QuickActionCard(
+                icon: Icons.add_circle_outline_rounded,
+                title: 'Talep oluştur',
+                subtitle: 'Yeni iş talebini uygulamadan hızlıca gönder.',
+                onTap: () => onCreateRequest(),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'Yanıt bekleyen',
+                value: '$waitingProviderCount',
+                tone: 'muted',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _MetricCard(
+                label: 'Karar bekleyen',
+                value: '$pendingCustomerCount',
+                tone: 'warning',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'Anlaşmalarım',
+                value: '$matchedCount',
+                tone: 'success',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _MetricCard(
+                label: 'Geçmiş',
+                value: '$historyCount',
+                tone: 'primary',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const _SectionTitle(
+          title: 'Öncelikli alanlar',
+          subtitle:
+              'Ana ekran özet kalsın, detaylı takip ise ayrı Taleplerim sekmesine taşınsın.',
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: _SpotlightCard(
+                icon: Icons.receipt_long_rounded,
+                title: 'Taleplerim',
+                body:
+                    'Açık işler, karar bekleyen teklifler ve geçmiş kayıtlar tek sekmede.',
+                actionLabel: 'Sekmeyi aç',
+                onTap: () => onOpenRequestsTab(),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _SpotlightCard(
+                icon: Icons.handshake_outlined,
+                title: 'Anlaşmalarım',
+                body: matchedCount > 0
+                    ? '$matchedCount aktif anlaşman hazır.'
+                    : 'Eşleşen işler burada ayrı alt görünümde toplanır.',
+                actionLabel: 'Görüntüle',
+                onTap: () => onOpenRequestsTab(filter: 'agreements'),
+              ),
+            ),
+          ],
+        ),
+        if (pendingCustomerCount > 0) ...[
+          const SizedBox(height: 16),
+          _EmphasisBanner(
+            title: 'Karar bekleyen teklifler var',
+            body:
+                '$pendingCustomerCount talepte usta seçimi sizi bekliyor. Doğrudan ilgili görünüme geçebilirsiniz.',
+            actionLabel: 'Karar ekranına git',
+            onPressed: () => onOpenRequestsTab(filter: 'decision'),
+          ),
+        ],
+        const SizedBox(height: 24),
+        const _SectionTitle(
+          title: 'Son hareketler',
+          subtitle:
+              'Son açtığınız talepler burada özetlenir, tüm liste ise Taleplerim sekmesinde durur.',
+        ),
+        if (recentRequests.isEmpty)
+          const _EmptyStateCard(
+            title: 'Henüz kayıtlı talep yok',
+            body:
+                'İlk talebinizi oluşturduğunuzda burada kısa özetini göreceksiniz.',
+          ),
+        for (final item in recentRequests)
+          _RequestCard(
+            title: (item['service_type'] ?? 'Talep').toString(),
+            badge: _customerRequestBadgeLabel(item),
+            subtitle:
+                '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+            meta: _customerRequestMeta(item),
+            body: _summarizeRequestDetails((item['details'] ?? '').toString()),
+            actionLabel: 'Detayı aç',
+            onPressed: () {
+              final requestId = (item['id'] as num?)?.toInt() ?? 0;
+              if (requestId > 0) {
+                return onOpenRequestDetail(requestId);
+              }
+              return Future<void>.value();
+            },
+          ),
+        if (customerRequests.length > recentRequests.length)
+          FilledButton.tonalIcon(
+            onPressed: () => onOpenRequestsTab(),
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: const Text('Tüm taleplerimi aç'),
+          ),
+        if ((sessionSnapshot['unread_notifications_count'] as num? ?? 0) > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              'Bildirimler sekmesinde sizi bekleyen yeni hareketler var.',
+              style: TextStyle(color: BrandConfig.textMutedOf(context)),
+            ),
+          ),
+      ];
+    }
 
     return [
       const _SectionHero(
@@ -1418,6 +1717,206 @@ class _DashboardTab extends StatelessWidget {
           ),
       ],
     ];
+  }
+}
+
+class _RequestsTab extends StatelessWidget {
+  const _RequestsTab({
+    super.key,
+    required this.loading,
+    required this.error,
+    required this.selectedFilter,
+    required this.customerRequests,
+    required this.visibleRequests,
+    required this.onRefresh,
+    required this.onFilterChanged,
+    required this.onOpenRequestDetail,
+    required this.onOpenProviderCatalog,
+    required this.onCreateRequest,
+  });
+
+  final bool loading;
+  final String? error;
+  final String selectedFilter;
+  final List<Map<String, dynamic>> customerRequests;
+  final List<Map<String, dynamic>> visibleRequests;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function(String filter) onFilterChanged;
+  final Future<void> Function(int requestId) onOpenRequestDetail;
+  final Future<void> Function() onOpenProviderCatalog;
+  final Future<void> Function({
+    int? preferredProviderId,
+    String? preferredProviderName,
+  }) onCreateRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (error != null) {
+      return _ErrorState(message: error!, onRetry: onRefresh);
+    }
+
+    final waitingCount = customerRequests
+        .where((item) => _matchesCustomerRequestFilter(item, 'waiting'))
+        .length;
+    final decisionCount = customerRequests
+        .where((item) => _matchesCustomerRequestFilter(item, 'decision'))
+        .length;
+    final agreementsCount = customerRequests
+        .where((item) => _matchesCustomerRequestFilter(item, 'agreements'))
+        .length;
+    final historyCount = customerRequests
+        .where((item) => _matchesCustomerRequestFilter(item, 'history'))
+        .length;
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          const _SectionHero(
+            title: 'Taleplerim',
+            subtitle:
+                'Açık talepler, karar bekleyen teklifler, anlaşmalar ve geçmiş kayıtlar tek sekmede ama düzenli bir yapıda.',
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  label: 'Yanıt bekleyen',
+                  value: '$waitingCount',
+                  tone: 'muted',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Karar bekleyen',
+                  value: '$decisionCount',
+                  tone: 'warning',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  label: 'Anlaşmalarım',
+                  value: '$agreementsCount',
+                  tone: 'success',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Geçmiş',
+                  value: '$historyCount',
+                  tone: 'primary',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _CategoryChip(
+                label: 'Tümü • ${customerRequests.length}',
+                selected: selectedFilter == 'all',
+                onTap: () => onFilterChanged('all'),
+              ),
+              _CategoryChip(
+                label: 'Yanıt bekleyen • $waitingCount',
+                selected: selectedFilter == 'waiting',
+                onTap: () => onFilterChanged('waiting'),
+              ),
+              _CategoryChip(
+                label: 'Karar • $decisionCount',
+                selected: selectedFilter == 'decision',
+                onTap: () => onFilterChanged('decision'),
+              ),
+              _CategoryChip(
+                label: 'Anlaşmalarım • $agreementsCount',
+                selected: selectedFilter == 'agreements',
+                onTap: () => onFilterChanged('agreements'),
+              ),
+              _CategoryChip(
+                label: 'Geçmiş • $historyCount',
+                selected: selectedFilter == 'history',
+                onTap: () => onFilterChanged('history'),
+              ),
+            ],
+          ),
+          if (agreementsCount > 0 && selectedFilter != 'agreements') ...[
+            const SizedBox(height: 16),
+            _EmphasisBanner(
+              title: 'Anlaşmalarım ayrı görünümde hazır',
+              body:
+                  '$agreementsCount işte usta eşleşmesi veya tamamlanmış anlaşma var. Taleplerim içinden tek dokunuşla bu görünümü açabilirsiniz.',
+              actionLabel: 'Anlaşmalarımı aç',
+              onPressed: () => onFilterChanged('agreements'),
+            ),
+          ],
+          const SizedBox(height: 24),
+          const _SectionTitle(
+            title: 'Liste',
+            subtitle:
+                'Web sitesindeki mantığa yakın şekilde, durumlar sade filtrelerle ayrıldı.',
+          ),
+          if (visibleRequests.isEmpty)
+            _EmptyStateCard(
+              title: _emptyStateTitleForFilter(selectedFilter),
+              body: _emptyStateBodyForFilter(selectedFilter),
+            ),
+          for (final item in visibleRequests)
+            _RequestCard(
+              title: (item['service_type'] ?? 'Talep').toString(),
+              badge: _customerRequestBadgeLabel(item),
+              subtitle:
+                  '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+              meta: _customerRequestMeta(item),
+              body:
+                  _summarizeRequestDetails((item['details'] ?? '').toString()),
+              actionLabel: 'Detayı aç',
+              onPressed: () {
+                final requestId = (item['id'] as num?)?.toInt() ?? 0;
+                if (requestId > 0) {
+                  return onOpenRequestDetail(requestId);
+                }
+                return Future<void>.value();
+              },
+            ),
+          if (customerRequests.isEmpty) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: onOpenProviderCatalog,
+                    icon: const Icon(Icons.search_rounded),
+                    label: const Text('Usta bul'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => onCreateRequest(),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Talep oluştur'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -1906,10 +2405,7 @@ class _SectionHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: BrandConfig.heroGradientOf(context),
-      ),
+      decoration: BrandConfig.heroPanelDecorationOf(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1970,6 +2466,131 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+bool _matchesCustomerRequestFilter(Map<String, dynamic> item, String filter) {
+  final status = (item['status'] ?? '').toString();
+  switch (filter) {
+    case 'waiting':
+      return status == 'new' || status == 'pending_provider';
+    case 'decision':
+      return status == 'pending_customer';
+    case 'agreements':
+      return status == 'matched' || status == 'completed';
+    case 'history':
+      return status == 'completed' || status == 'cancelled';
+    default:
+      return true;
+  }
+}
+
+String _requestStatusLabel(String status) {
+  switch (status) {
+    case 'new':
+      return 'Yeni';
+    case 'pending_provider':
+      return 'Usta yanıtı';
+    case 'pending_customer':
+      return 'Karar bekliyor';
+    case 'matched':
+      return 'Eşleşti';
+    case 'completed':
+      return 'Tamamlandı';
+    case 'cancelled':
+      return 'İptal edildi';
+    default:
+      return status.isEmpty ? 'Durum' : status;
+  }
+}
+
+String _appointmentStatusLabel(String status) {
+  switch (status) {
+    case 'pending':
+      return 'Randevu bekliyor';
+    case 'pending_customer':
+      return 'Randevu onayı';
+    case 'confirmed':
+      return 'Randevu onaylı';
+    case 'rejected':
+      return 'Randevu reddedildi';
+    case 'cancelled':
+      return 'Randevu iptal';
+    case 'completed':
+      return 'Randevu tamamlandı';
+    default:
+      return status.isEmpty ? '' : status;
+  }
+}
+
+String _customerRequestBadgeLabel(Map<String, dynamic> item) {
+  final appointmentStatus = _appointmentStatusLabel(
+    (item['appointment_status'] ?? '').toString(),
+  );
+  if (appointmentStatus.isNotEmpty &&
+      (item['status'] ?? '').toString() == 'matched') {
+    return appointmentStatus;
+  }
+  return _requestStatusLabel((item['status'] ?? '').toString());
+}
+
+String _customerRequestMeta(Map<String, dynamic> item) {
+  final parts = <String>[];
+  final providerName = (item['matched_provider_name'] ?? '').toString().trim();
+  final unreadMessages = (item['unread_messages'] as num?)?.toInt() ?? 0;
+  final appointmentStatus = _appointmentStatusLabel(
+    (item['appointment_status'] ?? '').toString(),
+  );
+
+  if (providerName.isNotEmpty) {
+    parts.add('Usta: $providerName');
+  } else {
+    parts.add('Henüz usta seçilmedi');
+  }
+  if (appointmentStatus.isNotEmpty) {
+    parts.add(appointmentStatus);
+  }
+  if (unreadMessages > 0) {
+    parts.add('$unreadMessages okunmamış');
+  }
+  return parts.join(' · ');
+}
+
+String _summarizeRequestDetails(String text) {
+  final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.length <= 120) {
+    return normalized;
+  }
+  return '${normalized.substring(0, 117)}...';
+}
+
+String _emptyStateTitleForFilter(String filter) {
+  switch (filter) {
+    case 'waiting':
+      return 'Yanıt bekleyen talep yok';
+    case 'decision':
+      return 'Karar bekleyen teklif yok';
+    case 'agreements':
+      return 'Henüz anlaşma yok';
+    case 'history':
+      return 'Geçmiş kayıt bulunmuyor';
+    default:
+      return 'Gösterilecek talep yok';
+  }
+}
+
+String _emptyStateBodyForFilter(String filter) {
+  switch (filter) {
+    case 'waiting':
+      return 'Yeni açtığınız veya ustalardan yanıt bekleyen işler burada listelenir.';
+    case 'decision':
+      return 'Usta seçimi yapmanız gereken talepler burada toplanır.';
+    case 'agreements':
+      return 'Eşleşen ve tamamlanan işleriniz bu görünümde yer alır.';
+    case 'history':
+      return 'Tamamlanan veya iptal edilen kayıtlar burada tutulur.';
+    default:
+      return 'Yeni bir talep açtığınızda ya da mevcut işleriniz güncellendiğinde bu liste dolacaktır.';
+  }
+}
+
 class _MetricCard extends StatelessWidget {
   const _MetricCard({
     required this.label,
@@ -2012,6 +2633,62 @@ class _MetricCard extends StatelessWidget {
                 ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SpotlightCard extends StatelessWidget {
+  const _SpotlightCard({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.actionLabel,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final String actionLabel;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BrandConfig.glassPanelDecorationOf(context),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: BrandConfig.accentOf(context), size: 28),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                body,
+                style: TextStyle(
+                  color: BrandConfig.textMutedOf(context),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.tonal(
+                onPressed: onTap,
+                child: Text(actionLabel),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2060,6 +2737,66 @@ class _QuickActionCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EmphasisBanner extends StatelessWidget {
+  const _EmphasisBanner({
+    required this.title,
+    required this.body,
+    required this.actionLabel,
+    required this.onPressed,
+  });
+
+  final String title;
+  final String body;
+  final String actionLabel;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        gradient: LinearGradient(
+          colors: [
+            BrandConfig.accentSoftOf(context),
+            BrandConfig.surfaceOf(context),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(
+          color: BrandConfig.accentOf(context).withValues(alpha: 0.16),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: TextStyle(
+              color: BrandConfig.textMutedOf(context),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: onPressed,
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: Text(actionLabel),
+          ),
+        ],
       ),
     );
   }

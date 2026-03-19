@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../config/brand_config.dart';
 import '../services/mobile_data_service.dart';
 import '../state/session_controller.dart';
+import '../widgets/brand_backdrop.dart';
 
 class RequestThreadScreen extends StatefulWidget {
   const RequestThreadScreen({
@@ -213,88 +214,91 @@ class _RequestThreadScreenState extends State<RequestThreadScreen> {
           ],
         ),
       ),
-      body: Column(
-        children: [
-          if (_error != null)
-            Container(
-              width: double.infinity,
-              color: BrandConfig.warningSurfaceOf(context),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Text(
-                _error!,
-                style: TextStyle(color: BrandConfig.textOf(context)),
+      body: BrandBackdrop(
+        child: Column(
+          children: [
+            if (_error != null)
+              Container(
+                width: double.infinity,
+                color: BrandConfig.warningSurfaceOf(context),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: BrandConfig.textOf(context)),
+                ),
               ),
-            ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadInitialMessages,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _messages.isEmpty
-                      ? ListView(
-                          padding: const EdgeInsets.all(24),
-                          children: const [
-                            SizedBox(height: 120),
-                            _EmptyThreadCard(),
-                          ],
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            final message = _messages[index];
-                            final isMine = message['mine'] == true;
-                            return _MessageBubble(
-                              body: (message['body'] ?? '').toString(),
-                              meta:
-                                  '${(message['sender_label'] ?? '').toString()} · ${(message['created_at'] ?? '').toString()}',
-                              isMine: isMine,
-                            );
-                          },
-                        ),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _composerController,
-                      minLines: 1,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
-                        hintText: 'Mesajınızı yazın',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  FilledButton(
-                    onPressed: _sending ? null : _sendMessage,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(56, 56),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    child: _sending
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadInitialMessages,
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _messages.isEmpty
+                        ? ListView(
+                            padding: const EdgeInsets.all(24),
+                            children: const [
+                              SizedBox(height: 120),
+                              _EmptyThreadCard(),
+                            ],
                           )
-                        : const Icon(Icons.send_rounded),
-                  ),
-                ],
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+                            itemCount: _messages.length,
+                            itemBuilder: (context, index) {
+                              final message = _messages[index];
+                              final isMine = message['mine'] == true;
+                              return _MessageBubble(
+                                body: (message['body'] ?? '').toString(),
+                                meta:
+                                    '${(message['sender_label'] ?? '').toString()} · ${(message['created_at'] ?? '').toString()}',
+                                isMine: isMine,
+                              );
+                            },
+                          ),
               ),
             ),
-          ),
-        ],
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _composerController,
+                        minLines: 1,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.newline,
+                        decoration: const InputDecoration(
+                          hintText: 'Mesajınızı yazın',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      onPressed: _sending ? null : _sendMessage,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(56, 56),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: _sending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send_rounded),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

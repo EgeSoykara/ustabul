@@ -14,6 +14,7 @@ import 'services/theme_storage.dart';
 import 'services/web_auth_service.dart';
 import 'state/session_controller.dart';
 import 'state/theme_controller.dart';
+import 'widgets/brand_backdrop.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -149,48 +150,49 @@ class _BootScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  color: BrandConfig.surfaceOf(context),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: BrandConfig.accentSoftOf(context)),
+      body: BrandBackdrop(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 108,
+                  height: 108,
+                  decoration: BrandConfig.glassPanelDecorationOf(
+                    context,
+                    radius: 34,
+                  ),
+                  child: Icon(
+                    Icons.home_repair_service_rounded,
+                    size: 44,
+                    color: BrandConfig.textOf(context),
+                  ),
                 ),
-                child: Icon(
-                  Icons.home_repair_service_rounded,
-                  size: 42,
-                  color: BrandConfig.textOf(context),
+                const SizedBox(height: 22),
+                Text(
+                  'UstaBul',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: BrandConfig.textOf(context),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'UstaBul',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  color: BrandConfig.textOf(context),
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.8,
+                const SizedBox(height: 8),
+                Text(
+                  'Mobil deneyim hazırlanıyor',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: BrandConfig.textMutedOf(context),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Mobil deneyim hazırlanıyor',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: BrandConfig.textMutedOf(context),
+                const SizedBox(height: 22),
+                const SizedBox(
+                  width: 160,
+                  child: LinearProgressIndicator(minHeight: 6),
                 ),
-              ),
-              const SizedBox(height: 22),
-              const SizedBox(
-                width: 160,
-                child: LinearProgressIndicator(minHeight: 6),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

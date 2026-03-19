@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 @immutable
 class BrandPalette {
@@ -13,6 +14,7 @@ class BrandPalette {
     required this.accentSoft,
     required this.border,
     required this.inputFill,
+    required this.backgroundGradient,
     required this.heroGradient,
     required this.heroTextMuted,
     required this.errorSurface,
@@ -20,6 +22,11 @@ class BrandPalette {
     required this.warningSurface,
     required this.floatingSurface,
     required this.floatingShadow,
+    required this.cardShadow,
+    required this.orbPrimary,
+    required this.orbAccent,
+    required this.ctaBackground,
+    required this.ctaForeground,
   });
 
   final Color background;
@@ -31,6 +38,7 @@ class BrandPalette {
   final Color accentSoft;
   final Color border;
   final Color inputFill;
+  final LinearGradient backgroundGradient;
   final LinearGradient heroGradient;
   final Color heroTextMuted;
   final Color errorSurface;
@@ -38,65 +46,96 @@ class BrandPalette {
   final Color warningSurface;
   final Color floatingSurface;
   final Color floatingShadow;
+  final Color cardShadow;
+  final Color orbPrimary;
+  final Color orbAccent;
+  final Color ctaBackground;
+  final Color ctaForeground;
 }
 
 class BrandConfig {
-  static const Color background = Color(0xFF0B1220);
-  static const Color surface = Color(0xFF121C2F);
+  static const Color background = Color(0xFF050B1A);
+  static const Color surface = Color(0xD90F172A);
   static const Color text = Color(0xFFF8FAFC);
   static const Color textMuted = Color(0xFFB8C4D9);
   static const Color accent = Color(0xFF0E7490);
 
   static const BrandPalette _darkPalette = BrandPalette(
-    background: Color(0xFF0B1220),
-    surface: Color(0xFF121C2F),
-    surfaceAlt: Color(0xFF18253A),
+    background: Color(0xFF050B1A),
+    surface: Color(0xD90F172A),
+    surfaceAlt: Color(0xFF172335),
     text: Color(0xFFF8FAFC),
     textMuted: Color(0xFFB8C4D9),
+    accent: Color(0xFF38BDF8),
+    accentSoft: Color(0x2638BDF8),
+    border: Color(0x4247B6D8),
+    inputFill: Color(0xCC0B1628),
+    backgroundGradient: LinearGradient(
+      colors: [
+        Color(0xFF050B1A),
+        Color(0xFF0A1223),
+      ],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ),
+    heroGradient: LinearGradient(
+      colors: [
+        Color(0xFF0A1223),
+        Color(0xFF0E7490),
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    ),
+    heroTextMuted: Color(0xFFD9E8F4),
+    errorSurface: Color(0xFF3B1118),
+    errorText: Color(0xFFFDA4AF),
+    warningSurface: Color(0x33F97316),
+    floatingSurface: Color(0xE60F172A),
+    floatingShadow: Color(0x66000000),
+    cardShadow: Color(0x66000000),
+    orbPrimary: Color(0x2638BDF8),
+    orbAccent: Color(0x26F97316),
+    ctaBackground: Color(0xFF050505),
+    ctaForeground: Color(0xFFF8FAFC),
+  );
+
+  static const BrandPalette _lightPalette = BrandPalette(
+    background: Color(0xFFF9FDFF),
+    surface: Color(0xEBFFFFFF),
+    surfaceAlt: Color(0xFFF4F9FD),
+    text: Color(0xFF0F172A),
+    textMuted: Color(0xFF526277),
     accent: Color(0xFF0E7490),
-    accentSoft: Color(0x1F29B6D1),
-    border: Color(0x1F8CA3B3),
-    inputFill: Color(0xFF111A2B),
+    accentSoft: Color(0x190E7490),
+    border: Color(0x330E7490),
+    inputFill: Color(0xF7FFFFFF),
+    backgroundGradient: LinearGradient(
+      colors: [
+        Color(0xFFF9FDFF),
+        Color(0xFFEEF6FF),
+      ],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ),
     heroGradient: LinearGradient(
       colors: [
         Color(0xFF0E7490),
-        Color(0xFF0F172A),
+        Color(0xFF111827),
       ],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     heroTextMuted: Color(0xFFE2E8F0),
-    errorSurface: Color(0xFF3B1118),
-    errorText: Color(0xFFFDA4AF),
-    warningSurface: Color(0x33F97316),
-    floatingSurface: Color(0xD9121C2F),
-    floatingShadow: Color(0x55000000),
-  );
-
-  static const BrandPalette _lightPalette = BrandPalette(
-    background: Color(0xFFF3F7FB),
-    surface: Color(0xFFFFFFFF),
-    surfaceAlt: Color(0xFFE8EEF5),
-    text: Color(0xFF0F172A),
-    textMuted: Color(0xFF526277),
-    accent: Color(0xFF0E7490),
-    accentSoft: Color(0x1F0E7490),
-    border: Color(0xFFD6E0EA),
-    inputFill: Color(0xFFF8FBFD),
-    heroGradient: LinearGradient(
-      colors: [
-        Color(0xFF0E7490),
-        Color(0xFF1D4ED8),
-      ],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ),
-    heroTextMuted: Color(0xFFE0F2FE),
     errorSurface: Color(0xFFFDECEC),
     errorText: Color(0xFFB42318),
     warningSurface: Color(0xFFFFEDD5),
     floatingSurface: Color(0xF2FFFFFF),
-    floatingShadow: Color(0x1F0F172A),
+    floatingShadow: Color(0x1A0F172A),
+    cardShadow: Color(0x1A0F172A),
+    orbPrimary: Color(0x1F0E7490),
+    orbAccent: Color(0x22F97316),
+    ctaBackground: Color(0xFF0F1115),
+    ctaForeground: Color(0xFFF8FAFC),
   );
 
   static BrandPalette paletteFor(Brightness brightness) {
@@ -107,6 +146,59 @@ class BrandConfig {
     return paletteFor(Theme.of(context).brightness);
   }
 
+  static TextTheme _textThemeFor(TextTheme base, BrandPalette palette) {
+    final bodyTheme = GoogleFonts.manropeTextTheme(base).apply(
+      bodyColor: palette.text,
+      displayColor: palette.text,
+    );
+    final headingTheme = GoogleFonts.soraTextTheme(bodyTheme).apply(
+      bodyColor: palette.text,
+      displayColor: palette.text,
+    );
+    return bodyTheme.copyWith(
+      displayLarge: headingTheme.displayLarge?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -1.1,
+      ),
+      displayMedium: headingTheme.displayMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.9,
+      ),
+      displaySmall: headingTheme.displaySmall?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.8,
+      ),
+      headlineLarge: headingTheme.headlineLarge?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.8,
+      ),
+      headlineMedium: headingTheme.headlineMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.7,
+      ),
+      headlineSmall: headingTheme.headlineSmall?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.6,
+      ),
+      titleLarge: headingTheme.titleLarge?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.4,
+      ),
+      titleMedium: headingTheme.titleMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.2,
+      ),
+      titleSmall: headingTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.w700,
+      ),
+      bodyLarge: bodyTheme.bodyLarge?.copyWith(height: 1.45),
+      bodyMedium: bodyTheme.bodyMedium?.copyWith(height: 1.45),
+      bodySmall: bodyTheme.bodySmall?.copyWith(height: 1.4),
+      labelLarge: bodyTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+      labelMedium: bodyTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+    );
+  }
+
   static ThemeData themeFor(Brightness brightness) {
     final palette = paletteFor(brightness);
     final colorScheme = ColorScheme.fromSeed(
@@ -115,38 +207,68 @@ class BrandConfig {
     ).copyWith(
       primary: palette.accent,
       secondary: palette.accent,
+      tertiary: const Color(0xFFF97316),
       secondaryContainer: palette.accentSoft,
       onSecondaryContainer: palette.text,
       surface: palette.surface,
       onSurface: palette.text,
       onSurfaceVariant: palette.textMuted,
       outline: palette.border,
+      shadow: palette.cardShadow,
       error: brightness == Brightness.light
           ? const Color(0xFFB42318)
           : const Color(0xFFFB7185),
+      surfaceContainer: palette.surfaceAlt,
       surfaceContainerHighest: palette.surfaceAlt,
     );
 
-    return ThemeData(
+    final baseTheme = ThemeData(
+      useMaterial3: true,
       brightness: brightness,
       colorScheme: colorScheme,
+    );
+    final textTheme = _textThemeFor(baseTheme.textTheme, palette);
+
+    return baseTheme.copyWith(
       scaffoldBackgroundColor: palette.background,
+      canvasColor: palette.background,
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: palette.background,
+        backgroundColor: palette.background.withValues(
+          alpha: brightness == Brightness.light ? 0.88 : 0.76,
+        ),
         foregroundColor: palette.text,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: false,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          color: palette.text,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       cardTheme: CardThemeData(
         color: palette.surface,
-        elevation: 0,
+        elevation: brightness == Brightness.light ? 4 : 2,
+        shadowColor: palette.cardShadow,
+        surfaceTintColor: Colors.transparent,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: palette.border),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: palette.surface,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
           side: BorderSide(color: palette.border),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: palette.border.withValues(alpha: 0.9),
+        color: palette.border.withValues(alpha: 0.92),
         thickness: 1,
       ),
       listTileTheme: ListTileThemeData(
@@ -154,16 +276,32 @@ class BrandConfig {
         textColor: palette.text,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: palette.background,
-        indicatorColor: palette.accentSoft,
+        backgroundColor: palette.floatingSurface,
+        shadowColor: palette.floatingShadow,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: palette.accentSoft.withValues(alpha: 0.95),
+        elevation: 14,
+        height: 74,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          return TextStyle(
+          return textTheme.labelMedium?.copyWith(
+                color: states.contains(WidgetState.selected)
+                    ? palette.text
+                    : palette.textMuted,
+                fontWeight: states.contains(WidgetState.selected)
+                    ? FontWeight.w700
+                    : FontWeight.w600,
+              ) ??
+              TextStyle(
+                color: states.contains(WidgetState.selected)
+                    ? palette.text
+                    : palette.textMuted,
+              );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          return IconThemeData(
             color: states.contains(WidgetState.selected)
                 ? palette.text
                 : palette.textMuted,
-            fontWeight: states.contains(WidgetState.selected)
-                ? FontWeight.w700
-                : FontWeight.w600,
           );
         }),
       ),
@@ -173,6 +311,8 @@ class BrandConfig {
         labelStyle: TextStyle(color: palette.textMuted),
         hintStyle: TextStyle(color: palette.textMuted),
         prefixIconColor: palette.textMuted,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide(color: palette.border),
@@ -199,10 +339,14 @@ class BrandConfig {
         linearTrackColor: palette.accentSoft,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: brightness == Brightness.light
-            ? const Color(0xFF0F172A)
-            : const Color(0xFF1E293B),
-        contentTextStyle: const TextStyle(color: Colors.white),
+        backgroundColor:
+            brightness == Brightness.light ? const Color(0xFF0F172A) : surface,
+        contentTextStyle: GoogleFonts.manrope(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: palette.surfaceAlt,
@@ -210,16 +354,39 @@ class BrandConfig {
         selectedColor: palette.accentSoft,
         secondarySelectedColor: palette.accentSoft,
         side: BorderSide(color: palette.border),
-        labelStyle: TextStyle(color: palette.text),
-        secondaryLabelStyle: TextStyle(color: palette.text),
+        labelStyle: textTheme.labelLarge?.copyWith(color: palette.text),
+        secondaryLabelStyle:
+            textTheme.labelLarge?.copyWith(color: palette.text),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: palette.accent,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: palette.accent.withValues(alpha: 0.4),
-          disabledForegroundColor: Colors.white70,
+          backgroundColor: palette.ctaBackground,
+          foregroundColor: palette.ctaForeground,
+          disabledBackgroundColor: palette.ctaBackground.withValues(alpha: 0.4),
+          disabledForegroundColor: palette.ctaForeground.withValues(alpha: 0.7),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          textStyle: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: palette.text,
+          backgroundColor: palette.surface.withValues(
+            alpha: brightness == Brightness.light ? 0.74 : 0.28,
+          ),
+          side: BorderSide(color: palette.border),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          textStyle: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -228,6 +395,7 @@ class BrandConfig {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: palette.accent,
+          textStyle: textTheme.labelLarge,
         ),
       ),
       switchTheme: SwitchThemeData(
@@ -244,7 +412,6 @@ class BrandConfig {
           return palette.surfaceAlt;
         }),
       ),
-      useMaterial3: true,
     );
   }
 
@@ -253,17 +420,59 @@ class BrandConfig {
     final iconBrightness =
         brightness == Brightness.light ? Brightness.dark : Brightness.light;
     return SystemUiOverlayStyle(
-      statusBarColor: palette.background,
+      statusBarColor: Colors.transparent,
       statusBarIconBrightness: iconBrightness,
       statusBarBrightness: brightness,
       systemNavigationBarColor: palette.background,
       systemNavigationBarIconBrightness: iconBrightness,
-      systemNavigationBarDividerColor: palette.background,
+      systemNavigationBarDividerColor: Colors.transparent,
     );
   }
 
   static bool isLight(BuildContext context) =>
       Theme.of(context).brightness == Brightness.light;
+
+  static BoxDecoration backgroundDecorationOf(BuildContext context) {
+    return BoxDecoration(gradient: paletteOf(context).backgroundGradient);
+  }
+
+  static BoxDecoration heroPanelDecorationOf(
+    BuildContext context, {
+    double radius = 28,
+  }) {
+    final palette = paletteOf(context);
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(radius),
+      gradient: palette.heroGradient,
+      border: Border.all(color: palette.border.withValues(alpha: 0.9)),
+      boxShadow: [
+        BoxShadow(
+          color: palette.cardShadow,
+          blurRadius: 36,
+          offset: const Offset(0, 18),
+        ),
+      ],
+    );
+  }
+
+  static BoxDecoration glassPanelDecorationOf(
+    BuildContext context, {
+    double radius = 24,
+  }) {
+    final palette = paletteOf(context);
+    return BoxDecoration(
+      color: palette.surface,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: palette.border),
+      boxShadow: [
+        BoxShadow(
+          color: palette.cardShadow.withValues(alpha: 0.72),
+          blurRadius: 28,
+          offset: const Offset(0, 14),
+        ),
+      ],
+    );
+  }
 
   static Color backgroundOf(BuildContext context) =>
       paletteOf(context).background;
@@ -279,6 +488,8 @@ class BrandConfig {
   static Color borderOf(BuildContext context) => paletteOf(context).border;
   static Color inputFillOf(BuildContext context) =>
       paletteOf(context).inputFill;
+  static LinearGradient backgroundGradientOf(BuildContext context) =>
+      paletteOf(context).backgroundGradient;
   static LinearGradient heroGradientOf(BuildContext context) =>
       paletteOf(context).heroGradient;
   static Color heroTextMutedOf(BuildContext context) =>
@@ -293,4 +504,8 @@ class BrandConfig {
       paletteOf(context).floatingSurface;
   static Color floatingShadowOf(BuildContext context) =>
       paletteOf(context).floatingShadow;
+  static Color orbPrimaryOf(BuildContext context) =>
+      paletteOf(context).orbPrimary;
+  static Color orbAccentOf(BuildContext context) =>
+      paletteOf(context).orbAccent;
 }
