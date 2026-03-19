@@ -1153,10 +1153,7 @@ class _DashboardTab extends StatelessWidget {
             .contains((item['status'] ?? '').toString()))
         .length;
     final historyCount = customerRequests
-        .where(
-          (item) => {'completed', 'cancelled'}
-              .contains((item['status'] ?? '').toString()),
-        )
+        .where((item) => _matchesCustomerRequestFilter(item, 'history'))
         .length;
     final recentRequests = customerRequests
         .where((item) => _matchesCustomerRequestFilter(item, 'active'))
@@ -1226,7 +1223,7 @@ class _DashboardTab extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _MetricCard(
-                label: 'Geçmiş',
+                label: 'Anlaşmalar',
                 value: '$historyCount',
                 tone: 'primary',
               ),
@@ -1255,10 +1252,10 @@ class _DashboardTab extends StatelessWidget {
             Expanded(
               child: _SpotlightCard(
                 icon: Icons.history_rounded,
-                title: 'Geçmiş',
+                title: 'Anlaşmalar',
                 body: historyCount > 0
-                    ? '$historyCount kapanmış iş kaydın geçmiş görünümünde hazır.'
-                    : 'Biten veya iptal edilen işler burada toplanır.',
+                    ? '$historyCount anlaşma kaydın webdeki Anlaşmalar ekranına benzer şekilde hazır.'
+                    : 'Eşleşen, tamamlanan ve iptal edilen anlaşmalar burada toplanır.',
                 actionLabel: 'Görüntüle',
                 onTap: () => onOpenRequestsTab(filter: 'history'),
               ),
@@ -1279,7 +1276,7 @@ class _DashboardTab extends StatelessWidget {
         const _SectionTitle(
           title: 'Son hareketler',
           subtitle:
-              'Son aktif talepleriniz burada özetlenir; tamamlanan işler ise geçmişe taşınır.',
+              'Son aktif talepleriniz burada özetlenir; anlaşma kayıtları ise ayrı görünümde tutulur.',
         ),
         if (recentRequests.isEmpty)
           const _EmptyStateCard(
@@ -1807,7 +1804,7 @@ class _RequestsTab extends StatelessWidget {
           const _SectionHero(
             title: 'Taleplerim',
             subtitle:
-                'Aktif işler burada kalır. Tamamlanan veya kapanan işler ise doğrudan geçmişe taşınır.',
+                'Aktif talepler burada kalır. Web sitesindeki Anlaşmalar ekranına karşılık gelen kayıtlar ise ayrı görünümde tutulur.',
           ),
           const SizedBox(height: 16),
           Row(
@@ -1842,7 +1839,7 @@ class _RequestsTab extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _MetricCard(
-                  label: 'Geçmiş',
+                  label: 'Anlaşmalar',
                   value: '$historyCount',
                   tone: 'primary',
                 ),
@@ -1865,7 +1862,7 @@ class _RequestsTab extends StatelessWidget {
                 onTap: () => onFilterChanged('decision'),
               ),
               _CategoryChip(
-                label: 'Geçmiş • $historyCount',
+                label: 'Anlaşmalar • $historyCount',
                 selected: selectedFilter == 'history',
                 onTap: () => onFilterChanged('history'),
               ),
@@ -1874,10 +1871,10 @@ class _RequestsTab extends StatelessWidget {
           if (historyCount > 0 && selectedFilter != 'history') ...[
             const SizedBox(height: 16),
             _EmphasisBanner(
-              title: 'Geçmiş görünümü hazır',
+              title: 'Anlaşma görünümü hazır',
               body:
-                  '$historyCount kapanmış iş kaydınız aktif taleplerden ayrıldı. Tek dokunuşla geçmiş görünümüne geçebilirsiniz.',
-              actionLabel: 'Geçmişi aç',
+                  '$historyCount eşleşme kaydınız webdeki Anlaşmalar ekranına benzer şekilde ayrı görünümde listeleniyor.',
+              actionLabel: 'Anlaşmaları aç',
               onPressed: () => onFilterChanged('history'),
             ),
           ],
@@ -2503,9 +2500,9 @@ bool _matchesCustomerRequestFilter(Map<String, dynamic> item, String filter) {
     case 'decision':
       return status == 'pending_customer';
     case 'agreements':
-      return status == 'completed' || status == 'cancelled';
+      return _isAgreementRecord(item);
     case 'history':
-      return status == 'completed' || status == 'cancelled';
+      return _isAgreementRecord(item);
     default:
       return {
         'new',
@@ -2514,6 +2511,14 @@ bool _matchesCustomerRequestFilter(Map<String, dynamic> item, String filter) {
         'matched',
       }.contains(status);
   }
+}
+
+bool _isAgreementRecord(Map<String, dynamic> item) {
+  final matchedOfferId = (item['matched_offer_id'] as num?)?.toInt();
+  if (matchedOfferId != null && matchedOfferId > 0) {
+    return true;
+  }
+  return ((item['matched_at'] ?? '').toString()).trim().isNotEmpty;
 }
 
 String _requestStatusLabel(String status) {
@@ -2555,6 +2560,10 @@ String _appointmentStatusLabel(String status) {
 }
 
 String _customerRequestBadgeLabel(Map<String, dynamic> item) {
+  final statusUiLabel = (item['status_ui_label'] ?? '').toString().trim();
+  if (statusUiLabel.isNotEmpty) {
+    return statusUiLabel;
+  }
   final appointmentStatus = _appointmentStatusLabel(
     (item['appointment_status'] ?? '').toString(),
   );
@@ -2570,12 +2579,16 @@ String _customerRequestMeta(Map<String, dynamic> item) {
   final hasFlow = _requestFlowTitle(item).isNotEmpty ||
       _requestFlowNextAction(item).isNotEmpty;
   final providerName = (item['matched_provider_name'] ?? '').toString().trim();
+  final matchedAt = (item['matched_at'] ?? '').toString().trim();
   final unreadMessages = (item['unread_messages'] as num?)?.toInt() ?? 0;
 
   if (!hasFlow) {
     parts.add(_customerRequestStageText(item));
   }
 
+  if (_isAgreementRecord(item) && matchedAt.isNotEmpty) {
+    parts.add('Anlaşma: ${_formatIsoDateTime(matchedAt)}');
+  }
   if (providerName.isNotEmpty) {
     parts.add('Usta: $providerName');
   } else {
@@ -2585,6 +2598,16 @@ String _customerRequestMeta(Map<String, dynamic> item) {
     parts.add('$unreadMessages okunmamış');
   }
   return parts.join(' · ');
+}
+
+String _formatIsoDateTime(String rawValue) {
+  final parsed = DateTime.tryParse(rawValue);
+  if (parsed == null) {
+    return rawValue;
+  }
+  final local = parsed.toLocal();
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
 }
 
 String _customerRequestStageText(Map<String, dynamic> item) {
@@ -2690,7 +2713,7 @@ String _emptyStateTitleForFilter(String filter) {
     case 'agreements':
       return 'Henüz anlaşma yok';
     case 'history':
-      return 'Geçmiş kayıt bulunmuyor';
+      return 'Henüz anlaşma kaydı yok';
     default:
       return 'Gösterilecek talep yok';
   }
@@ -2699,15 +2722,15 @@ String _emptyStateTitleForFilter(String filter) {
 String _emptyStateBodyForFilter(String filter) {
   switch (filter) {
     case 'active':
-      return 'Aktif talepleriniz burada görünür. İş tamamlandığında ya da kapandığında geçmişe taşınır.';
+      return 'Aktif talepleriniz burada görünür. Eşleşen kayıtlar ayrıca Anlaşmalar görünümünde de takip edilir.';
     case 'waiting':
       return 'Yeni açtığınız veya ustalardan yanıt bekleyen işler burada listelenir.';
     case 'decision':
       return 'Usta seçimi yapmanız gereken talepler burada toplanır.';
     case 'agreements':
-      return 'Eşleşen ve tamamlanan işleriniz bu görünümde yer alır.';
+      return 'Web sitesindeki Anlaşmalar ekranı gibi, eşleşen aktif ve kapanan işler burada tutulur.';
     case 'history':
-      return 'Tamamlanan veya iptal edilen kayıtlar burada tutulur.';
+      return 'Web sitesindeki Anlaşmalar ekranı gibi, aktif eşleşmelerle birlikte tamamlanan ve iptal edilen anlaşmalar burada tutulur.';
     default:
       return 'Yeni bir talep açtığınızda ya da mevcut işleriniz güncellendiğinde bu liste dolacaktır.';
   }

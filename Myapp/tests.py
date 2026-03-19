@@ -5193,12 +5193,51 @@ class MobileApiTests(TestCase):
         self.assertEqual(body["count"], 1)
         self.assertEqual(body["results"][0]["unread_messages"], 1)
         self.assertEqual(body["results"][0]["request_code"], service_request.request_code)
+        self.assertEqual(body["results"][0]["matched_offer_id"], offer.id)
+        self.assertIsNotNone(body["results"][0]["matched_at"])
+        self.assertEqual(body["results"][0]["status_ui_label"], "Eşleştirildi")
         self.assertEqual(body["results"][0]["flow_step"], "Adım 3/4")
         self.assertEqual(body["results"][0]["flow_title"], "Usta seçildi")
         self.assertEqual(
             body["results"][0]["flow_next_action"],
             "Randevu saati seçip ustaya gönderin.",
         )
+
+    def test_mobile_customer_requests_uses_agreement_history_status_ui(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Anlasma Gecmisi Musteri",
+            customer_phone="05008889900",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Anlasma ama iptal gibi gorunmeli",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="completed",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILEAGREE001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/customer/requests/?limit=10&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["results"][0]["matched_offer_id"], offer.id)
+        self.assertEqual(body["results"][0]["status_ui_label"], "Müşteri İptal Etti")
+        self.assertEqual(body["results"][0]["status_ui_class"], "cancelled")
 
     def test_mobile_register_device_creates_record(self):
         payload = self._login_mobile("mobile_customer", "GucluSifre123!")

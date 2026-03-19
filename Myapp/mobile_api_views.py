@@ -91,6 +91,7 @@ from .services.flow import (
     build_provider_pending_offer_flow_state,
     build_provider_thread_flow_state,
     build_provider_waiting_selection_flow_state,
+    get_service_request_status_ui,
     provider_can_release_request_match,
     score_accepted_offers,
 )
@@ -1155,7 +1156,18 @@ class MobileCustomerRequestsView(APIView):
                 last_minute_cancel_hours=get_last_minute_cancel_hours(),
                 no_show_grace_minutes=get_no_show_grace_minutes(),
             )
+            status_ui = get_service_request_status_ui(
+                service_request,
+                appointment,
+                calendar_enabled=calendar_enabled,
+            )
             item.update(serialize_flow_state_fields(flow_state))
+            item["matched_offer_id"] = service_request.matched_offer_id
+            item["matched_at"] = (
+                service_request.matched_at.isoformat() if service_request.matched_at else None
+            )
+            item["status_ui_label"] = status_ui["label"]
+            item["status_ui_class"] = status_ui["css_status"]
         return Response(
             {
                 "count": total_count,
