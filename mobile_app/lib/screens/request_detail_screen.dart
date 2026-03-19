@@ -249,6 +249,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
   }
 
+  // ignore: unused_element
   Future<void> _performAndReload(
       Future<Map<String, dynamic>> Function() action) async {
     setState(() {
@@ -270,6 +271,56 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         await _handleMissingNativeEndpoint(duringAction: true);
         return;
       }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _submitRating(Map<String, dynamic> ratingInput) async {
+    setState(() {
+      _actionLoading = true;
+      _error = null;
+    });
+    try {
+      final accessToken = await widget.sessionController.ensureAccessToken();
+      final payload = await widget.dataService.submitRequestRating(
+        accessToken: accessToken,
+        requestId: widget.requestId,
+        score: (ratingInput['score'] as num?)?.toInt() ?? 5,
+        comment: (ratingInput['comment'] ?? '').toString(),
+      );
+      if (!mounted) {
+        return;
+      }
+      final message = (payload['message'] ?? 'Puan kaydedildi.').toString();
+      setState(() {
+        _payload = {
+          ..._payload,
+          if (payload['rating'] is Map<String, dynamic>)
+            'rating': payload['rating'] as Map<String, dynamic>,
+          if (payload['rating_state'] is Map<String, dynamic>)
+            'rating_state': payload['rating_state'] as Map<String, dynamic>,
+          'actions': {
+            ..._actions,
+            if (payload['rating_state'] is Map<String, dynamic>)
+              'can_rate': (payload['rating_state'] as Map<String, dynamic>)['can_rate'] == true,
+          },
+        };
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
       if (!mounted) {
         return;
       }
@@ -1083,21 +1134,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                   if (rating == null || !mounted) {
                                     return;
                                   }
-                                  final accessToken = await widget
-                                      .sessionController
-                                      .ensureAccessToken();
-                                  await _performAndReload(
-                                    () =>
-                                        widget.dataService.submitRequestRating(
-                                      accessToken: accessToken,
-                                      requestId: widget.requestId,
-                                      score:
-                                          (rating['score'] as num?)?.toInt() ??
-                                              5,
-                                      comment:
-                                          (rating['comment'] ?? '').toString(),
-                                    ),
-                                  );
+                                  await _submitRating(rating);
                                 },
                           icon: const Icon(Icons.star_rounded),
                           label: Text(

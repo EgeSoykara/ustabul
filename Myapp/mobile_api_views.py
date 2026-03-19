@@ -1664,6 +1664,7 @@ class MobileCustomerRateRequestView(APIView):
         rating.provider = service_request.matched_provider
         rating.customer = request.user
         rating.save()
+        updated_rating_state = build_customer_rating_state(service_request, appointment)
 
         return Response(
             {
@@ -1674,6 +1675,7 @@ class MobileCustomerRateRequestView(APIView):
                     else f"{service_request.matched_provider.full_name} için yorumunuz güncellendi."
                 ),
                 "rating": serialize_request_rating(rating),
+                "rating_state": updated_rating_state,
                 "snapshot": build_customer_snapshot_payload(request.user),
             },
             status=status.HTTP_200_OK,

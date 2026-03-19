@@ -5809,6 +5809,8 @@ class MobileApiTests(TestCase):
         self.assertEqual(rating.score, 5)
         self.assertEqual(rating.comment, "Harika hizmet")
         self.assertEqual(response.json()["rating"]["score"], 5)
+        self.assertIn("rating_state", response.json())
+        self.assertTrue(response.json()["rating_state"]["can_rate"])
         self.provider.refresh_from_db()
         self.assertEqual(float(self.provider.rating), 5.0)
 
