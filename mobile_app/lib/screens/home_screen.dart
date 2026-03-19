@@ -37,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   int _currentIndex = 0;
   String _customerRequestFilter = 'active';
+  String _providerWorkFilter = 'queue';
   final Set<String> _runningProviderActionKeys = <String>{};
   Timer? _autoRefreshTimer;
   Timer? _liveUpdateTimer;
@@ -123,6 +124,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Map<String, dynamic>> get _providerPendingAppointments =>
       _mapList(_dashboardPayload['pending_appointments']);
 
+  List<Map<String, dynamic>> get _providerAgreements =>
+      _mapList(_dashboardPayload['agreements']);
+
+  Map<String, dynamic> get _providerSummary =>
+      _dashboardPayload['summary'] is Map<String, dynamic>
+          ? _dashboardPayload['summary'] as Map<String, dynamic>
+          : const <String, dynamic>{};
+
   List<Map<String, dynamic>> get _messageThreads {
     if (_isProvider) {
       return _providerActiveThreads;
@@ -143,9 +152,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .toList();
   }
 
-  int get _notificationsTabIndex => _isProvider ? 2 : 3;
+  int get _notificationsTabIndex => 3;
 
-  int get _moreTabIndex => _isProvider ? 3 : 4;
+  int get _moreTabIndex => 4;
 
   Future<void> _showCustomerRequests({String filter = 'active'}) async {
     setState(() {
@@ -160,6 +169,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     setState(() {
       _customerRequestFilter = filter;
+    });
+  }
+
+  Future<void> _setProviderWorkFilter(String filter) async {
+    if (_providerWorkFilter == filter) {
+      return;
+    }
+    setState(() {
+      _providerWorkFilter = filter;
     });
   }
 
@@ -1197,6 +1215,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final screenTitles = _isProvider
         ? const <String>[
             'Usta paneli',
+            'İşlerim',
             'Mesajlar',
             'Bildirimler',
             'Daha Fazla',
@@ -1213,9 +1232,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: Text(screenTitles[_currentIndex]),
         actions: [
-          if (_currentIndex == 0 ||
-              _currentIndex == 1 ||
-              (!_isProvider && _currentIndex == 2))
+          if (_shouldRefreshDashboardForTab(_currentIndex))
             IconButton(
               onPressed: _dashboardLoading ? null : _loadDashboard,
               icon: const Icon(Icons.refresh_rounded),
@@ -1270,14 +1287,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _completeProviderAppointmentFromDashboard,
                     ),
                   1 => _isProvider
-                      ? _MessagesTab(
-                          key: const ValueKey('messages'),
-                          isProvider: true,
+                      ? _ProviderWorkTab(
+                          key: const ValueKey('provider-work'),
                           loading: _dashboardLoading,
                           error: _dashboardError,
-                          threads: _messageThreads,
+                          selectedFilter: _providerWorkFilter,
+                          summary: _providerSummary,
+                          providerPendingOffers: _providerPendingOffers,
+                          providerWaitingSelection: _providerWaitingSelection,
+                          providerActiveThreads: _providerActiveThreads,
+                          providerPendingAppointments:
+                              _providerPendingAppointments,
+                          providerAgreements: _providerAgreements,
                           onRefresh: _loadDashboard,
+                          onFilterChanged: _setProviderWorkFilter,
                           onOpenThread: _openThread,
+                          onOpenRequestDetail: _openRequestDetail,
+                          isProviderActionBusy: _isProviderActionBusy,
+                          onAcceptProviderOffer:
+                              _acceptProviderOfferFromDashboard,
+                          onRejectProviderOffer:
+                              _rejectProviderOfferFromDashboard,
+                          onWithdrawProviderOffer:
+                              _withdrawProviderOfferFromDashboard,
+                          onConfirmProviderAppointment:
+                              _confirmProviderAppointmentFromDashboard,
+                          onRejectProviderAppointment:
+                              _rejectProviderAppointmentFromDashboard,
+                          onCompleteProviderAppointment:
+                              _completeProviderAppointmentFromDashboard,
                         )
                       : _RequestsTab(
                           key: const ValueKey('requests'),
@@ -1293,67 +1331,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           onOpenProviderCatalog: _openProviderCatalog,
                           onCreateRequest: _openRequestCreate,
                         ),
-                  2 => _isProvider
-                      ? _NotificationsTab(
-                          key: const ValueKey('notifications'),
-                          loading: _notificationsLoading,
-                          error: _notificationsError,
-                          payload: _notificationsPayload,
-                          category: _notificationCategory,
-                          fallbackToWeb: _notificationsFallbackToWeb,
-                          onRefresh: _loadNotifications,
-                          onCategoryChanged: (value) =>
-                              _loadNotifications(category: value),
-                          onOpenNotification: _openNotification,
-                          onMarkAllRead: _markAllNotificationsRead,
-                          onOpenWebNotifications: () => _openSiteFallback(
-                            '/bildirimler/',
-                            pageTitle: 'Bildirimler',
-                          ),
-                        )
-                      : _MessagesTab(
-                          key: const ValueKey('messages'),
-                          isProvider: false,
-                          loading: _dashboardLoading,
-                          error: _dashboardError,
-                          threads: _messageThreads,
-                          onRefresh: _loadDashboard,
-                          onOpenThread: _openThread,
-                        ),
-                  3 => _isProvider
-                      ? _MoreTab(
-                          key: const ValueKey('more'),
-                          sessionController: widget.sessionController,
-                          themePreference: widget.themeController.preference,
-                          loading: _preferencesLoading,
-                          saving: _preferencesSaving,
-                          error: _preferencesError,
-                          notificationPreferences: _notificationPreferences,
-                          preferencesFallbackToWeb:
-                              _notificationPreferencesFallbackToWeb,
-                          onThemeChanged: _setThemePreference,
-                          onRetry: _loadNotificationPreferences,
-                          onTogglePreference: _updateNotificationPreference,
-                          onOpenFallback: _openSiteFallback,
-                          onLaunchExternal: _launchExternal,
-                        )
-                      : _NotificationsTab(
-                          key: const ValueKey('notifications'),
-                          loading: _notificationsLoading,
-                          error: _notificationsError,
-                          payload: _notificationsPayload,
-                          category: _notificationCategory,
-                          fallbackToWeb: _notificationsFallbackToWeb,
-                          onRefresh: _loadNotifications,
-                          onCategoryChanged: (value) =>
-                              _loadNotifications(category: value),
-                          onOpenNotification: _openNotification,
-                          onMarkAllRead: _markAllNotificationsRead,
-                          onOpenWebNotifications: () => _openSiteFallback(
-                            '/bildirimler/',
-                            pageTitle: 'Bildirimler',
-                          ),
-                        ),
+                  2 => _MessagesTab(
+                      key: const ValueKey('messages'),
+                      isProvider: _isProvider,
+                      loading: _dashboardLoading,
+                      error: _dashboardError,
+                      threads: _messageThreads,
+                      onRefresh: _loadDashboard,
+                      onOpenThread: _openThread,
+                    ),
+                  3 => _NotificationsTab(
+                      key: const ValueKey('notifications'),
+                      loading: _notificationsLoading,
+                      error: _notificationsError,
+                      payload: _notificationsPayload,
+                      category: _notificationCategory,
+                      fallbackToWeb: _notificationsFallbackToWeb,
+                      onRefresh: _loadNotifications,
+                      onCategoryChanged: (value) =>
+                          _loadNotifications(category: value),
+                      onOpenNotification: _openNotification,
+                      onMarkAllRead: _markAllNotificationsRead,
+                      onOpenWebNotifications: () => _openSiteFallback(
+                        '/bildirimler/',
+                        pageTitle: 'Bildirimler',
+                      ),
+                    ),
                   _ => _MoreTab(
                       key: const ValueKey('more'),
                       sessionController: widget.sessionController,
@@ -1385,6 +1388,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   icon: Icon(Icons.dashboard_outlined),
                   selectedIcon: Icon(Icons.dashboard_rounded),
                   label: 'Ana Ekran',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.work_outline_rounded),
+                  selectedIcon: Icon(Icons.work_rounded),
+                  label: 'İşlerim',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.forum_outlined),
@@ -1826,6 +1834,9 @@ class _DashboardTab extends StatelessWidget {
     final snapshot = dashboardPayload['snapshot'] is Map<String, dynamic>
         ? dashboardPayload['snapshot'] as Map<String, dynamic>
         : const <String, dynamic>{};
+    final summary = dashboardPayload['summary'] is Map<String, dynamic>
+        ? dashboardPayload['summary'] as Map<String, dynamic>
+        : const <String, dynamic>{};
     final membership = dashboardPayload['membership'] is Map<String, dynamic>
         ? dashboardPayload['membership'] as Map<String, dynamic>
         : const <String, dynamic>{};
@@ -1887,7 +1898,8 @@ class _DashboardTab extends StatelessWidget {
           Expanded(
             child: _MetricCard(
               label: 'Aktif sohbet',
-              value: '${providerActiveThreads.length}',
+              value:
+                  '${_summaryCount(summary, 'active_threads_count', providerActiveThreads.length)}',
               tone: 'success',
             ),
           ),
@@ -2121,6 +2133,477 @@ class _DashboardTab extends StatelessWidget {
             },
           ),
       ],
+    ];
+  }
+}
+
+class _ProviderWorkTab extends StatelessWidget {
+  const _ProviderWorkTab({
+    super.key,
+    required this.loading,
+    required this.error,
+    required this.selectedFilter,
+    required this.summary,
+    required this.providerPendingOffers,
+    required this.providerWaitingSelection,
+    required this.providerActiveThreads,
+    required this.providerPendingAppointments,
+    required this.providerAgreements,
+    required this.onRefresh,
+    required this.onFilterChanged,
+    required this.onOpenThread,
+    required this.onOpenRequestDetail,
+    required this.isProviderActionBusy,
+    required this.onAcceptProviderOffer,
+    required this.onRejectProviderOffer,
+    required this.onWithdrawProviderOffer,
+    required this.onConfirmProviderAppointment,
+    required this.onRejectProviderAppointment,
+    required this.onCompleteProviderAppointment,
+  });
+
+  final bool loading;
+  final String? error;
+  final String selectedFilter;
+  final Map<String, dynamic> summary;
+  final List<Map<String, dynamic>> providerPendingOffers;
+  final List<Map<String, dynamic>> providerWaitingSelection;
+  final List<Map<String, dynamic>> providerActiveThreads;
+  final List<Map<String, dynamic>> providerPendingAppointments;
+  final List<Map<String, dynamic>> providerAgreements;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function(String filter) onFilterChanged;
+  final Future<void> Function({
+    required int requestId,
+    required String title,
+    required String subtitle,
+  }) onOpenThread;
+  final Future<void> Function(int requestId) onOpenRequestDetail;
+  final bool Function(String key) isProviderActionBusy;
+  final Future<void> Function(Map<String, dynamic> item) onAcceptProviderOffer;
+  final Future<void> Function(Map<String, dynamic> item) onRejectProviderOffer;
+  final Future<void> Function(Map<String, dynamic> item)
+      onWithdrawProviderOffer;
+  final Future<void> Function(Map<String, dynamic> item)
+      onConfirmProviderAppointment;
+  final Future<void> Function(Map<String, dynamic> item)
+      onRejectProviderAppointment;
+  final Future<void> Function(Map<String, dynamic> item)
+      onCompleteProviderAppointment;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (error != null) {
+      return _ErrorState(message: error!, onRetry: onRefresh);
+    }
+
+    final queueCount = _summaryCount(
+            summary, 'pending_offers_count', providerPendingOffers.length) +
+        _summaryCount(
+          summary,
+          'waiting_customer_selection_count',
+          providerWaitingSelection.length,
+        ) +
+        _summaryCount(
+          summary,
+          'pending_appointments_count',
+          providerPendingAppointments.length,
+        );
+    final activeCount = _summaryCount(
+      summary,
+      'active_threads_count',
+      providerActiveThreads.length,
+    );
+    final agreementCount = _summaryCount(
+      summary,
+      'agreements_count',
+      providerAgreements.length,
+    );
+    final completedAgreementCount = _summaryCount(
+      summary,
+      'completed_agreements_count',
+      providerAgreements
+          .where((item) => (item['status'] ?? '').toString() == 'completed')
+          .length,
+    );
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          const _SectionHero(
+            title: 'İşlerim',
+            subtitle:
+                'Biriken talepler, aktif işler ve webdeki Anlaşmalar geçmişi aynı akış içinde burada toplanır.',
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  label: 'Biriken işler',
+                  value: '$queueCount',
+                  tone: 'warning',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Aktif işler',
+                  value: '$activeCount',
+                  tone: 'success',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  label: 'Anlaşmalar',
+                  value: '$agreementCount',
+                  tone: 'primary',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Tamamlanan',
+                  value: '$completedAgreementCount',
+                  tone: 'muted',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _CategoryChip(
+                label: 'Biriken • $queueCount',
+                selected: selectedFilter == 'queue',
+                onTap: () => onFilterChanged('queue'),
+              ),
+              _CategoryChip(
+                label: 'Aktif işler • $activeCount',
+                selected: selectedFilter == 'active',
+                onTap: () => onFilterChanged('active'),
+              ),
+              _CategoryChip(
+                label: 'Anlaşmalar • $agreementCount',
+                selected: selectedFilter == 'history',
+                onTap: () => onFilterChanged('history'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          ...switch (selectedFilter) {
+            'active' => _buildActiveContent(),
+            'history' => _buildHistoryContent(),
+            _ => _buildQueueContent(),
+          },
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildQueueContent() {
+    final queueCount = providerPendingOffers.length +
+        providerWaitingSelection.length +
+        providerPendingAppointments.length;
+    if (queueCount == 0) {
+      return const [
+        _EmptyStateCard(
+          title: 'Biriken iş yok',
+          body:
+              'Yeni talepler, müşteri kararı bekleyen teklifler ve randevu onayları burada toplanacak.',
+        ),
+      ];
+    }
+
+    return [
+      const _SectionTitle(
+        title: 'Biriken talepler',
+        subtitle:
+            'Önce yanıt bekleyen işleri görün; ardından karar ve randevu adımlarını tamamlayın.',
+      ),
+      if (providerPendingOffers.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        const _SectionTitle(
+          title: 'Yeni talepler',
+          subtitle: 'Size yeni iletilen ve yanıtınızı bekleyen işler.',
+        ),
+        for (final item in providerPendingOffers)
+          _RequestCard(
+            title: (item['service_type'] ?? 'Talep').toString(),
+            badge: 'bekliyor',
+            subtitle:
+                '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+            meta: (item['customer_name'] ?? '').toString(),
+            flowStepLabel: _requestFlowStepLabel(item),
+            flowTitle: _requestFlowTitle(item),
+            flowNextAction: _requestFlowNextAction(item),
+            flowTone: _requestFlowTone(item),
+            body: _summarizeRequestDetails((item['details'] ?? '').toString()),
+            actionLabel: 'Detayı aç',
+            extraActions: [
+              if (item['can_accept'] == true)
+                FilledButton.tonalIcon(
+                  onPressed: isProviderActionBusy(
+                    'offer:${(item['id'] as num?)?.toInt() ?? 0}:accept',
+                  )
+                      ? null
+                      : () => onAcceptProviderOffer(item),
+                  icon: const Icon(Icons.check_circle_outline_rounded),
+                  label: const Text('Onayla'),
+                ),
+              if (item['can_reject'] == true)
+                OutlinedButton.icon(
+                  onPressed: isProviderActionBusy(
+                    'offer:${(item['id'] as num?)?.toInt() ?? 0}:reject',
+                  )
+                      ? null
+                      : () => onRejectProviderOffer(item),
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('Reddet'),
+                ),
+            ],
+            onPressed: () {
+              final requestId =
+                  (item['service_request_id'] as num?)?.toInt() ?? 0;
+              if (requestId > 0) {
+                return onOpenRequestDetail(requestId);
+              }
+              return Future<void>.value();
+            },
+          ),
+      ],
+      if (providerWaitingSelection.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        const _SectionTitle(
+          title: 'Müşteri kararı bekleyenler',
+          subtitle:
+              'Teklifiniz müşteriye ulaştı; seçilene kadar buradan takip edin.',
+        ),
+        for (final item in providerWaitingSelection)
+          _RequestCard(
+            title: (item['service_type'] ?? 'Talep').toString(),
+            badge: 'seçim',
+            subtitle:
+                '${(item['request_code'] ?? '').toString()} · ${(item['customer_name'] ?? '').toString()}',
+            meta: 'Durum: müşteri seçimi bekleniyor',
+            flowStepLabel: _requestFlowStepLabel(item),
+            flowTitle: _requestFlowTitle(item),
+            flowNextAction: _requestFlowNextAction(item),
+            flowTone: _requestFlowTone(item),
+            body: _summarizeRequestDetails((item['details'] ?? '').toString()),
+            actionLabel: 'Detayı aç',
+            extraActions: [
+              if (item['can_withdraw'] == true)
+                OutlinedButton.icon(
+                  onPressed: isProviderActionBusy(
+                    'offer:${(item['id'] as num?)?.toInt() ?? 0}:withdraw',
+                  )
+                      ? null
+                      : () => onWithdrawProviderOffer(item),
+                  icon: const Icon(Icons.undo_rounded),
+                  label: const Text('Geri çek'),
+                ),
+            ],
+            onPressed: () {
+              final requestId =
+                  (item['service_request_id'] as num?)?.toInt() ?? 0;
+              if (requestId > 0) {
+                return onOpenRequestDetail(requestId);
+              }
+              return Future<void>.value();
+            },
+          ),
+      ],
+      if (providerPendingAppointments.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        const _SectionTitle(
+          title: 'Bekleyen randevular',
+          subtitle:
+              'Onay, red ve tamamlama gibi randevu aksiyonlarını buradan yönetin.',
+        ),
+        for (final item in providerPendingAppointments)
+          _RequestCard(
+            title: (item['service_type'] ?? 'Randevu').toString(),
+            badge: _appointmentStatusLabel((item['status'] ?? '').toString()),
+            subtitle:
+                '${(item['request_code'] ?? '').toString()} · ${(item['customer_name'] ?? '').toString()}',
+            meta:
+                'Planlanan zaman: ${(item['scheduled_for'] ?? '').toString()}',
+            flowStepLabel: _requestFlowStepLabel(item),
+            flowTitle: _requestFlowTitle(item),
+            flowNextAction: _requestFlowNextAction(item),
+            flowTone: _requestFlowTone(item),
+            body: _summarizeRequestDetails((item['details'] ?? '').toString()),
+            actionLabel: 'Detayı aç',
+            extraActions: [
+              if (item['can_confirm'] == true)
+                FilledButton.tonalIcon(
+                  onPressed: isProviderActionBusy(
+                    'appointment:${(item['id'] as num?)?.toInt() ?? 0}:confirm',
+                  )
+                      ? null
+                      : () => onConfirmProviderAppointment(item),
+                  icon: const Icon(Icons.event_available_rounded),
+                  label: const Text('Onayla'),
+                ),
+              if (item['can_reject'] == true)
+                OutlinedButton.icon(
+                  onPressed: isProviderActionBusy(
+                    'appointment:${(item['id'] as num?)?.toInt() ?? 0}:reject',
+                  )
+                      ? null
+                      : () => onRejectProviderAppointment(item),
+                  icon: const Icon(Icons.event_busy_rounded),
+                  label: const Text('Reddet'),
+                ),
+              if (item['can_complete'] == true)
+                OutlinedButton.icon(
+                  onPressed: isProviderActionBusy(
+                    'appointment:${(item['id'] as num?)?.toInt() ?? 0}:complete',
+                  )
+                      ? null
+                      : () => onCompleteProviderAppointment(item),
+                  icon: const Icon(Icons.task_alt_rounded),
+                  label: const Text('Bitir'),
+                ),
+            ],
+            onPressed: () {
+              final requestId =
+                  (item['service_request_id'] as num?)?.toInt() ?? 0;
+              if (requestId > 0) {
+                return onOpenRequestDetail(requestId);
+              }
+              return Future<void>.value();
+            },
+          ),
+      ],
+    ];
+  }
+
+  List<Widget> _buildActiveContent() {
+    if (providerActiveThreads.isEmpty) {
+      return const [
+        _EmptyStateCard(
+          title: 'Aktif iş bulunmuyor',
+          body: 'Eşleşen bir talep olduğunda bu alan otomatik olarak dolacak.',
+        ),
+      ];
+    }
+
+    return [
+      const _SectionTitle(
+        title: 'Aktif işler',
+        subtitle:
+            'Mesajlaşma açık olan işleri buradan yönetin; detay ve sohbet aynı akışta kalsın.',
+      ),
+      for (final item in providerActiveThreads)
+        _RequestCard(
+          title: (item['service_type'] ?? 'İş').toString(),
+          badge: 'aktif',
+          subtitle:
+              '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+          meta:
+              '${(item['customer_name'] ?? '').toString()} · Okunmamış: ${(item['unread_messages'] ?? 0).toString()}',
+          flowStepLabel: _requestFlowStepLabel(item),
+          flowTitle: _requestFlowTitle(item),
+          flowNextAction: _requestFlowNextAction(item),
+          flowTone: _requestFlowTone(item),
+          body: _summarizeRequestDetails((item['details'] ?? '').toString()),
+          actionLabel: 'Mesajları aç',
+          extraActions: [
+            FilledButton.tonal(
+              onPressed: () {
+                final requestId = (item['id'] as num?)?.toInt() ?? 0;
+                if (requestId > 0) {
+                  onOpenRequestDetail(requestId);
+                }
+              },
+              child: const Text('Detayı aç'),
+            ),
+          ],
+          onPressed: () {
+            final requestId = (item['id'] as num?)?.toInt() ?? 0;
+            if (requestId > 0) {
+              return onOpenThread(
+                requestId: requestId,
+                title: (item['service_type'] ?? 'İş').toString(),
+                subtitle:
+                    '${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+              );
+            }
+            return Future<void>.value();
+          },
+        ),
+    ];
+  }
+
+  List<Widget> _buildHistoryContent() {
+    if (providerAgreements.isEmpty) {
+      return const [
+        _EmptyStateCard(
+          title: 'Anlaşma geçmişi boş',
+          body:
+              'Webdeki Anlaşmalar ekranında görünen eşleşmeler burada da listelenecek.',
+        ),
+      ];
+    }
+
+    return [
+      const _SectionTitle(
+        title: 'Anlaşma geçmişi',
+        subtitle:
+            'Eşleşen, tamamlanan ve iptal edilen tüm anlaşmalar webdeki mantıkla burada tutulur.',
+      ),
+      for (final item in providerAgreements)
+        _RequestCard(
+          title: (item['service_type'] ?? 'İş').toString(),
+          badge: _providerAgreementBadgeLabel(item),
+          subtitle:
+              '${(item['request_code'] ?? '').toString()} · ${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+          meta: _providerAgreementMeta(item),
+          flowStepLabel: _requestFlowStepLabel(item),
+          flowTitle: _requestFlowTitle(item),
+          flowNextAction: _requestFlowNextAction(item),
+          flowTone: _requestFlowTone(item),
+          body: _summarizeRequestDetails((item['details'] ?? '').toString()),
+          actionLabel: 'Detayı aç',
+          extraActions: [
+            if ((item['status'] ?? '').toString() == 'matched')
+              FilledButton.tonal(
+                onPressed: () {
+                  final requestId = (item['id'] as num?)?.toInt() ?? 0;
+                  if (requestId > 0) {
+                    onOpenThread(
+                      requestId: requestId,
+                      title: (item['service_type'] ?? 'İş').toString(),
+                      subtitle:
+                          '${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+                    );
+                  }
+                },
+                child: const Text('Mesajlar'),
+              ),
+          ],
+          onPressed: () {
+            final requestId = (item['id'] as num?)?.toInt() ?? 0;
+            if (requestId > 0) {
+              return onOpenRequestDetail(requestId);
+            }
+            return Future<void>.value();
+          },
+        ),
     ];
   }
 }
@@ -2988,6 +3471,59 @@ String _formatIsoDateTime(String rawValue) {
   final local = parsed.toLocal();
   String two(int value) => value.toString().padLeft(2, '0');
   return '${two(local.day)}.${two(local.month)}.${local.year} ${two(local.hour)}:${two(local.minute)}';
+}
+
+int _summaryCount(
+  Map<String, dynamic> summary,
+  String key,
+  int fallback,
+) {
+  final raw = summary[key];
+  if (raw is num) {
+    return raw.toInt();
+  }
+  return fallback;
+}
+
+String _providerAgreementBadgeLabel(Map<String, dynamic> item) {
+  final statusUiLabel = (item['status_ui_label'] ?? '').toString().trim();
+  if (statusUiLabel.isNotEmpty) {
+    return statusUiLabel;
+  }
+  final appointmentStatus = _appointmentStatusLabel(
+    (item['appointment_status'] ?? '').toString(),
+  );
+  if (appointmentStatus.isNotEmpty) {
+    return appointmentStatus;
+  }
+  return _requestStatusLabel((item['status'] ?? '').toString());
+}
+
+String _providerAgreementMeta(Map<String, dynamic> item) {
+  final parts = <String>[];
+  final customerName = (item['customer_name'] ?? '').toString().trim();
+  final matchedAt = (item['matched_at'] ?? '').toString().trim();
+  final appointmentScheduledFor =
+      (item['appointment_scheduled_for'] ?? '').toString().trim();
+  final unreadMessages = (item['unread_messages'] as num?)?.toInt() ?? 0;
+
+  if (customerName.isNotEmpty) {
+    parts.add(customerName);
+  }
+  if (matchedAt.isNotEmpty) {
+    parts.add('Anlaşma: ${_formatIsoDateTime(matchedAt)}');
+  }
+  if (appointmentScheduledFor.isNotEmpty) {
+    parts.add('Randevu: ${_formatIsoDateTime(appointmentScheduledFor)}');
+  } else if ((item['appointment_status'] ?? '').toString().trim().isNotEmpty) {
+    parts.add(
+      _appointmentStatusLabel((item['appointment_status'] ?? '').toString()),
+    );
+  }
+  if (unreadMessages > 0) {
+    parts.add('$unreadMessages okunmamış');
+  }
+  return parts.join(' · ');
 }
 
 String _customerRequestStageText(Map<String, dynamic> item) {

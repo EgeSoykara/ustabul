@@ -293,7 +293,7 @@ class MobileDataService {
 
   Future<Map<String, dynamic>> fetchProviderDashboard({
     required String accessToken,
-    int threadLimit = 20,
+    int threadLimit = 100,
   }) async {
     final response = await _apiClient.get(
       '/mobile/api/v1/provider/dashboard/',

@@ -312,6 +312,7 @@ def build_provider_dashboard_summary(
     waiting_customer_selection_qs,
     active_threads_qs,
     pending_appointments_qs,
+    agreements_qs,
 ):
     summary = {
         "membership_status": provider.membership_status,
@@ -321,6 +322,7 @@ def build_provider_dashboard_summary(
         "waiting_customer_selection_count": waiting_customer_selection_qs.count(),
         "active_threads_count": active_threads_qs.count(),
         "pending_appointments_count": pending_appointments_qs.count(),
+        "agreements_count": agreements_qs.count(),
         **pending_offers_qs.aggregate(
             latest_pending_offer_sent_at=Max("sent_at"),
             latest_pending_offer_response_at=Max("responded_at"),
@@ -339,6 +341,15 @@ def build_provider_dashboard_summary(
         **pending_appointments_qs.aggregate(
             latest_pending_appointment_updated_at=Max("updated_at"),
             latest_pending_appointment_scheduled_for=Max("scheduled_for"),
+        ),
+        **agreements_qs.aggregate(
+            matched_agreements_count=Count("id", filter=Q(status="matched")),
+            completed_agreements_count=Count("id", filter=Q(status="completed")),
+            cancelled_agreements_count=Count("id", filter=Q(status="cancelled")),
+            latest_agreement_match_at=Max("matched_at"),
+            latest_agreement_message_at=Max("messages__created_at"),
+            latest_agreement_workflow_at=Max("workflow_events__created_at"),
+            latest_agreement_appointment_at=Max("appointment__updated_at"),
         ),
     }
     return {
@@ -448,6 +459,41 @@ def serialize_provider_appointment_card(appointment):
         "can_confirm": appointment.status == "pending",
         "can_reject": appointment.status == "pending",
         "can_complete": appointment.status in {"confirmed", "pending_customer"},
+        **serialize_flow_state_fields(flow_state),
+    }
+
+
+def serialize_provider_agreement_card(service_request, appointment, *, unread_messages=0, calendar_enabled):
+    flow_state = build_provider_thread_flow_state(
+        appointment,
+        calendar_enabled=calendar_enabled,
+    )
+    status_ui = get_service_request_status_ui(
+        service_request,
+        appointment,
+        calendar_enabled=calendar_enabled,
+    )
+    return {
+        "id": service_request.id,
+        "request_code": service_request.display_code,
+        "service_type": service_request.service_type.name,
+        "customer_name": service_request.customer_name,
+        "customer_phone": service_request.customer_phone,
+        "city": service_request.city,
+        "district": service_request.district,
+        "details": service_request.details,
+        "status": service_request.status,
+        "matched_offer_id": service_request.matched_offer_id,
+        "matched_at": service_request.matched_at.isoformat() if service_request.matched_at else None,
+        "appointment_status": appointment.status if appointment else "",
+        "appointment_scheduled_for": (
+            appointment.scheduled_for.isoformat()
+            if appointment and appointment.scheduled_for
+            else None
+        ),
+        "status_ui_label": status_ui["label"],
+        "status_ui_class": status_ui["css_status"],
+        "unread_messages": int(unread_messages or 0),
         **serialize_flow_state_fields(flow_state),
     }
 
@@ -1834,13 +1880,27 @@ class MobileProviderDashboardView(APIView):
             return Response({"detail": "pending-approval"}, status=status.HTTP_403_FORBIDDEN)
 
         summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
-        thread_limit_raw = (request.GET.get("thread_limit") or "20").strip()
-        thread_limit = min(100, max(1, int(thread_limit_raw) if thread_limit_raw.isdigit() else 20))
+        thread_limit_raw = (request.GET.get("thread_limit") or "100").strip()
+        thread_limit = min(200, max(1, int(thread_limit_raw) if thread_limit_raw.isdigit() else 100))
 
         active_threads_qs = provider.service_requests.filter(
             status="matched",
             matched_offer__isnull=False,
             matched_offer__provider=provider,
+        )
+        agreements_qs = (
+            ServiceRequest.objects.filter(
+                matched_provider=provider,
+                matched_offer__isnull=False,
+            )
+            .select_related(
+                "service_type",
+                "customer",
+                "matched_provider",
+                "matched_offer",
+                "matched_offer__provider",
+            )
+            .order_by(F("matched_at").desc(nulls_last=True), "-created_at")
         )
         pending_offers_qs = provider.offers.filter(status="pending")
         waiting_customer_selection_qs = provider.offers.filter(
@@ -1860,6 +1920,7 @@ class MobileProviderDashboardView(APIView):
                 waiting_customer_selection_qs=waiting_customer_selection_qs,
                 active_threads_qs=active_threads_qs,
                 pending_appointments_qs=pending_appointments_qs,
+                agreements_qs=agreements_qs,
             )
             return Response(summary, status=status.HTTP_200_OK)
 
@@ -1869,6 +1930,7 @@ class MobileProviderDashboardView(APIView):
             waiting_customer_selection_qs=waiting_customer_selection_qs,
             active_threads_qs=active_threads_qs,
             pending_appointments_qs=pending_appointments_qs,
+            agreements_qs=agreements_qs,
         )
         active_threads = list(
             active_threads_qs.select_related("service_type", "customer").order_by("-created_at")[:thread_limit]
@@ -1885,22 +1947,27 @@ class MobileProviderDashboardView(APIView):
                 )
             }
         pending_offers = list(
-            pending_offers_qs.select_related("service_request", "service_request__service_type").order_by("-sent_at")[
-                :10
-            ]
+            pending_offers_qs.select_related("service_request", "service_request__service_type").order_by("-sent_at")
         )
         waiting_customer_selection = list(
             waiting_customer_selection_qs
             .select_related("service_request", "service_request__service_type")
-            .order_by("-responded_at", "-sent_at")[:10]
+            .order_by("-responded_at", "-sent_at")
         )
         pending_appointments = []
         if calendar_enabled:
             pending_appointments = list(
                 pending_appointments_qs.select_related("service_request", "service_request__service_type").order_by(
                     "scheduled_for"
-                )[:10]
+                )
             )
+        agreements = list(agreements_qs)
+        agreement_ids = [item.id for item in agreements]
+        agreement_appointment_map = {
+            item.service_request_id: item
+            for item in ServiceAppointment.objects.filter(service_request_id__in=agreement_ids)
+        }
+        agreement_unread_map = build_unread_message_map(agreement_ids, "provider")
         membership = build_provider_membership_context(provider)
 
         return Response(
@@ -1910,6 +1977,16 @@ class MobileProviderDashboardView(APIView):
                 "pending_offers": [serialize_provider_offer_card(item) for item in pending_offers],
                 "waiting_customer_selection": [serialize_provider_offer_card(item) for item in waiting_customer_selection],
                 "pending_appointments": [serialize_provider_appointment_card(item) for item in pending_appointments],
+                "agreements": [
+                    serialize_provider_agreement_card(
+                        item,
+                        agreement_appointment_map.get(item.id),
+                        unread_messages=agreement_unread_map.get(item.id, 0),
+                        calendar_enabled=calendar_enabled,
+                    )
+                    for item in agreements
+                ],
+                "agreements_count": summary["summary"]["agreements_count"],
                 "summary": summary["summary"],
                 "version": summary["version"],
                 "active_threads": [

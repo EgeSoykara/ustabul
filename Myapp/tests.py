@@ -5539,6 +5539,8 @@ class MobileApiTests(TestCase):
         self.assertEqual(len(body["pending_offers"]), 1)
         self.assertEqual(len(body["waiting_customer_selection"]), 1)
         self.assertEqual(len(body["active_threads"]), 1)
+        self.assertEqual(body["agreements_count"], 1)
+        self.assertEqual(len(body["agreements"]), 1)
         self.assertTrue(body["membership"]["can_receive_new_requests"])
         self.assertEqual(body["pending_offers"][0]["flow_step"], "Adım 1/4")
         self.assertEqual(
@@ -5546,6 +5548,117 @@ class MobileApiTests(TestCase):
             "Talebi onaylayın veya reddedin.",
         )
         self.assertEqual(body["active_threads"][0]["flow_step"], "Adım 3/4")
+        self.assertEqual(body["summary"]["agreements_count"], 1)
+        self.assertEqual(body["summary"]["matched_agreements_count"], 1)
+
+    def test_mobile_provider_dashboard_includes_agreement_history(self):
+        matched_request = ServiceRequest.objects.create(
+            customer_name="Aktif Eslesme",
+            customer_phone="05004440011",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Aktif anlasma",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=matched_request,
+            provider=self.provider,
+            token="MOBILEAGMATCH001",
+            sequence=1,
+            status="accepted",
+        )
+        matched_request.matched_offer = matched_offer
+        matched_request.matched_at = timezone.now() - timedelta(hours=1)
+        matched_request.save(update_fields=["matched_offer", "matched_at"])
+
+        completed_request = ServiceRequest.objects.create(
+            customer_name="Tamamlanan Is",
+            customer_phone="05005550022",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Tamamlanan anlasma",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="completed",
+        )
+        completed_offer = ProviderOffer.objects.create(
+            service_request=completed_request,
+            provider=self.provider,
+            token="MOBILEAGDONE001",
+            sequence=1,
+            status="accepted",
+        )
+        completed_request.matched_offer = completed_offer
+        completed_request.matched_at = timezone.now() - timedelta(days=1)
+        completed_request.save(update_fields=["matched_offer", "matched_at"])
+        ServiceAppointment.objects.create(
+            service_request=completed_request,
+            provider=self.provider,
+            scheduled_for=timezone.now() - timedelta(days=1, hours=2),
+            status="completed",
+        )
+
+        cancelled_request = ServiceRequest.objects.create(
+            customer_name="Iptal Edilen Is",
+            customer_phone="05006660033",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Iptal edilen anlasma",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="cancelled",
+        )
+        cancelled_offer = ProviderOffer.objects.create(
+            service_request=cancelled_request,
+            provider=self.provider,
+            token="MOBILEAGCANCEL001",
+            sequence=1,
+            status="accepted",
+        )
+        cancelled_request.matched_offer = cancelled_offer
+        cancelled_request.matched_at = timezone.now() - timedelta(days=2)
+        cancelled_request.save(update_fields=["matched_offer", "matched_at"])
+
+        ProviderOffer.objects.create(
+            service_request=ServiceRequest.objects.create(
+                customer_name="Bekleyen Is",
+                customer_phone="05007770044",
+                city="Lefkosa",
+                district="Ortakoy",
+                service_type=self.service,
+                details="Anlasma olmamali",
+                customer=self.customer_user,
+                status="pending_provider",
+            ),
+            provider=self.provider,
+            token="MOBILEAGSKIP001",
+            sequence=1,
+            status="pending",
+        )
+
+        payload = self._login_mobile("mobile_provider", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/provider/dashboard/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["summary"]["agreements_count"], 3)
+        self.assertEqual(body["summary"]["matched_agreements_count"], 1)
+        self.assertEqual(body["summary"]["completed_agreements_count"], 1)
+        self.assertEqual(body["summary"]["cancelled_agreements_count"], 1)
+        self.assertEqual(len(body["agreements"]), 3)
+        self.assertEqual(
+            [item["status"] for item in body["agreements"]],
+            ["matched", "completed", "cancelled"],
+        )
 
     def test_mobile_provider_dashboard_summary_only_returns_version(self):
         pending_request = ServiceRequest.objects.create(
