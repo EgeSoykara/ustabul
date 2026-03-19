@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -1109,6 +1109,7 @@ class MobileCustomerRequestsView(APIView):
         if get_provider_for_user(request.user):
             return Response({"detail": "forbidden-provider"}, status=status.HTTP_403_FORBIDDEN)
 
+        scope = (request.GET.get("scope") or "").strip()
         status_filter = (request.GET.get("status") or "").strip()
         limit_raw = (request.GET.get("limit") or "20").strip()
         offset_raw = (request.GET.get("offset") or "0").strip()
@@ -1117,10 +1118,16 @@ class MobileCustomerRequestsView(APIView):
 
         qs = (
             ServiceRequest.objects.filter(customer=request.user)
-            .select_related("service_type", "matched_provider")
+            .select_related("service_type", "matched_provider", "matched_offer", "matched_offer__provider")
             .prefetch_related("provider_offers__provider")
-            .order_by("-created_at")
         )
+        if scope == "agreements":
+            qs = qs.filter(matched_offer__isnull=False).order_by(
+                F("matched_at").desc(nulls_last=True),
+                "-created_at",
+            )
+        else:
+            qs = qs.order_by("-created_at")
         if status_filter:
             qs = qs.filter(status=status_filter)
 

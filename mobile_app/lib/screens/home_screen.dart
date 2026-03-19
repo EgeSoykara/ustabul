@@ -65,6 +65,17 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> get _customerRequests =>
       _mapList(_dashboardPayload['results']);
 
+  List<Map<String, dynamic>> get _customerAgreements =>
+      _mapList(_dashboardPayload['agreements']);
+
+  int get _customerAgreementCount {
+    final rawCount = _dashboardPayload['agreements_count'];
+    if (rawCount is num) {
+      return rawCount.toInt();
+    }
+    return _customerAgreements.length;
+  }
+
   List<Map<String, dynamic>> get _providerPendingOffers =>
       _mapList(_dashboardPayload['pending_offers']);
 
@@ -86,11 +97,16 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList();
   }
 
-  List<Map<String, dynamic>> get _customerVisibleRequests => _customerRequests
-      .where(
-        (item) => _matchesCustomerRequestFilter(item, _customerRequestFilter),
-      )
-      .toList();
+  List<Map<String, dynamic>> get _customerVisibleRequests {
+    if (_customerRequestFilter == 'history') {
+      return _customerAgreements;
+    }
+    return _customerRequests
+        .where(
+          (item) => _matchesCustomerRequestFilter(item, _customerRequestFilter),
+        )
+        .toList();
+  }
 
   int get _notificationsTabIndex => _isProvider ? 2 : 3;
 
@@ -134,8 +150,24 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       } else {
         await widget.sessionController.refreshProfile();
-        final payload = await widget.dataService
-            .fetchCustomerRequests(accessToken: accessToken, limit: 50);
+        final responses = await Future.wait<Map<String, dynamic>>([
+          widget.dataService.fetchCustomerRequests(
+            accessToken: accessToken,
+            limit: 50,
+          ),
+          widget.dataService.fetchCustomerRequests(
+            accessToken: accessToken,
+            limit: 50,
+            scope: 'agreements',
+          ),
+        ]);
+        final requestsPayload = responses[0];
+        final agreementsPayload = responses[1];
+        final payload = <String, dynamic>{
+          ...requestsPayload,
+          'agreements': agreementsPayload['results'] ?? const [],
+          'agreements_count': agreementsPayload['count'] ?? 0,
+        };
         if (!mounted) {
           return;
         }
@@ -872,6 +904,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 sessionSnapshot: _sessionSnapshot,
                 dashboardPayload: _dashboardPayload,
                 customerRequests: _customerRequests,
+                customerAgreementCount: _customerAgreementCount,
                 providerPendingOffers: _providerPendingOffers,
                 providerWaitingSelection: _providerWaitingSelection,
                 providerActiveThreads: _providerActiveThreads,
@@ -910,6 +943,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     error: _dashboardError,
                     selectedFilter: _customerRequestFilter,
                     customerRequests: _customerRequests,
+                    customerAgreementCount: _customerAgreementCount,
                     visibleRequests: _customerVisibleRequests,
                     onRefresh: _loadDashboard,
                     onFilterChanged: _setCustomerRequestFilter,
@@ -1063,6 +1097,7 @@ class _DashboardTab extends StatelessWidget {
     required this.sessionSnapshot,
     required this.dashboardPayload,
     required this.customerRequests,
+    required this.customerAgreementCount,
     required this.providerPendingOffers,
     required this.providerWaitingSelection,
     required this.providerActiveThreads,
@@ -1089,6 +1124,7 @@ class _DashboardTab extends StatelessWidget {
   final Map<String, dynamic> sessionSnapshot;
   final Map<String, dynamic> dashboardPayload;
   final List<Map<String, dynamic>> customerRequests;
+  final int customerAgreementCount;
   final List<Map<String, dynamic>> providerPendingOffers;
   final List<Map<String, dynamic>> providerWaitingSelection;
   final List<Map<String, dynamic>> providerActiveThreads;
@@ -1152,9 +1188,7 @@ class _DashboardTab extends StatelessWidget {
         .where((item) => {'new', 'pending_provider'}
             .contains((item['status'] ?? '').toString()))
         .length;
-    final historyCount = customerRequests
-        .where((item) => _matchesCustomerRequestFilter(item, 'history'))
-        .length;
+    final historyCount = customerAgreementCount;
     final recentRequests = customerRequests
         .where((item) => _matchesCustomerRequestFilter(item, 'active'))
         .take(3)
@@ -1752,6 +1786,7 @@ class _RequestsTab extends StatelessWidget {
     required this.error,
     required this.selectedFilter,
     required this.customerRequests,
+    required this.customerAgreementCount,
     required this.visibleRequests,
     required this.onRefresh,
     required this.onFilterChanged,
@@ -1764,6 +1799,7 @@ class _RequestsTab extends StatelessWidget {
   final String? error;
   final String selectedFilter;
   final List<Map<String, dynamic>> customerRequests;
+  final int customerAgreementCount;
   final List<Map<String, dynamic>> visibleRequests;
   final Future<void> Function() onRefresh;
   final Future<void> Function(String filter) onFilterChanged;
@@ -1792,9 +1828,7 @@ class _RequestsTab extends StatelessWidget {
     final inProgressCount = customerRequests
         .where((item) => (item['status'] ?? '').toString() == 'matched')
         .length;
-    final historyCount = customerRequests
-        .where((item) => _matchesCustomerRequestFilter(item, 'history'))
-        .length;
+    final historyCount = customerAgreementCount;
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -1911,7 +1945,7 @@ class _RequestsTab extends StatelessWidget {
                 return Future<void>.value();
               },
             ),
-          if (customerRequests.isEmpty) ...[
+          if (customerRequests.isEmpty && customerAgreementCount == 0) ...[
             const SizedBox(height: 16),
             Row(
               children: [

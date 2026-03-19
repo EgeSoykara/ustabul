@@ -120,14 +120,19 @@ class MobileDataService {
     required String accessToken,
     int limit = 30,
     int offset = 0,
+    String? scope,
   }) async {
+    final queryParameters = <String, dynamic>{
+      'limit': limit,
+      'offset': offset,
+    };
+    if ((scope ?? '').trim().isNotEmpty) {
+      queryParameters['scope'] = scope!.trim();
+    }
     final response = await _apiClient.get(
       '/mobile/api/v1/customer/requests/',
       accessToken: accessToken,
-      queryParameters: {
-        'limit': limit,
-        'offset': offset,
-      },
+      queryParameters: queryParameters,
     );
     if (response is! Map<String, dynamic>) {
       throw const ApiException('Talep listesi yanıtı geçersiz.');

@@ -5239,6 +5239,66 @@ class MobileApiTests(TestCase):
         self.assertEqual(body["results"][0]["status_ui_label"], "Müşteri İptal Etti")
         self.assertEqual(body["results"][0]["status_ui_class"], "cancelled")
 
+    def test_mobile_customer_requests_scope_agreements_matches_web_history_logic(self):
+        for index in range(55):
+            ServiceRequest.objects.create(
+                customer_name=f"Aktif Musteri {index}",
+                customer_phone=f"0500999{index:04d}",
+                city="Lefkosa",
+                district="Ortakoy",
+                service_type=self.service,
+                details="Aktif talep",
+                customer=self.customer_user,
+                status="new",
+            )
+
+        excluded_request = ServiceRequest.objects.create(
+            customer_name="Disarida Kalacak Musteri",
+            customer_phone="05007770000",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Tamamlandi ama anlasma degil",
+            customer=self.customer_user,
+            status="completed",
+        )
+
+        included_request = ServiceRequest.objects.create(
+            customer_name="Anlasma Gecmisi",
+            customer_phone="05007771111",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Biten is anlasmalara dusmeli",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="completed",
+        )
+        included_offer = ProviderOffer.objects.create(
+            service_request=included_request,
+            provider=self.provider,
+            token="MOBILEAGREEHISTORY001",
+            sequence=1,
+            status="accepted",
+        )
+        included_request.matched_offer = included_offer
+        included_request.matched_at = timezone.now()
+        included_request.save(update_fields=["matched_offer", "matched_at"])
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/customer/requests/?scope=agreements&limit=10&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["results"][0]["id"], included_request.id)
+        self.assertEqual(body["results"][0]["matched_offer_id"], included_offer.id)
+        self.assertNotEqual(body["results"][0]["id"], excluded_request.id)
+
     def test_mobile_register_device_creates_record(self):
         payload = self._login_mobile("mobile_customer", "GucluSifre123!")
         access = payload["access"]
