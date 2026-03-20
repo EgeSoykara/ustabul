@@ -35,6 +35,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
 
   Timer? _autoRefreshTimer;
   Timer? _liveUpdateTimer;
+  StreamSubscription<Map<String, dynamic>>? _liveUpdatesSubscription;
   bool _loading = true;
   bool _actionLoading = false;
   bool _requestInFlight = false;
@@ -148,6 +149,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _subscribeToLiveUpdates();
     _startAutoRefresh();
     _load();
   }
@@ -156,6 +158,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
   void dispose() {
     _autoRefreshTimer?.cancel();
     _liveUpdateTimer?.cancel();
+    _liveUpdatesSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _ratingCommentController.dispose();
     super.dispose();
@@ -175,6 +178,35 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
       _refreshTickInterval,
       (_) => _refreshSilently(),
     );
+  }
+
+  void _subscribeToLiveUpdates() {
+    _liveUpdatesSubscription?.cancel();
+    _liveUpdatesSubscription = widget.sessionController.liveUpdates.listen(
+      _handleLiveUpdateEvent,
+    );
+  }
+
+  void _handleLiveUpdateEvent(Map<String, dynamic> event) {
+    if (!mounted ||
+        _actionLoading ||
+        _appLifecycleState != AppLifecycleState.resumed ||
+        !_isVisibleRoute()) {
+      return;
+    }
+    if ((event['type'] ?? '').toString() != 'refresh.hint') {
+      return;
+    }
+    final rawRequestId = event['request_id'];
+    final requestId = rawRequestId is int
+        ? rawRequestId
+        : rawRequestId is num
+            ? rawRequestId.toInt()
+            : int.tryParse(rawRequestId?.toString() ?? '');
+    if (requestId != widget.requestId) {
+      return;
+    }
+    unawaited(_load(silent: true));
   }
 
   bool _isVisibleRoute() {

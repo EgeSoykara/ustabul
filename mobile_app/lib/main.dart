@@ -10,6 +10,7 @@ import 'services/auth_service.dart';
 import 'services/auth_storage.dart';
 import 'services/mobile_data_service.dart';
 import 'services/push_service.dart';
+import 'services/realtime_updates_service.dart';
 import 'services/theme_storage.dart';
 import 'services/web_auth_service.dart';
 import 'state/session_controller.dart';
@@ -49,6 +50,7 @@ class _UstaBulMobileAppState extends State<UstaBulMobileApp> {
   late final AuthService _authService;
   late final AuthStorage _authStorage;
   late final PushService _pushService;
+  late final RealtimeUpdatesService _realtimeUpdatesService;
   late final MobileDataService _mobileDataService;
   late final WebAuthService _webAuthService;
   late final SessionController _sessionController;
@@ -60,12 +62,15 @@ class _UstaBulMobileAppState extends State<UstaBulMobileApp> {
     _authService = AuthService(_apiClient);
     _authStorage = AuthStorage();
     _pushService = PushService(_authService);
+    _realtimeUpdatesService =
+        RealtimeUpdatesService(siteUrl: AppConfig.siteUrl);
     _mobileDataService = MobileDataService(_apiClient);
     _webAuthService = WebAuthService(siteUrl: AppConfig.siteUrl);
     _sessionController = SessionController(
       authService: _authService,
       authStorage: _authStorage,
       pushService: _pushService,
+      realtimeUpdatesService: _realtimeUpdatesService,
       webAuthService: _webAuthService,
     );
     widget.themeController.addListener(_handleThemeChanged);

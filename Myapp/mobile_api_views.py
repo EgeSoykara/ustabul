@@ -105,6 +105,7 @@ from .notifications import (
     mark_notification_entry_read,
     normalize_notification_category,
 )
+from .realtime import publish_mobile_refresh_for_user_ids
 
 
 def build_identity_payload(user):
@@ -2743,7 +2744,13 @@ class MobileNotificationsView(APIView):
 
 class MobileNotificationsReadAllView(APIView):
     def post(self, request):
-        return Response(mark_all_notifications_read(request.user), status=status.HTTP_200_OK)
+        result = mark_all_notifications_read(request.user)
+        publish_mobile_refresh_for_user_ids(
+            [request.user.id],
+            areas=("notifications", "dashboard"),
+            reason="notifications.read_all",
+        )
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class MobileNotificationReadView(APIView):
@@ -2751,6 +2758,11 @@ class MobileNotificationReadView(APIView):
         result = mark_notification_entry_read(request.user, entry_id)
         if not result:
             return Response({"detail": "not-found"}, status=status.HTTP_404_NOT_FOUND)
+        publish_mobile_refresh_for_user_ids(
+            [request.user.id],
+            areas=("notifications", "dashboard"),
+            reason="notifications.read_one",
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 

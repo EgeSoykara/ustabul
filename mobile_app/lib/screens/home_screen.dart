@@ -46,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final Set<String> _runningProviderActionKeys = <String>{};
   Timer? _autoRefreshTimer;
   Timer? _liveUpdateTimer;
+  StreamSubscription<Map<String, dynamic>>? _liveUpdatesSubscription;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   DateTime? _lastDashboardSyncAt;
   DateTime? _lastNotificationSyncAt;
@@ -78,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _subscribeToLiveUpdates();
     _startAutoRefresh();
     _loadDashboard();
   }
@@ -86,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     _autoRefreshTimer?.cancel();
     _liveUpdateTimer?.cancel();
+    _liveUpdatesSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -228,6 +231,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   bool _isNotFoundError(Object error) {
     return error is ApiException && error.statusCode == 404;
+  }
+
+  void _subscribeToLiveUpdates() {
+    _liveUpdatesSubscription?.cancel();
+    _liveUpdatesSubscription = widget.sessionController.liveUpdates.listen(
+      _handleLiveUpdateEvent,
+    );
+  }
+
+  void _handleLiveUpdateEvent(Map<String, dynamic> event) {
+    if (!mounted ||
+        _appLifecycleState != AppLifecycleState.resumed ||
+        !_isVisibleRoute()) {
+      return;
+    }
+    if ((event['type'] ?? '').toString() != 'refresh.hint') {
+      return;
+    }
+
+    final rawAreas = event['areas'];
+    final areas = rawAreas is List
+        ? rawAreas.map((item) => item.toString()).toSet()
+        : const <String>{};
+
+    if (_shouldRefreshDashboardForTab(_currentIndex) &&
+        (areas.contains('dashboard') ||
+            areas.contains('messages') ||
+            areas.contains('request_detail'))) {
+      unawaited(_loadDashboard(silent: true));
+    }
+
+    if (areas.contains('notifications') &&
+        (_currentIndex == _notificationsTabIndex ||
+            _notificationsPayload.isNotEmpty)) {
+      unawaited(_loadNotifications(silent: true));
+    }
   }
 
   void _startAutoRefresh() {

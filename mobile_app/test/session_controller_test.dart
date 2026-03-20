@@ -6,6 +6,7 @@ import 'package:ustabul_mobile/services/api_client.dart';
 import 'package:ustabul_mobile/services/auth_service.dart';
 import 'package:ustabul_mobile/services/auth_storage.dart';
 import 'package:ustabul_mobile/services/push_service.dart';
+import 'package:ustabul_mobile/services/realtime_updates_service.dart';
 import 'package:ustabul_mobile/services/web_auth_service.dart';
 import 'package:ustabul_mobile/state/session_controller.dart';
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
@@ -26,6 +27,7 @@ void main() {
         authService: AuthService(apiClient),
         authStorage: storage,
         pushService: _FakePushService(),
+        realtimeUpdatesService: _FakeRealtimeUpdatesService(),
         webAuthService: _FakeWebAuthService(),
       );
 
@@ -51,6 +53,7 @@ void main() {
         authService: AuthService(apiClient),
         authStorage: storage,
         pushService: _FakePushService(),
+        realtimeUpdatesService: _FakeRealtimeUpdatesService(),
         webAuthService: _FakeWebAuthService(),
       );
 
@@ -189,6 +192,30 @@ class _FakeWebAuthService extends WebAuthService {
     required String password,
     required bool isProvider,
   }) async {}
+}
+
+class _FakeRealtimeUpdatesService extends RealtimeUpdatesService {
+  _FakeRealtimeUpdatesService() : super(siteUrl: 'https://example.com');
+
+  bool started = false;
+  bool stopped = false;
+
+  @override
+  Future<void> start({
+    required AccessTokenProvider tokenProvider,
+  }) async {
+    started = true;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopped = true;
+  }
+
+  @override
+  void dispose() {
+    stopped = true;
+  }
 }
 
 class _FakeWebViewPlatform extends WebViewPlatform {

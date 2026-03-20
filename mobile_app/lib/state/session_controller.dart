@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/auth_storage.dart';
 import '../services/push_service.dart';
+import '../services/realtime_updates_service.dart';
 import '../services/web_auth_service.dart';
 
 class SessionController extends ChangeNotifier {
@@ -12,15 +13,18 @@ class SessionController extends ChangeNotifier {
     required AuthService authService,
     required AuthStorage authStorage,
     required PushService pushService,
+    required RealtimeUpdatesService realtimeUpdatesService,
     required WebAuthService webAuthService,
   })  : _authService = authService,
         _authStorage = authStorage,
         _pushService = pushService,
+        _realtimeUpdatesService = realtimeUpdatesService,
         _webAuthService = webAuthService;
 
   final AuthService _authService;
   final AuthStorage _authStorage;
   final PushService _pushService;
+  final RealtimeUpdatesService _realtimeUpdatesService;
   final WebAuthService _webAuthService;
 
   AuthSession? _session;
@@ -33,6 +37,8 @@ class SessionController extends ChangeNotifier {
   bool get isLoading => _loading;
   String? get error => _error;
   bool get isAuthenticated => _session != null;
+  Stream<Map<String, dynamic>> get liveUpdates =>
+      _realtimeUpdatesService.events;
 
   Future<void> initialize() async {
     _initializing = true;
@@ -75,9 +81,11 @@ class SessionController extends ChangeNotifier {
       );
       await _authStorage.saveSession(_session!);
       await _pushService.initializeAndRegister(_session!);
+      await _realtimeUpdatesService.start(tokenProvider: ensureAccessToken);
     } catch (_) {
       _session = null;
       await _authStorage.clear();
+      await _realtimeUpdatesService.stop();
     } finally {
       _initializing = false;
       notifyListeners();
@@ -107,6 +115,7 @@ class SessionController extends ChangeNotifier {
         // Native mobile endpoints can still work even if the web session
         // handoff is temporarily unavailable.
       }
+      await _realtimeUpdatesService.start(tokenProvider: ensureAccessToken);
       return true;
     } catch (error) {
       _error = error.toString();
@@ -123,6 +132,7 @@ class SessionController extends ChangeNotifier {
     await _authStorage.clear();
     await _webAuthService.clear();
     await _pushService.dispose();
+    await _realtimeUpdatesService.stop();
     notifyListeners();
   }
 
@@ -180,6 +190,7 @@ class SessionController extends ChangeNotifier {
   @override
   void dispose() {
     _pushService.dispose();
+    _realtimeUpdatesService.dispose();
     super.dispose();
   }
 }

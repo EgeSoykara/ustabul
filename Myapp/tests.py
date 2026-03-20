@@ -2,7 +2,11 @@
 import json
 import re
 import smtplib
+import unittest
 from unittest.mock import patch
+
+from asgiref.sync import async_to_sync
+from Companywebsite.asgi import application
 
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -14,6 +18,12 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.test import RequestFactory
 from io import StringIO
+from rest_framework_simplejwt.tokens import RefreshToken
+
+try:
+    from channels.testing import WebsocketCommunicator
+except ModuleNotFoundError:
+    WebsocketCommunicator = None
 
 from .admin import ProviderPaymentAdmin
 from .models import (
@@ -6208,3 +6218,95 @@ class MobileApiTests(TestCase):
         appointment.refresh_from_db()
         self.assertEqual(appointment.status, "confirmed")
         self.assertEqual(appointment.provider_note, "Saat uygun.")
+
+
+@override_settings(
+    REALTIME_CHANNELS_ENABLED=True,
+    CHANNEL_LAYERS={
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    },
+)
+@unittest.skipIf(WebsocketCommunicator is None, "channels testing extras are unavailable")
+class MobileRealtimeChannelTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.service = ServiceType.objects.create(name="Elektrik", slug="elektrik-realtime")
+        self.customer = User.objects.create_user(
+            username="realtime_customer",
+            password="GucluSifre123!",
+        )
+        self.provider_user = User.objects.create_user(
+            username="realtime_provider",
+            password="GucluSifre123!",
+        )
+        self.provider = Provider.objects.create(
+            user=self.provider_user,
+            full_name="Realtime Usta",
+            city="Lefkosa",
+            district="Ortakoy",
+            phone="05551234567",
+            is_verified=True,
+            is_available=True,
+        )
+        self.provider.service_types.add(self.service)
+
+    def _access_token_for(self, user):
+        return str(RefreshToken.for_user(user).access_token)
+
+    def test_mobile_live_socket_accepts_jwt_and_replies_to_ping(self):
+        token = self._access_token_for(self.customer)
+
+        async def scenario():
+            communicator = WebsocketCommunicator(
+                application,
+                f"/ws/mobile/live/?token={token}",
+            )
+            connected, _subprotocol = await communicator.connect()
+            self.assertTrue(connected)
+            await communicator.send_json_to({"type": "ping"})
+            payload = await communicator.receive_json_from(timeout=1)
+            self.assertEqual(payload["type"], "pong")
+            await communicator.disconnect()
+
+        async_to_sync(scenario)()
+
+    def test_provider_offer_create_pushes_mobile_refresh_event(self):
+        token = self._access_token_for(self.provider_user)
+        service_request = ServiceRequest.objects.create(
+            customer_name="Ayse Yilmaz",
+            customer_phone="05550001122",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Sigorta arizasi",
+            customer=self.customer,
+            status="pending_provider",
+        )
+
+        async def scenario():
+            communicator = WebsocketCommunicator(
+                application,
+                f"/ws/mobile/live/?token={token}",
+            )
+            connected, _subprotocol = await communicator.connect()
+            self.assertTrue(connected)
+
+            with self.captureOnCommitCallbacks(execute=True):
+                ProviderOffer.objects.create(
+                    service_request=service_request,
+                    provider=self.provider,
+                    token="R" * 24,
+                    sequence=1,
+                    status="pending",
+                )
+
+            payload = await communicator.receive_json_from(timeout=1)
+            self.assertEqual(payload["type"], "refresh.hint")
+            self.assertEqual(payload["request_id"], service_request.id)
+            self.assertIn("dashboard", payload["areas"])
+            self.assertIn("notifications", payload["areas"])
+            await communicator.disconnect()
+
+        async_to_sync(scenario)()

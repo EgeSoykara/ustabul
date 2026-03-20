@@ -2,6 +2,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from .models import Provider, ServiceRequest
+from .realtime import mobile_live_group_name
 
 
 def request_messages_group_name(request_id):
@@ -101,3 +102,32 @@ class RequestMessagesConsumer(AsyncJsonWebsocketConsumer):
         payload = dict(raw_message)
         payload["mine"] = payload.get("sender_role") == getattr(self, "viewer_role", "")
         await self.send_json({"type": "message.created", "message": payload})
+
+
+class MobileLiveUpdatesConsumer(AsyncJsonWebsocketConsumer):
+    async def connect(self):
+        user = self.scope.get("user")
+        if not getattr(user, "is_authenticated", False):
+            await self.close(code=4401)
+            return
+
+        self.group_name = mobile_live_group_name(user.id)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        group_name = getattr(self, "group_name", "")
+        if group_name:
+            await self.channel_layer.group_discard(group_name, self.channel_name)
+        await super().disconnect(close_code)
+
+    async def receive_json(self, content, **kwargs):
+        event_type = (content or {}).get("type")
+        if event_type == "ping":
+            await self.send_json({"type": "pong"})
+
+    async def mobile_refresh_hint(self, event):
+        payload = event.get("event") or {}
+        if not payload:
+            return
+        await self.send_json(dict(payload))
