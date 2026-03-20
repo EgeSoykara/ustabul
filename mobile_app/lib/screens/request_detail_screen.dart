@@ -352,6 +352,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
 
   Future<void> _performAndPop(
       Future<Map<String, dynamic>> Function() action) async {
+    var didPop = false;
     setState(() {
       _actionLoading = true;
       _error = null;
@@ -365,7 +366,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
+      didPop = true;
       Navigator.of(context).pop(true);
+      return;
     } catch (error) {
       if (error is ApiException && error.statusCode == 404) {
         await _handleMissingNativeEndpoint(duringAction: true);
@@ -378,7 +381,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
         _error = error.toString();
       });
     } finally {
-      if (mounted) {
+      if (mounted && !didPop) {
         setState(() {
           _actionLoading = false;
         });
