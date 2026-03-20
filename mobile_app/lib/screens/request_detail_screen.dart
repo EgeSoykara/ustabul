@@ -29,7 +29,9 @@ class RequestDetailScreen extends StatefulWidget {
 
 class _RequestDetailScreenState extends State<RequestDetailScreen>
     with WidgetsBindingObserver {
-  static const Duration _autoRefreshInterval = Duration(seconds: 15);
+  static const Duration _refreshTickInterval = Duration(seconds: 5);
+  static const Duration _activeDetailRefreshInterval = Duration(seconds: 5);
+  static const Duration _settledDetailRefreshInterval = Duration(seconds: 10);
 
   Timer? _autoRefreshTimer;
   Timer? _liveUpdateTimer;
@@ -170,7 +172,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
   void _startAutoRefresh() {
     _autoRefreshTimer?.cancel();
     _autoRefreshTimer = Timer.periodic(
-      _autoRefreshInterval,
+      _refreshTickInterval,
       (_) => _refreshSilently(),
     );
   }
@@ -183,11 +185,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
     return route?.isCurrent ?? true;
   }
 
+  Duration _currentRefreshInterval() {
+    final status = (_request['status'] ?? '').toString();
+    if (status == 'completed' || status == 'cancelled') {
+      return _settledDetailRefreshInterval;
+    }
+    return _activeDetailRefreshInterval;
+  }
+
   bool _isRefreshDue() {
     if (_lastSyncAt == null) {
       return true;
     }
-    return DateTime.now().difference(_lastSyncAt!) >= _autoRefreshInterval;
+    return DateTime.now().difference(_lastSyncAt!) >= _currentRefreshInterval();
   }
 
   void _showLiveUpdateCue(String message) {

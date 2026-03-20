@@ -33,7 +33,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  static const Duration _autoRefreshInterval = Duration(seconds: 15);
+  static const Duration _refreshTickInterval = Duration(seconds: 5);
+  static const Duration _providerDashboardRefreshInterval =
+      Duration(seconds: 5);
+  static const Duration _customerDashboardRefreshInterval =
+      Duration(seconds: 8);
+  static const Duration _notificationsRefreshInterval = Duration(seconds: 8);
 
   int _currentIndex = 0;
   String _customerRequestFilter = 'active';
@@ -228,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _startAutoRefresh() {
     _autoRefreshTimer?.cancel();
     _autoRefreshTimer = Timer.periodic(
-      _autoRefreshInterval,
+      _refreshTickInterval,
       (_) => _refreshVisibleTabSilently(),
     );
   }
@@ -245,11 +250,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return index < _notificationsTabIndex;
   }
 
-  bool _isRefreshDue(DateTime? lastSyncAt) {
+  Duration _dashboardRefreshIntervalForTab(int index) {
+    if (_isProvider) {
+      return _providerDashboardRefreshInterval;
+    }
+    if (index == 0) {
+      return const Duration(seconds: 10);
+    }
+    return _customerDashboardRefreshInterval;
+  }
+
+  bool _isRefreshDue(DateTime? lastSyncAt, {required Duration interval}) {
     if (lastSyncAt == null) {
       return true;
     }
-    return DateTime.now().difference(lastSyncAt) >= _autoRefreshInterval;
+    return DateTime.now().difference(lastSyncAt) >= interval;
   }
 
   String _dashboardRefreshMessage() {
@@ -310,12 +325,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     if (_shouldRefreshDashboardForTab(_currentIndex) &&
-        (force || _isRefreshDue(_lastDashboardSyncAt))) {
+        (force ||
+            _isRefreshDue(
+              _lastDashboardSyncAt,
+              interval: _dashboardRefreshIntervalForTab(_currentIndex),
+            ))) {
       unawaited(_loadDashboard(silent: true));
     }
 
     if (_currentIndex == _notificationsTabIndex &&
-        (force || _isRefreshDue(_lastNotificationSyncAt))) {
+        (force ||
+            _isRefreshDue(
+              _lastNotificationSyncAt,
+              interval: _notificationsRefreshInterval,
+            ))) {
       unawaited(_loadNotifications(silent: true));
     }
 
