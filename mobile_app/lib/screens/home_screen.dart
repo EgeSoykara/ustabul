@@ -1027,19 +1027,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     required String title,
     required String hintText,
   }) async {
-    final controller = TextEditingController();
+    var draft = '';
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: BrandConfig.surfaceOf(context),
         title: Text(title),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
           autofocus: true,
           maxLength: 100,
           minLines: 1,
           maxLines: 3,
           decoration: InputDecoration(hintText: hintText),
+          onChanged: (value) {
+            draft = value;
+          },
         ),
         actions: [
           TextButton(
@@ -1047,13 +1049,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: const Text('Vazgeç'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(draft.trim()),
             child: const Text('Devam et'),
           ),
         ],
       ),
     );
-    unawaited(_disposeControllerAfterFrame(controller));
     return result;
   }
 
@@ -1080,14 +1081,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     return result == true;
-  }
-
-  Future<void> _disposeControllerAfterFrame(
-    TextEditingController controller,
-  ) async {
-    await Future<void>.delayed(Duration.zero);
-    await WidgetsBinding.instance.endOfFrame;
-    controller.dispose();
   }
 
   Future<void> _waitForUiToSettle() async {
@@ -1118,7 +1111,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       action: (accessToken) => widget.dataService.acceptProviderOffer(
         accessToken: accessToken,
         offerId: offerId,
-        quoteNote: '',
+        quoteNote: note,
       ),
     );
   }

@@ -545,20 +545,22 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
     required String title,
     required String hintText,
   }) async {
-    final controller = TextEditingController();
+    var draft = '';
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: BrandConfig.surfaceOf(context),
         title: Text(title),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
           autofocus: true,
           maxLength:
               ((_payload['short_note_max_length'] as num?)?.toInt() ?? 100),
           minLines: 1,
           maxLines: 3,
           decoration: InputDecoration(hintText: hintText),
+          onChanged: (value) {
+            draft = value;
+          },
         ),
         actions: [
           TextButton(
@@ -566,22 +568,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
             child: const Text('Vazgeç'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(draft.trim()),
             child: const Text('Devam et'),
           ),
         ],
       ),
     );
-    unawaited(_disposeControllerAfterFrame(controller));
     return result;
   }
 
   // ignore: unused_element
   Future<Map<String, dynamic>?> _promptForRating() async {
     var selectedScore = ((_rating?['score'] as num?)?.toInt() ?? 5).clamp(1, 5);
-    final controller = TextEditingController(
-      text: (_rating?['comment'] ?? '').toString(),
-    );
+    var commentDraft = (_rating?['comment'] ?? '').toString();
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -623,14 +622,17 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
                   }),
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
+                TextFormField(
+                  initialValue: commentDraft,
                   minLines: 2,
                   maxLines: 4,
                   decoration: const InputDecoration(
                     labelText: 'Yorum',
                     hintText: 'İsteğe bağlı kısa yorum',
                   ),
+                  onChanged: (value) {
+                    commentDraft = value;
+                  },
                 ),
               ],
             ),
@@ -644,7 +646,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
               onPressed: () => Navigator.of(context).pop(
                 {
                   'score': selectedScore,
-                  'comment': controller.text.trim(),
+                  'comment': commentDraft.trim(),
                 },
               ),
               child: Text(_rating == null ? 'Puanı kaydet' : 'Güncelle'),
@@ -653,7 +655,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
         ),
       ),
     );
-    unawaited(_disposeControllerAfterFrame(controller));
     return result;
   }
 
@@ -680,19 +681,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
       ),
     );
     return result == true;
-  }
-
-  Future<void> _disposeControllerAfterFrame(
-    TextEditingController controller,
-  ) async {
-    await Future<void>.delayed(Duration.zero);
-    await WidgetsBinding.instance.endOfFrame;
-    controller.dispose();
-  }
-
-  Future<void> _waitForUiToSettle() async {
-    await Future<void>.delayed(Duration.zero);
-    await WidgetsBinding.instance.endOfFrame;
   }
 
   Future<void> _openThread() async {
@@ -889,18 +877,20 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
     if (time == null || !mounted) {
       return;
     }
-    final noteController = TextEditingController();
+    var noteDraft = '';
     final note = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: BrandConfig.surfaceOf(context),
         title: const Text('Randevu notu'),
-        content: TextField(
-          controller: noteController,
+        content: TextFormField(
           maxLength:
               ((_payload['short_note_max_length'] as num?)?.toInt() ?? 100),
           minLines: 1,
           maxLines: 3,
+          onChanged: (value) {
+            noteDraft = value;
+          },
           decoration: const InputDecoration(
             hintText: 'İsteğe bağlı kısa not',
           ),
@@ -911,14 +901,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
             child: const Text('Vazgeç'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(noteController.text.trim()),
+            onPressed: () => Navigator.of(context).pop(noteDraft.trim()),
             child: const Text('Gönder'),
           ),
         ],
       ),
     );
-    unawaited(_disposeControllerAfterFrame(noteController));
     if (note == null || !mounted) {
       return;
     }
