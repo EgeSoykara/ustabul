@@ -44,7 +44,7 @@
       {% endif %}
     </div>
 
-    <form method="get" action="{% url 'my_requests' %}" class="row g-2 align-items-end mt-3">
+    <form method="get" action="{% url 'my_requests' %}#customer-panel-live-root" class="row g-2 align-items-end mt-3" data-panel-filter-form>
       <div class="col-12 col-lg-6">
         <label class="form-label form-label-sm mb-1" for="customer-request-q">Talep ara</label>
         <input
@@ -68,7 +68,7 @@
         <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Filtrele</button>
       </div>
       <div class="col-6 col-md-3 col-lg-1">
-        <a href="{% url 'my_requests' %}" class="btn btn-sm btn-link w-100 px-0">Temizle</a>
+        <a href="{% url 'my_requests' %}#customer-panel-live-root" class="btn btn-sm btn-link w-100 px-0" data-panel-nav>Temizle</a>
       </div>
       <div class="col-12">
         <div class="small text-muted">{{ customer_filtered_count }} talep listeleniyor.</div>
@@ -184,7 +184,7 @@
   </section>
 {% endif %}
 
-<section class="card panel-card shadow-sm mb-4 my-requests-section">
+<section id="customer-requests-list" class="card panel-card shadow-sm mb-4 my-requests-section">
   <div class="card-body p-4">
     {% if requests %}
       <div class="d-grid gap-3">

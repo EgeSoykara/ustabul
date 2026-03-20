@@ -18,7 +18,7 @@
       {% endif %}
     </div>
 
-    <form method="get" action="{% url 'provider_requests' %}" class="row g-2 align-items-end mb-3">
+    <form method="get" action="{% url 'provider_requests' %}#provider-panel-live-root" class="row g-2 align-items-end mb-3" data-panel-filter-form>
       <div class="col-12 col-lg-9">
         <label class="form-label form-label-sm mb-1" for="provider-request-q">Talep ara</label>
         <input
@@ -34,7 +34,7 @@
         <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Filtrele</button>
       </div>
       <div class="col-6 col-lg-1">
-        <a href="{% url 'provider_requests' %}" class="btn btn-sm btn-link w-100 px-0">Temizle</a>
+        <a href="{% url 'provider_requests' %}#provider-panel-live-root" class="btn btn-sm btn-link w-100 px-0" data-panel-nav>Temizle</a>
       </div>
     </form>
 
