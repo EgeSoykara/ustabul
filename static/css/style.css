@@ -4455,6 +4455,32 @@ body {
   flex: 0 0 auto;
 }
 
+@media (max-width: 767.98px) {
+  .provider-list-actions {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+    align-items: stretch !important;
+  }
+
+  .provider-list-actions .btn {
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .provider-list-actions .btn-main {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .provider-list-actions .btn-outline-secondary,
+  .provider-list-actions .btn-success,
+  .provider-list-actions .provider-whatsapp-btn {
+    flex: 1 1 calc(50% - 0.25rem);
+    min-width: 0;
+  }
+}
+
 .provider-whatsapp-btn {
   border-radius: 10px;
   font-weight: 700;
