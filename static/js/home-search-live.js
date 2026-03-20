@@ -286,7 +286,7 @@
     }
     refreshHomeSearch(url.toString(), {
       historyMode: "push",
-      scrollToAnchor: false,
+      scrollToAnchor: true,
     });
   });
 

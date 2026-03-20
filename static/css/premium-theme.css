@@ -76,6 +76,10 @@ h6,
   animation-delay: 0.24s;
 }
 
+#provider-results-section {
+  scroll-margin-top: 7.5rem;
+}
+
 @keyframes premium-enter {
   from {
     opacity: 0;
