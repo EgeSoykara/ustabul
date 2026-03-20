@@ -754,9 +754,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (created == true) {
-      await _loadDashboard();
+      await _loadDashboard(silent: true);
       if (_notificationsPayload.isNotEmpty) {
-        await _loadNotifications();
+        await _loadNotifications(silent: true);
       }
     }
   }
@@ -772,9 +772,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (changed == true) {
-      await _loadDashboard();
+      await _loadDashboard(silent: true);
       if (_notificationsPayload.isNotEmpty) {
-        await _loadNotifications();
+        await _loadNotifications(silent: true);
       }
     }
   }
@@ -891,6 +891,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return _runningProviderActionKeys.contains(key);
   }
 
+  void _applyDashboardSnapshot(dynamic rawSnapshot) {
+    if (rawSnapshot is! Map) {
+      return;
+    }
+    final snapshot = rawSnapshot.map<String, dynamic>(
+      (key, value) => MapEntry(key.toString(), value),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _dashboardPayload = <String, dynamic>{
+        ..._dashboardPayload,
+        'snapshot': snapshot,
+      };
+      _dashboardError = null;
+    });
+  }
+
   Future<void> _runProviderAction({
     required String actionKey,
     required Future<Map<String, dynamic>> Function(String accessToken) action,
@@ -911,9 +930,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
-      await _loadDashboard();
+      _applyDashboardSnapshot(payload['snapshot']);
+      await _loadDashboard(silent: true);
       if (_notificationsPayload.isNotEmpty) {
-        await _loadNotifications();
+        await _loadNotifications(silent: true);
       }
     } catch (error) {
       if (!mounted) {
@@ -3675,37 +3695,58 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (tone) {
-      'primary' => const Color(0xFF0E7490),
-      'warning' => const Color(0xFFD97706),
-      'success' => const Color(0xFF15803D),
-      _ => const Color(0xFF334155),
-    };
+    final color = _dashboardToneColor(context, tone);
 
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(color: BrandConfig.textMutedOf(context)),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+      decoration: BrandConfig.glassPanelDecorationOf(context, radius: 22),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 46,
+              height: 4,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                gradient: LinearGradient(
+                  colors: [
+                    color,
+                    color.withValues(alpha: 0.18),
+                  ],
                 ),
-          ),
-        ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              label,
+              style: TextStyle(color: BrandConfig.textMutedOf(context)),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+}
+
+Color _dashboardToneColor(BuildContext context, String tone) {
+  final isLight = Theme.of(context).brightness == Brightness.light;
+  switch (tone) {
+    case 'primary':
+      return BrandConfig.accentOf(context);
+    case 'warning':
+      return isLight ? const Color(0xFF9A6700) : const Color(0xFFE7B65C);
+    case 'success':
+      return isLight ? const Color(0xFF0F766E) : const Color(0xFF5EEAD4);
+    default:
+      return BrandConfig.textMutedOf(context).withValues(alpha: 0.9);
   }
 }
 
@@ -3780,32 +3821,66 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, color: BrandConfig.accentOf(context), size: 28),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: BrandConfig.textMutedOf(context),
-                  height: 1.35,
+    return Container(
+      decoration: BrandConfig.glassPanelDecorationOf(context),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: BrandConfig.accentSoftOf(context),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    icon,
+                    color: BrandConfig.accentOf(context),
+                    size: 24,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: BrandConfig.textMutedOf(context),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Text(
+                      'Hemen aç',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: BrandConfig.accentOf(context),
+                          ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.arrow_outward_rounded,
+                      size: 18,
+                      color: BrandConfig.accentOf(context),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -3829,45 +3904,49 @@ class _EmphasisBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        gradient: LinearGradient(
-          colors: [
-            BrandConfig.accentSoftOf(context),
-            BrandConfig.surfaceOf(context),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(
-          color: BrandConfig.accentOf(context).withValues(alpha: 0.16),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            body,
-            style: TextStyle(
-              color: BrandConfig.textMutedOf(context),
-              height: 1.45,
+      decoration: BrandConfig.glassPanelDecorationOf(context, radius: 26),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: BrandConfig.accentSoftOf(context),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                'Öne çıkan adım',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: BrandConfig.accentOf(context),
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: onPressed,
-            icon: const Icon(Icons.arrow_forward_rounded),
-            label: Text(actionLabel),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              body,
+              style: TextStyle(
+                color: BrandConfig.textMutedOf(context),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: onPressed,
+              icon: const Icon(Icons.arrow_forward_rounded),
+              label: Text(actionLabel),
+            ),
+          ],
+        ),
       ),
     );
   }
