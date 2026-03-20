@@ -197,6 +197,16 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Talep")
 
+    def test_index_uses_dedicated_request_page_for_primary_cta(self):
+        customer = User.objects.create_user(username="anasayfatalaga", password="GucluSifre123!")
+        self.client.login(username="anasayfatalaga", password="GucluSifre123!")
+
+        response = self.client.get(reverse("index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="request-form"', html=False)
+        self.assertContains(response, f'href="{reverse("request_form_page")}"', html=False)
+
     def test_anonymous_user_cannot_create_request(self):
         response = self.client.post(
             reverse("create_request"),
@@ -281,6 +291,8 @@ class MarketplaceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         request_form = response.context["request_form"]
         detail_errors = request_form.errors.get("details", [])
+        self.assertTrue(response.context["form_only_mode"])
+        self.assertNotContains(response, 'id="search-form"', html=False)
         self.assertTrue(any("1000" in error for error in detail_errors))
         self.assertEqual(ServiceRequest.objects.filter(customer=customer).count(), 0)
 

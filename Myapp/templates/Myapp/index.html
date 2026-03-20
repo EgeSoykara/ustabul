@@ -13,11 +13,11 @@
           </p>
           <div class="home-v2-hero-actions">
             {% if request.user.is_authenticated and not is_provider_user %}
-              <a href="#talep-form" class="btn btn-main"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
+              <a href="{% url 'request_form_page' %}" class="btn btn-main"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
             {% elif request.user.is_authenticated and is_provider_user %}
               <a href="{% url 'provider_requests' %}" class="btn btn-main"><i class="bi bi-briefcase-fill me-1"></i>Usta Paneli</a>
             {% else %}
-              <a href="{% url 'customer_login' %}" class="btn btn-main"><i class="bi bi-box-arrow-in-right me-1"></i>Giriş Yap</a>
+              <a href="{% url 'request_form_page' %}" class="btn btn-main"><i class="bi bi-send-check me-1"></i>Talep Aç</a>
             {% endif %}
           </div>
           <div class="home-v2-hero-points">
@@ -155,6 +155,7 @@
 </section>
 {% endif %}
 
+{% if form_only_mode %}
 <section class="card panel-card shadow-sm" id="talep-form">
   <div class="card-body p-4">
     {% if form_only_mode %}
@@ -246,6 +247,7 @@
     {% endif %}
   </div>
 </section>
+{% endif %}
 
 <script>
   (function () {

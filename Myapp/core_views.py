@@ -2718,7 +2718,7 @@ def create_request(request):
     rate_limit_response = reject_rate_limited_request(
         request,
         "create-request",
-        "index",
+        "request_form_page",
         max_attempts=get_create_request_rate_limit_max_attempts(),
         window_seconds=get_create_request_rate_limit_window_seconds(),
         identity=rate_limit_identity,
@@ -2726,7 +2726,7 @@ def create_request(request):
     if rate_limit_response:
         return rate_limit_response
 
-    duplicate_response = reject_duplicate_submission(request, "create-request", "index")
+    duplicate_response = reject_duplicate_submission(request, "create-request", "request_form_page")
     if duplicate_response:
         return duplicate_response
 
@@ -2767,10 +2767,11 @@ def create_request(request):
                 "city_district_map_json": get_city_district_map_json(),
                 "is_provider_user": False,
                 "popular_service_types": get_popular_service_types(),
+                "form_only_mode": True,
             },
         )
 
-    abuse_response = reject_create_request_abuse(request, "index", cleaned_data=request_form.cleaned_data)
+    abuse_response = reject_create_request_abuse(request, "request_form_page", cleaned_data=request_form.cleaned_data)
     if abuse_response:
         return abuse_response
 
