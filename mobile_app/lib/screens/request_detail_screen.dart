@@ -572,7 +572,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
         ],
       ),
     );
-    controller.dispose();
+    unawaited(_disposeControllerAfterFrame(controller));
     return result;
   }
 
@@ -653,7 +653,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
         ),
       ),
     );
-    controller.dispose();
+    unawaited(_disposeControllerAfterFrame(controller));
     return result;
   }
 
@@ -680,6 +680,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
       ),
     );
     return result == true;
+  }
+
+  Future<void> _disposeControllerAfterFrame(
+    TextEditingController controller,
+  ) async {
+    await Future<void>.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
+    controller.dispose();
+  }
+
+  Future<void> _waitForUiToSettle() async {
+    await Future<void>.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
   }
 
   Future<void> _openThread() async {
@@ -905,7 +918,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
         ],
       ),
     );
-    noteController.dispose();
+    unawaited(_disposeControllerAfterFrame(noteController));
     if (note == null || !mounted) {
       return;
     }

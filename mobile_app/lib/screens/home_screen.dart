@@ -1053,7 +1053,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    controller.dispose();
+    unawaited(_disposeControllerAfterFrame(controller));
     return result;
   }
 
@@ -1082,6 +1082,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return result == true;
   }
 
+  Future<void> _disposeControllerAfterFrame(
+    TextEditingController controller,
+  ) async {
+    await Future<void>.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
+    controller.dispose();
+  }
+
+  Future<void> _waitForUiToSettle() async {
+    await Future<void>.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
   Future<void> _acceptProviderOfferFromDashboard(
     Map<String, dynamic> item,
   ) async {
@@ -1096,12 +1109,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (note == null) {
       return;
     }
+    await _waitForUiToSettle();
+    if (!mounted) {
+      return;
+    }
     await _runProviderAction(
       actionKey: 'offer:$offerId:accept',
       action: (accessToken) => widget.dataService.acceptProviderOffer(
         accessToken: accessToken,
         offerId: offerId,
-        quoteNote: note,
+        quoteNote: '',
       ),
     );
   }
@@ -1118,6 +1135,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       message: 'Bu teklifi reddetmek istiyor musunuz?',
     );
     if (!confirmed) {
+      return;
+    }
+    await _waitForUiToSettle();
+    if (!mounted) {
       return;
     }
     await _runProviderAction(
@@ -1143,6 +1164,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!confirmed) {
       return;
     }
+    await _waitForUiToSettle();
+    if (!mounted) {
+      return;
+    }
     await _runProviderAction(
       actionKey: 'offer:$offerId:withdraw',
       action: (accessToken) => widget.dataService.withdrawProviderOffer(
@@ -1164,6 +1189,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       hintText: 'Kısa not (opsiyonel)',
     );
     if (note == null) {
+      return;
+    }
+    await _waitForUiToSettle();
+    if (!mounted) {
       return;
     }
     await _runProviderAction(
@@ -1190,6 +1219,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (note == null) {
       return;
     }
+    await _waitForUiToSettle();
+    if (!mounted) {
+      return;
+    }
     await _runProviderAction(
       actionKey: 'appointment:$appointmentId:reject',
       action: (accessToken) => widget.dataService.rejectProviderAppointment(
@@ -1212,6 +1245,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       message: 'Bu işi tamamlandı olarak işaretlemek istiyor musunuz?',
     );
     if (!confirmed) {
+      return;
+    }
+    await _waitForUiToSettle();
+    if (!mounted) {
       return;
     }
     await _runProviderAction(
