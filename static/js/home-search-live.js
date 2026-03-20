@@ -206,8 +206,23 @@
       target = getResultsSection();
     }
     if (!target) return;
+    const prefersReducedMotion =
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const header = document.querySelector(".site-header");
+    const headerOffset = header ? header.getBoundingClientRect().height + 16 : 24;
+
     window.requestAnimationFrame(function () {
-      target.scrollIntoView({ block: "start", behavior: "smooth" });
+      window.requestAnimationFrame(function () {
+        const targetTop = Math.max(
+          0,
+          window.scrollY + target.getBoundingClientRect().top - headerOffset
+        );
+        window.scrollTo({
+          top: targetTop,
+          behavior: prefersReducedMotion ? "auto" : "smooth",
+        });
+      });
     });
   }
 
@@ -280,6 +295,9 @@
     const form = event.target.closest("#search-form");
     if (!form) return;
     event.preventDefault();
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
     const url = buildUrlFromForm(form);
     if (!url.hash) {
       url.hash = "#provider-results-section";
