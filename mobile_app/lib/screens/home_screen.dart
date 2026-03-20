@@ -2158,27 +2158,28 @@ class _DashboardTab extends StatelessWidget {
           flowNextAction: _requestFlowNextAction(item),
           flowTone: _requestFlowTone(item),
           body: _summarizeRequestDetails((item['details'] ?? '').toString()),
-          actionLabel: 'Mesajları aç',
+          actionLabel: 'Detayı aç',
           extraActions: [
-            FilledButton.tonal(
+            OutlinedButton.icon(
               onPressed: () {
                 final requestId = (item['id'] as num?)?.toInt() ?? 0;
                 if (requestId > 0) {
-                  onOpenRequestDetail(requestId);
+                  onOpenThread(
+                    requestId: requestId,
+                    title: (item['service_type'] ?? 'İş').toString(),
+                    subtitle:
+                        '${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+                  );
                 }
               },
-              child: const Text('Detayı aç'),
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              label: const Text('Mesajları aç'),
             ),
           ],
           onPressed: () {
             final requestId = (item['id'] as num?)?.toInt() ?? 0;
             if (requestId > 0) {
-              return onOpenThread(
-                requestId: requestId,
-                title: (item['service_type'] ?? 'İş').toString(),
-                subtitle:
-                    '${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
-              );
+              return onOpenRequestDetail(requestId);
             }
             return Future<void>.value();
           },
@@ -2619,27 +2620,28 @@ class _ProviderWorkTab extends StatelessWidget {
           flowNextAction: _requestFlowNextAction(item),
           flowTone: _requestFlowTone(item),
           body: _summarizeRequestDetails((item['details'] ?? '').toString()),
-          actionLabel: 'Mesajları aç',
+          actionLabel: 'Detayı aç',
           extraActions: [
-            FilledButton.tonal(
+            OutlinedButton.icon(
               onPressed: () {
                 final requestId = (item['id'] as num?)?.toInt() ?? 0;
                 if (requestId > 0) {
-                  onOpenRequestDetail(requestId);
+                  onOpenThread(
+                    requestId: requestId,
+                    title: (item['service_type'] ?? 'İş').toString(),
+                    subtitle:
+                        '${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
+                  );
                 }
               },
-              child: const Text('Detayı aç'),
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              label: const Text('Mesajları aç'),
             ),
           ],
           onPressed: () {
             final requestId = (item['id'] as num?)?.toInt() ?? 0;
             if (requestId > 0) {
-              return onOpenThread(
-                requestId: requestId,
-                title: (item['service_type'] ?? 'İş').toString(),
-                subtitle:
-                    '${(item['city'] ?? '').toString()} / ${(item['district'] ?? '').toString()}',
-              );
+              return onOpenRequestDetail(requestId);
             }
             return Future<void>.value();
           },
