@@ -242,6 +242,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _handleLiveUpdateEvent(Map<String, dynamic> event) {
     if (!mounted ||
+        _runningProviderActionKeys.isNotEmpty ||
         _appLifecycleState != AppLifecycleState.resumed ||
         !_isVisibleRoute()) {
       return;
@@ -358,6 +359,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _refreshVisibleTabSilently({bool force = false}) {
     if (!mounted ||
+        _runningProviderActionKeys.isNotEmpty ||
         _appLifecycleState != AppLifecycleState.resumed ||
         !_isVisibleRoute()) {
       return;
@@ -993,10 +995,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
       _applyDashboardSnapshot(payload['snapshot']);
-      await _loadDashboard(silent: true);
-      if (_notificationsPayload.isNotEmpty) {
-        await _loadNotifications(silent: true);
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        unawaited(_loadDashboard(silent: true));
+        if (_notificationsPayload.isNotEmpty) {
+          unawaited(_loadNotifications(silent: true));
+        }
+      });
     } catch (error) {
       if (!mounted) {
         return;
