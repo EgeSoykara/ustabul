@@ -3796,8 +3796,6 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _dashboardToneColor(context, tone);
-
     return Container(
       decoration: BrandConfig.glassPanelDecorationOf(context, radius: 22),
       child: Padding(
@@ -3805,20 +3803,6 @@ class _MetricCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 46,
-              height: 4,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                gradient: LinearGradient(
-                  colors: [
-                    color,
-                    color.withValues(alpha: 0.18),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
             Text(
               label,
               style: TextStyle(color: BrandConfig.textMutedOf(context)),
@@ -3834,20 +3818,6 @@ class _MetricCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-Color _dashboardToneColor(BuildContext context, String tone) {
-  final isLight = Theme.of(context).brightness == Brightness.light;
-  switch (tone) {
-    case 'primary':
-      return BrandConfig.accentOf(context);
-    case 'warning':
-      return isLight ? const Color(0xFF9A6700) : const Color(0xFFE7B65C);
-    case 'success':
-      return isLight ? const Color(0xFF0F766E) : const Color(0xFF5EEAD4);
-    default:
-      return BrandConfig.textMutedOf(context).withValues(alpha: 0.9);
   }
 }
 
@@ -4084,10 +4054,29 @@ class _RequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLightTheme = BrandConfig.isLight(context);
     final hasFlow = flowStepLabel.trim().isNotEmpty ||
         flowTitle.trim().isNotEmpty ||
         flowNextAction.trim().isNotEmpty;
     final flowColor = _requestFlowToneColor(context, flowTone);
+    final badgeSurface = BrandConfig.surfaceAltOf(
+      context,
+    ).withValues(alpha: isLightTheme ? 0.92 : 0.62);
+    final badgeBorder = BrandConfig.borderOf(
+      context,
+    ).withValues(alpha: isLightTheme ? 0.7 : 0.56);
+    final flowSurface = BrandConfig.surfaceAltOf(
+      context,
+    ).withValues(alpha: isLightTheme ? 0.76 : 0.54);
+    final flowBorder = BrandConfig.borderOf(
+      context,
+    ).withValues(alpha: isLightTheme ? 0.68 : 0.52);
+    final progressTrack = BrandConfig.borderOf(
+      context,
+    ).withValues(alpha: isLightTheme ? 0.26 : 0.34);
+    final progressFill = BrandConfig.textOf(
+      context,
+    ).withValues(alpha: isLightTheme ? 0.66 : 0.48);
     final currentStep = _requestFlowCurrentStep(flowStepLabel);
     final totalSteps = _requestFlowTotalSteps(flowStepLabel);
     final progressValue =
@@ -4135,13 +4124,14 @@ class _RequestCard extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: BrandConfig.accentSoftOf(context),
+                        color: badgeSurface,
                         borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: badgeBorder),
                       ),
                       child: Text(
                         badge,
                         style: TextStyle(
-                          color: BrandConfig.textOf(context),
+                          color: BrandConfig.textMutedOf(context),
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
@@ -4155,10 +4145,10 @@ class _RequestCard extends StatelessWidget {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: flowColor.withValues(alpha: 0.12),
+                          color: badgeSurface,
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: flowColor.withValues(alpha: 0.16),
+                            color: badgeBorder,
                           ),
                         ),
                         child: Text(
@@ -4181,10 +4171,10 @@ class _RequestCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: flowColor.withValues(alpha: 0.08),
+                  color: flowSurface,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: flowColor.withValues(alpha: 0.16),
+                    color: flowBorder,
                   ),
                 ),
                 child: Column(
@@ -4194,7 +4184,7 @@ class _RequestCard extends StatelessWidget {
                       Text(
                         '$currentStep / $totalSteps adım',
                         style: TextStyle(
-                          color: flowColor,
+                          color: BrandConfig.textMutedOf(context),
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
                         ),
@@ -4205,8 +4195,10 @@ class _RequestCard extends StatelessWidget {
                         child: LinearProgressIndicator(
                           value: progressValue,
                           minHeight: 7,
-                          backgroundColor: BrandConfig.surfaceAltOf(context),
-                          valueColor: AlwaysStoppedAnimation<Color>(flowColor),
+                          backgroundColor: progressTrack,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            progressFill,
+                          ),
                         ),
                       ),
                     ],
