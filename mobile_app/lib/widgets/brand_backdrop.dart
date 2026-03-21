@@ -12,6 +12,7 @@ class BrandBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLightTheme = BrandConfig.isLight(context);
     final primaryOrb = BrandConfig.orbPrimaryOf(context);
     final accentOrb = BrandConfig.orbAccentOf(context);
     return DecoratedBox(
@@ -19,22 +20,23 @@ class BrandBackdrop extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          IgnorePointer(
-            child: Stack(
-              children: [
-                _GlowOrb(
-                  alignment: const Alignment(-0.92, -0.82),
-                  size: 220,
-                  color: primaryOrb,
-                ),
-                _GlowOrb(
-                  alignment: const Alignment(0.96, 0.86),
-                  size: 188,
-                  color: accentOrb,
-                ),
-              ],
+          if (isLightTheme)
+            IgnorePointer(
+              child: Stack(
+                children: [
+                  _GlowOrb(
+                    alignment: const Alignment(-0.92, -0.82),
+                    size: 220,
+                    color: primaryOrb,
+                  ),
+                  _GlowOrb(
+                    alignment: const Alignment(0.96, 0.86),
+                    size: 188,
+                    color: accentOrb,
+                  ),
+                ],
+              ),
             ),
-          ),
           child,
         ],
       ),
