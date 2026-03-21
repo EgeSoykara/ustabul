@@ -22,6 +22,10 @@ messages = core.messages
 timezone = core.timezone
 timedelta = core.timedelta
 
+ATTENTION_SELECTION_STALE_HOURS = 2
+ATTENTION_MATCHED_STALE_HOURS = 2
+ATTENTION_APPOINTMENT_STALE_MINUTES = 60
+
 
 def _build_membership_queryset(filter_query):
     payment_prefetch = Prefetch(
@@ -610,10 +614,11 @@ def operations_dashboard(request):
     )[:6]
 
     attention_items = []
-    attention_cutoff = membership_now - timedelta(hours=24)
+    pending_selection_cutoff = membership_now - timedelta(hours=ATTENTION_SELECTION_STALE_HOURS)
+    matched_without_appointment_cutoff = membership_now - timedelta(hours=ATTENTION_MATCHED_STALE_HOURS)
     attention_detail_open = attention_view == "all"
     pending_selection_qs = (
-        ServiceRequest.objects.filter(status="pending_customer", created_at__lte=attention_cutoff)
+        ServiceRequest.objects.filter(status="pending_customer", created_at__lte=pending_selection_cutoff)
         .select_related("service_type")
         .order_by("created_at", "id")
     )
@@ -646,7 +651,8 @@ def operations_dashboard(request):
     matched_attention_qs = (
         ServiceRequest.objects.filter(status="matched")
         .filter(
-            Q(matched_at__lte=attention_cutoff) | Q(matched_at__isnull=True, created_at__lte=attention_cutoff),
+            Q(matched_at__lte=matched_without_appointment_cutoff)
+            | Q(matched_at__isnull=True, created_at__lte=matched_without_appointment_cutoff),
             Q(appointment__isnull=True) | Q(appointment__status__in=["rejected", "cancelled"]),
         )
         .annotate(has_closed_appointment=Exists(matched_attention_closed_appointments))
@@ -680,7 +686,13 @@ def operations_dashboard(request):
             }
         )
 
-    provider_appointment_cutoff = membership_now - timedelta(minutes=max(60, core.get_appointment_provider_confirm_minutes() // 2))
+    provider_warning_cutoff = membership_now - timedelta(
+        minutes=max(ATTENTION_APPOINTMENT_STALE_MINUTES, core.get_appointment_provider_confirm_minutes() // 2)
+    )
+    provider_danger_cutoff = membership_now - timedelta(
+        minutes=max(ATTENTION_APPOINTMENT_STALE_MINUTES, core.get_appointment_provider_confirm_minutes())
+    )
+    provider_appointment_cutoff = provider_warning_cutoff
     pending_provider_appointments_qs = (
         ServiceAppointment.objects.filter(status="pending", created_at__lte=provider_appointment_cutoff)
         .select_related("service_request", "service_request__service_type", "provider")
@@ -692,7 +704,7 @@ def operations_dashboard(request):
     for appointment in pending_provider_appointments:
         attention_items.append(
             {
-                "tone": "danger" if appointment.created_at <= membership_now - timedelta(minutes=core.get_appointment_provider_confirm_minutes()) else "warning",
+                "tone": "danger" if appointment.created_at <= provider_danger_cutoff else "warning",
                 "badge_label": "Usta Onayı",
                 "request_code": core.get_request_display_code(appointment.service_request),
                 "title": "Randevu uzun süredir usta onayında",
@@ -708,7 +720,13 @@ def operations_dashboard(request):
             }
         )
 
-    customer_appointment_cutoff = membership_now - timedelta(minutes=max(60, core.get_appointment_customer_confirm_minutes() // 2))
+    customer_warning_cutoff = membership_now - timedelta(
+        minutes=max(ATTENTION_APPOINTMENT_STALE_MINUTES, core.get_appointment_customer_confirm_minutes() // 2)
+    )
+    customer_danger_cutoff = membership_now - timedelta(
+        minutes=max(ATTENTION_APPOINTMENT_STALE_MINUTES, core.get_appointment_customer_confirm_minutes())
+    )
+    customer_appointment_cutoff = customer_warning_cutoff
     pending_customer_appointments_qs = (
         ServiceAppointment.objects.filter(status="pending_customer", updated_at__lte=customer_appointment_cutoff)
         .select_related("service_request", "service_request__service_type", "provider")
@@ -720,7 +738,7 @@ def operations_dashboard(request):
     for appointment in pending_customer_appointments:
         attention_items.append(
             {
-                "tone": "danger" if appointment.updated_at <= membership_now - timedelta(minutes=core.get_appointment_customer_confirm_minutes()) else "warning",
+                "tone": "danger" if appointment.updated_at <= customer_danger_cutoff else "warning",
                 "badge_label": "Müşteri Onayı",
                 "request_code": core.get_request_display_code(appointment.service_request),
                 "title": "Randevu uzun süredir müşteri onayında",
@@ -797,6 +815,9 @@ def operations_dashboard(request):
             "attention_page_query": attention_page_query,
             "attention_open_url": attention_open_url,
             "attention_close_url": attention_close_url,
+            "attention_selection_stale_hours": ATTENTION_SELECTION_STALE_HOURS,
+            "attention_matched_stale_hours": ATTENTION_MATCHED_STALE_HOURS,
+            "attention_appointment_stale_minutes": ATTENTION_APPOINTMENT_STALE_MINUTES,
             "expiring_membership_rows": expiring_membership_rows,
             "scheduler_heartbeat": scheduler_heartbeat,
             "scheduler_healthy": scheduler_healthy,

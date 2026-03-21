@@ -1880,9 +1880,18 @@ class MobileProviderDashboardView(APIView):
         if not provider.is_verified:
             return Response({"detail": "pending-approval"}, status=status.HTTP_403_FORBIDDEN)
 
+        scope = (request.GET.get("scope") or "").strip()
         summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
         thread_limit_raw = (request.GET.get("thread_limit") or "100").strip()
         thread_limit = min(200, max(1, int(thread_limit_raw) if thread_limit_raw.isdigit() else 100))
+        agreements_limit_raw = (request.GET.get("agreements_limit") or "20").strip()
+        agreements_offset_raw = (request.GET.get("agreements_offset") or "0").strip()
+        agreements_limit = min(100, max(1, int(agreements_limit_raw) if agreements_limit_raw.isdigit() else 20))
+        agreements_offset = max(0, int(agreements_offset_raw) if agreements_offset_raw.isdigit() else 0)
+        limit_raw = (request.GET.get("limit") or "20").strip()
+        offset_raw = (request.GET.get("offset") or "0").strip()
+        limit = min(100, max(1, int(limit_raw) if limit_raw.isdigit() else 20))
+        offset = max(0, int(offset_raw) if offset_raw.isdigit() else 0)
 
         active_threads_qs = provider.service_requests.filter(
             status="matched",
@@ -1913,6 +1922,45 @@ class MobileProviderDashboardView(APIView):
         calendar_enabled = bool(is_calendar_enabled())
         if calendar_enabled:
             pending_appointments_qs = provider.appointments.filter(status="pending")
+
+        if scope == "agreements":
+            summary = build_request_collection_summary(agreements_qs)
+            if summary_only:
+                return Response(
+                    {
+                        "count": summary["summary"]["count"],
+                        "summary": summary["summary"],
+                        "version": summary["version"],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            agreements = list(agreements_qs[offset : offset + limit])
+            agreement_ids = [item.id for item in agreements]
+            agreement_appointment_map = {
+                item.service_request_id: item
+                for item in ServiceAppointment.objects.filter(service_request_id__in=agreement_ids)
+            }
+            agreement_unread_map = build_unread_message_map(agreement_ids, "provider")
+            return Response(
+                {
+                    "count": agreements_qs.count(),
+                    "offset": offset,
+                    "limit": limit,
+                    "summary": summary["summary"],
+                    "version": summary["version"],
+                    "results": [
+                        serialize_provider_agreement_card(
+                            item,
+                            agreement_appointment_map.get(item.id),
+                            unread_messages=agreement_unread_map.get(item.id, 0),
+                            calendar_enabled=calendar_enabled,
+                        )
+                        for item in agreements
+                    ],
+                },
+                status=status.HTTP_200_OK,
+            )
 
         if summary_only:
             summary = build_provider_dashboard_summary(
@@ -1962,7 +2010,7 @@ class MobileProviderDashboardView(APIView):
                     "scheduled_for"
                 )
             )
-        agreements = list(agreements_qs)
+        agreements = list(agreements_qs[agreements_offset : agreements_offset + agreements_limit])
         agreement_ids = [item.id for item in agreements]
         agreement_appointment_map = {
             item.service_request_id: item

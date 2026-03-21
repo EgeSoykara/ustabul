@@ -1219,6 +1219,48 @@ class MarketplaceTests(TestCase):
         self.assertGreaterEqual(len(response.context["attention_items"]), 1)
         self.assertEqual(response.context["membership_summary"]["expiring_soon_count"], 1)
 
+    def test_operations_dashboard_attention_uses_hour_level_thresholds(self):
+        User.objects.create_user(
+            username="operasyonesik",
+            password="GucluSifre123!",
+            is_staff=True,
+        )
+        fresh_request = ServiceRequest.objects.create(
+            customer_name="Taze Bekleyen",
+            customer_phone="05550001122",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Henuz yeni sayilir",
+            status="pending_customer",
+        )
+        stale_request = ServiceRequest.objects.create(
+            customer_name="Takilan Bekleyen",
+            customer_phone="05550001123",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Mudahale gerektirmeli",
+            status="pending_customer",
+        )
+        ServiceRequest.objects.filter(pk=fresh_request.pk).update(
+            created_at=timezone.now() - timedelta(minutes=75)
+        )
+        ServiceRequest.objects.filter(pk=stale_request.pk).update(
+            created_at=timezone.now() - timedelta(hours=2, minutes=5)
+        )
+        fresh_request.refresh_from_db()
+        stale_request.refresh_from_db()
+        self.client.login(username="operasyonesik", password="GucluSifre123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, stale_request.display_code)
+        self.assertNotContains(response, fresh_request.display_code)
+        self.assertEqual(response.context["attention_selection_stale_hours"], 2)
+        self.assertEqual(response.context["attention_appointment_stale_minutes"], 60)
+
     def test_operations_dashboard_attention_detail_is_paginated(self):
         User.objects.create_user(
             username="operasyondetay",
@@ -5695,6 +5737,54 @@ class MobileApiTests(TestCase):
             [item["status"] for item in body["agreements"]],
             ["matched", "completed", "cancelled"],
         )
+
+    def test_mobile_provider_dashboard_paginates_agreement_history(self):
+        for index in range(25):
+            service_request = ServiceRequest.objects.create(
+                customer_name=f"Anlasma Musteri {index}",
+                customer_phone=f"0500888{index:04d}",
+                city="Lefkosa",
+                district="Ortakoy",
+                service_type=self.service,
+                details="Sayfali anlasma gecmisi",
+                customer=self.customer_user,
+                matched_provider=self.provider,
+                status="completed" if index % 2 == 0 else "matched",
+            )
+            offer = ProviderOffer.objects.create(
+                service_request=service_request,
+                provider=self.provider,
+                token=f"MOBILEAGPAGE{index:03d}",
+                sequence=1,
+                status="accepted",
+            )
+            service_request.matched_offer = offer
+            service_request.matched_at = timezone.now() - timedelta(hours=index)
+            service_request.save(update_fields=["matched_offer", "matched_at"])
+
+        payload = self._login_mobile("mobile_provider", "GucluSifre123!")
+        access = payload["access"]
+
+        dashboard_response = self.client.get(
+            "/mobile/api/v1/provider/dashboard/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(dashboard_response.status_code, 200)
+        dashboard_body = dashboard_response.json()
+        self.assertEqual(dashboard_body["summary"]["agreements_count"], 25)
+        self.assertEqual(dashboard_body["agreements_count"], 25)
+        self.assertEqual(len(dashboard_body["agreements"]), 20)
+
+        page_response = self.client.get(
+            "/mobile/api/v1/provider/dashboard/?scope=agreements&limit=10&offset=20",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(page_response.status_code, 200)
+        page_body = page_response.json()
+        self.assertEqual(page_body["count"], 25)
+        self.assertEqual(page_body["offset"], 20)
+        self.assertEqual(page_body["limit"], 10)
+        self.assertEqual(len(page_body["results"]), 5)
 
     def test_mobile_provider_dashboard_summary_only_returns_version(self):
         pending_request = ServiceRequest.objects.create(

@@ -294,16 +294,45 @@ class MobileDataService {
   Future<Map<String, dynamic>> fetchProviderDashboard({
     required String accessToken,
     int threadLimit = 100,
+    int agreementsLimit = 20,
+    int agreementsOffset = 0,
+    String? scope,
+    int? limit,
+    int? offset,
   }) async {
+    final queryParameters = <String, dynamic>{
+      'thread_limit': threadLimit,
+    };
+    if ((scope ?? '').trim().isNotEmpty) {
+      queryParameters['scope'] = scope!.trim();
+      queryParameters['limit'] = limit ?? 20;
+      queryParameters['offset'] = offset ?? 0;
+    } else {
+      queryParameters['agreements_limit'] = agreementsLimit;
+      queryParameters['agreements_offset'] = agreementsOffset;
+    }
     final response = await _apiClient.get(
       '/mobile/api/v1/provider/dashboard/',
       accessToken: accessToken,
-      queryParameters: {'thread_limit': threadLimit},
+      queryParameters: queryParameters,
     );
     if (response is! Map<String, dynamic>) {
       throw const ApiException('Usta paneli yanıtı geçersiz.');
     }
     return response;
+  }
+
+  Future<Map<String, dynamic>> fetchProviderAgreements({
+    required String accessToken,
+    int limit = 20,
+    int offset = 0,
+  }) {
+    return fetchProviderDashboard(
+      accessToken: accessToken,
+      scope: 'agreements',
+      limit: limit,
+      offset: offset,
+    );
   }
 
   Future<Map<String, dynamic>> fetchProviderDashboardSummary({

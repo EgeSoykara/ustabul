@@ -33,6 +33,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  static const int _agreementsPageSize = 20;
   static const Duration _refreshTickInterval = Duration(seconds: 5);
   static const Duration _providerDashboardRefreshInterval =
       Duration(seconds: 5);
@@ -68,6 +69,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, dynamic> _notificationsPayload = const {};
   String _notificationCategory = 'all';
   bool _notificationsFallbackToWeb = false;
+  bool _customerAgreementsLoadingMore = false;
+  bool _providerAgreementsLoadingMore = false;
 
   bool _preferencesLoading = false;
   bool _preferencesSaving = false;
@@ -135,6 +138,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Map<String, dynamic>> get _providerAgreements =>
       _mapList(_dashboardPayload['agreements']);
 
+  int get _providerAgreementCount => _summaryCount(
+      _providerSummary, 'agreements_count', _providerAgreements.length);
+
+  bool get _customerAgreementsHasMore =>
+      _customerAgreements.length < _customerAgreementCount;
+
+  bool get _providerAgreementsHasMore =>
+      _providerAgreements.length < _providerAgreementCount;
+
   Map<String, dynamic> get _providerSummary =>
       _dashboardPayload['summary'] is Map<String, dynamic>
           ? _dashboardPayload['summary'] as Map<String, dynamic>
@@ -169,6 +181,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _customerRequestFilter = filter;
       _currentIndex = 1;
     });
+    if (filter == 'history' &&
+        _customerAgreementCount > 0 &&
+        _customerAgreements.isEmpty &&
+        !_customerAgreementsLoadingMore) {
+      await _loadMoreCustomerAgreements(reset: true);
+    }
   }
 
   Future<void> _setCustomerRequestFilter(String filter) async {
@@ -178,6 +196,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _customerRequestFilter = filter;
     });
+    if (filter == 'history' &&
+        _customerAgreementCount > 0 &&
+        _customerAgreements.isEmpty &&
+        !_customerAgreementsLoadingMore) {
+      await _loadMoreCustomerAgreements(reset: true);
+    }
   }
 
   Future<void> _setProviderWorkFilter(String filter) async {
@@ -187,6 +211,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _providerWorkFilter = filter;
     });
+    if (filter == 'history' &&
+        _providerAgreementCount > 0 &&
+        _providerAgreements.isEmpty &&
+        !_providerAgreementsLoadingMore) {
+      await _loadMoreProviderAgreements(reset: true);
+    }
   }
 
   Future<Map<String, dynamic>> _fetchAllCustomerRequests({
@@ -227,6 +257,139 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'count': totalCount,
       'results': combinedResults,
     };
+  }
+
+  int _agreementsPrefetchLimit({
+    required int loadedCount,
+    required bool historyVisible,
+  }) {
+    if (!historyVisible) {
+      return _agreementsPageSize;
+    }
+    return loadedCount > _agreementsPageSize
+        ? loadedCount
+        : _agreementsPageSize;
+  }
+
+  List<Map<String, dynamic>> _mergePagedItems(
+    List<Map<String, dynamic>> existing,
+    List<Map<String, dynamic>> next,
+  ) {
+    if (existing.isEmpty) {
+      return next;
+    }
+    final merged = <Map<String, dynamic>>[...existing];
+    final seenIds = existing
+        .map((item) => (item['id'] ?? '').toString())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    for (final item in next) {
+      final id = (item['id'] ?? '').toString();
+      if (id.isEmpty || seenIds.add(id)) {
+        merged.add(item);
+      }
+    }
+    return merged;
+  }
+
+  void _showInlineMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _loadMoreCustomerAgreements({bool reset = false}) async {
+    if (_customerAgreementsLoadingMore) {
+      return;
+    }
+    final currentItems = _customerAgreements;
+    if (!reset &&
+        (!_customerAgreementsHasMore ||
+            currentItems.isEmpty && _customerAgreementCount == 0)) {
+      return;
+    }
+    setState(() {
+      _customerAgreementsLoadingMore = true;
+    });
+    try {
+      final accessToken = await widget.sessionController.ensureAccessToken();
+      final response = await widget.dataService.fetchCustomerRequests(
+        accessToken: accessToken,
+        scope: 'agreements',
+        limit: _agreementsPageSize,
+        offset: reset ? 0 : currentItems.length,
+      );
+      final nextItems = _mapList(response['results']);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        final updatedItems =
+            reset ? nextItems : _mergePagedItems(currentItems, nextItems);
+        _dashboardPayload = <String, dynamic>{
+          ..._dashboardPayload,
+          'agreements': updatedItems,
+          'agreements_count': response['count'] ?? _customerAgreementCount,
+        };
+        _customerAgreementsVersion =
+            (response['version'] ?? _customerAgreementsVersion).toString();
+      });
+    } catch (error) {
+      _showInlineMessage('Anlaşmalar şu an yüklenemedi.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _customerAgreementsLoadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMoreProviderAgreements({bool reset = false}) async {
+    if (_providerAgreementsLoadingMore) {
+      return;
+    }
+    final currentItems = _providerAgreements;
+    if (!reset &&
+        (!_providerAgreementsHasMore ||
+            currentItems.isEmpty && _providerAgreementCount == 0)) {
+      return;
+    }
+    setState(() {
+      _providerAgreementsLoadingMore = true;
+    });
+    try {
+      final accessToken = await widget.sessionController.ensureAccessToken();
+      final response = await widget.dataService.fetchProviderAgreements(
+        accessToken: accessToken,
+        limit: _agreementsPageSize,
+        offset: reset ? 0 : currentItems.length,
+      );
+      final nextItems = _mapList(response['results']);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        final updatedItems =
+            reset ? nextItems : _mergePagedItems(currentItems, nextItems);
+        _dashboardPayload = <String, dynamic>{
+          ..._dashboardPayload,
+          'agreements': updatedItems,
+          'agreements_count': response['count'] ?? _providerAgreementCount,
+        };
+      });
+    } catch (error) {
+      _showInlineMessage('Anlaşmalar şu an yüklenemedi.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _providerAgreementsLoadingMore = false;
+        });
+      }
+    }
   }
 
   bool _isNotFoundError(Object error) {
@@ -421,8 +584,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             return;
           }
         }
-        final payload = await widget.dataService
-            .fetchProviderDashboard(accessToken: accessToken);
+        final payload = await widget.dataService.fetchProviderDashboard(
+          accessToken: accessToken,
+          agreementsLimit: _agreementsPrefetchLimit(
+            loadedCount: _providerAgreements.length,
+            historyVisible:
+                _currentIndex == 1 && _providerWorkFilter == 'history',
+          ),
+        );
         final nextVersion = (payload['version'] ?? '').toString();
         final changed = _providerDashboardVersion.isNotEmpty &&
             nextVersion != _providerDashboardVersion;
@@ -473,8 +642,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _fetchAllCustomerRequests(
             accessToken: accessToken,
           ),
-          _fetchAllCustomerRequests(
+          widget.dataService.fetchCustomerRequests(
             accessToken: accessToken,
+            limit: _agreementsPrefetchLimit(
+              loadedCount: _customerAgreements.length,
+              historyVisible:
+                  _currentIndex == 1 && _customerRequestFilter == 'history',
+            ),
+            offset: 0,
             scope: 'agreements',
           ),
         ]);
@@ -1418,8 +1593,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           providerPendingAppointments:
                               _providerPendingAppointments,
                           providerAgreements: _providerAgreements,
+                          agreementsLoadingMore: _providerAgreementsLoadingMore,
+                          hasMoreAgreements: _providerAgreementsHasMore,
                           onRefresh: _loadDashboard,
                           onFilterChanged: _setProviderWorkFilter,
+                          onLoadMoreAgreements: () =>
+                              _loadMoreProviderAgreements(),
                           onOpenThread: _openThread,
                           onOpenRequestDetail: _openRequestDetail,
                           isProviderActionBusy: _isProviderActionBusy,
@@ -1444,8 +1623,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           customerRequests: _customerRequests,
                           customerAgreementCount: _customerAgreementCount,
                           visibleRequests: _customerVisibleRequests,
+                          agreementsLoadingMore: _customerAgreementsLoadingMore,
+                          hasMoreAgreements: _customerAgreementsHasMore,
                           onRefresh: _loadDashboard,
                           onFilterChanged: _setCustomerRequestFilter,
+                          onLoadMoreAgreements: () =>
+                              _loadMoreCustomerAgreements(),
                           onOpenRequestDetail: _openRequestDetail,
                           onOpenProviderCatalog: _openProviderCatalog,
                           onCreateRequest: _openRequestCreate,
@@ -2269,8 +2452,11 @@ class _ProviderWorkTab extends StatelessWidget {
     required this.providerActiveThreads,
     required this.providerPendingAppointments,
     required this.providerAgreements,
+    required this.agreementsLoadingMore,
+    required this.hasMoreAgreements,
     required this.onRefresh,
     required this.onFilterChanged,
+    required this.onLoadMoreAgreements,
     required this.onOpenThread,
     required this.onOpenRequestDetail,
     required this.isProviderActionBusy,
@@ -2291,8 +2477,11 @@ class _ProviderWorkTab extends StatelessWidget {
   final List<Map<String, dynamic>> providerActiveThreads;
   final List<Map<String, dynamic>> providerPendingAppointments;
   final List<Map<String, dynamic>> providerAgreements;
+  final bool agreementsLoadingMore;
+  final bool hasMoreAgreements;
   final Future<void> Function() onRefresh;
   final Future<void> Function(String filter) onFilterChanged;
+  final Future<void> Function() onLoadMoreAgreements;
   final Future<void> Function({
     required int requestId,
     required String title,
@@ -2337,11 +2526,8 @@ class _ProviderWorkTab extends StatelessWidget {
       'active_threads_count',
       providerActiveThreads.length,
     );
-    final agreementCount = _summaryCount(
-      summary,
-      'agreements_count',
-      providerAgreements.length,
-    );
+    final agreementCount =
+        _summaryCount(summary, 'agreements_count', providerAgreements.length);
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -2650,6 +2836,8 @@ class _ProviderWorkTab extends StatelessWidget {
   }
 
   List<Widget> _buildHistoryContent() {
+    final agreementCount =
+        _summaryCount(summary, 'agreements_count', providerAgreements.length);
     if (providerAgreements.isEmpty) {
       return const [
         _EmptyStateCard(
@@ -2704,6 +2892,13 @@ class _ProviderWorkTab extends StatelessWidget {
             return Future<void>.value();
           },
         ),
+      if (hasMoreAgreements || agreementsLoadingMore)
+        _PagedLoadMoreCard(
+          loadedCount: providerAgreements.length,
+          totalCount: agreementCount,
+          loading: agreementsLoadingMore,
+          onPressed: agreementsLoadingMore ? null : onLoadMoreAgreements,
+        ),
     ];
   }
 }
@@ -2717,8 +2912,11 @@ class _RequestsTab extends StatelessWidget {
     required this.customerRequests,
     required this.customerAgreementCount,
     required this.visibleRequests,
+    required this.agreementsLoadingMore,
+    required this.hasMoreAgreements,
     required this.onRefresh,
     required this.onFilterChanged,
+    required this.onLoadMoreAgreements,
     required this.onOpenRequestDetail,
     required this.onOpenProviderCatalog,
     required this.onCreateRequest,
@@ -2730,8 +2928,11 @@ class _RequestsTab extends StatelessWidget {
   final List<Map<String, dynamic>> customerRequests;
   final int customerAgreementCount;
   final List<Map<String, dynamic>> visibleRequests;
+  final bool agreementsLoadingMore;
+  final bool hasMoreAgreements;
   final Future<void> Function() onRefresh;
   final Future<void> Function(String filter) onFilterChanged;
+  final Future<void> Function() onLoadMoreAgreements;
   final Future<void> Function(int requestId) onOpenRequestDetail;
   final Future<void> Function() onOpenProviderCatalog;
   final Future<void> Function({
@@ -2873,6 +3074,14 @@ class _RequestsTab extends StatelessWidget {
                 }
                 return Future<void>.value();
               },
+            ),
+          if (selectedFilter == 'history' &&
+              (hasMoreAgreements || agreementsLoadingMore))
+            _PagedLoadMoreCard(
+              loadedCount: visibleRequests.length,
+              totalCount: customerAgreementCount,
+              loading: agreementsLoadingMore,
+              onPressed: agreementsLoadingMore ? null : onLoadMoreAgreements,
             ),
           if (customerRequests.isEmpty && customerAgreementCount == 0) ...[
             const SizedBox(height: 16),
@@ -3741,6 +3950,29 @@ Color _requestFlowToneColor(BuildContext context, String tone) {
   }
 }
 
+Color _requestFlowAccentColor(
+  BuildContext context,
+  String stepLabel,
+  String tone,
+) {
+  if (tone == 'danger') {
+    return const Color(0xFFB91C1C);
+  }
+  final currentStep = _requestFlowCurrentStep(stepLabel);
+  switch (currentStep) {
+    case 1:
+      return const Color(0xFFB7791F);
+    case 2:
+      return const Color(0xFF2563EB);
+    case 3:
+      return const Color(0xFF0F766E);
+    case 4:
+      return const Color(0xFF15803D);
+    default:
+      return _requestFlowToneColor(context, tone);
+  }
+}
+
 String _summarizeRequestDetails(String text) {
   final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
   if (normalized.length <= 120) {
@@ -4058,25 +4290,27 @@ class _RequestCard extends StatelessWidget {
     final hasFlow = flowStepLabel.trim().isNotEmpty ||
         flowTitle.trim().isNotEmpty ||
         flowNextAction.trim().isNotEmpty;
-    final flowColor = _requestFlowToneColor(context, flowTone);
+    final flowColor = _requestFlowAccentColor(
+      context,
+      flowStepLabel,
+      flowTone,
+    );
     final badgeSurface = BrandConfig.surfaceAltOf(
       context,
     ).withValues(alpha: isLightTheme ? 0.92 : 0.62);
     final badgeBorder = BrandConfig.borderOf(
       context,
     ).withValues(alpha: isLightTheme ? 0.7 : 0.56);
-    final flowSurface = BrandConfig.surfaceAltOf(
-      context,
-    ).withValues(alpha: isLightTheme ? 0.76 : 0.54);
-    final flowBorder = BrandConfig.borderOf(
-      context,
-    ).withValues(alpha: isLightTheme ? 0.68 : 0.52);
-    final progressTrack = BrandConfig.borderOf(
-      context,
-    ).withValues(alpha: isLightTheme ? 0.26 : 0.34);
-    final progressFill = BrandConfig.textOf(
-      context,
-    ).withValues(alpha: isLightTheme ? 0.66 : 0.48);
+    final stepBadgeSurface =
+        flowColor.withValues(alpha: isLightTheme ? 0.12 : 0.18);
+    final stepBadgeBorder =
+        flowColor.withValues(alpha: isLightTheme ? 0.24 : 0.34);
+    final flowSurface = flowColor.withValues(alpha: isLightTheme ? 0.08 : 0.14);
+    final flowBorder = flowColor.withValues(alpha: isLightTheme ? 0.22 : 0.30);
+    final progressTrack = flowColor.withValues(
+      alpha: isLightTheme ? 0.16 : 0.24,
+    );
+    final progressFill = flowColor;
     final currentStep = _requestFlowCurrentStep(flowStepLabel);
     final totalSteps = _requestFlowTotalSteps(flowStepLabel);
     final progressValue =
@@ -4145,10 +4379,10 @@ class _RequestCard extends StatelessWidget {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: badgeSurface,
+                          color: stepBadgeSurface,
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: badgeBorder,
+                            color: stepBadgeBorder,
                           ),
                         ),
                         child: Text(
@@ -4427,6 +4661,64 @@ class _EmptyStateCard extends StatelessWidget {
               style: TextStyle(color: BrandConfig.textMutedOf(context)),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PagedLoadMoreCard extends StatelessWidget {
+  const _PagedLoadMoreCard({
+    required this.loadedCount,
+    required this.totalCount,
+    required this.loading,
+    required this.onPressed,
+  });
+
+  final int loadedCount;
+  final int totalCount;
+  final bool loading;
+  final Future<void> Function()? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = totalCount - loadedCount;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Text(
+                '$loadedCount / $totalCount anlaşma yüklendi',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                remaining > 0
+                    ? '$remaining kayıt daha isteğe bağlı olarak yüklenebilir.'
+                    : 'Tüm kayıtlar yüklendi.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: BrandConfig.textMutedOf(context)),
+              ),
+              const SizedBox(height: 12),
+              if (loading)
+                const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: onPressed == null ? null : () => onPressed!(),
+                  icon: const Icon(Icons.expand_more_rounded),
+                  label: const Text('Daha fazla yükle'),
+                ),
+            ],
+          ),
         ),
       ),
     );

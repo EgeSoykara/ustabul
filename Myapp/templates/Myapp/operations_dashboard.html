@@ -166,7 +166,7 @@
       <div class="operations-focus-header">
         <div>
           <h2 class="h5 mb-1"><i class="bi bi-exclamation-triangle me-2"></i>Müdahale Gerekenler</h2>
-          <p class="small text-muted mb-0">Uzun s&uuml;redir bekleyen ve elle dokunulmas&#305; gereken ak&#305;&#351;lar.</p>
+          <p class="small text-muted mb-0">{{ attention_selection_stale_hours }} saate yakla&#351;an se&ccedil;imler, {{ attention_matched_stale_hours }} saati a&#351;an randevusuz e&#351;le&#351;meler ve {{ attention_appointment_stale_minutes }}+ dakikal&#305;k randevu bekleyi&#351;leri burada toplan&#305;r.</p>
         </div>
         <div class="operations-focus-header-actions">
           {% if attention_detail_open %}

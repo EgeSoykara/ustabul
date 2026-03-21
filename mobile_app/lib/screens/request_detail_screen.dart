@@ -846,6 +846,20 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
   }
 
   Color _flowToneColor(BuildContext context) {
+    if ((_flowState['tone'] ?? '').toString() == 'danger') {
+      return const Color(0xFFB91C1C);
+    }
+    final currentStep = _currentFlowStep();
+    switch (currentStep) {
+      case 1:
+        return const Color(0xFFB7791F);
+      case 2:
+        return const Color(0xFF2563EB);
+      case 3:
+        return const Color(0xFF0F766E);
+      case 4:
+        return const Color(0xFF15803D);
+    }
     switch ((_flowState['tone'] ?? '').toString()) {
       case 'success':
         return const Color(0xFF15803D);
