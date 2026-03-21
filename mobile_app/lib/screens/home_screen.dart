@@ -82,9 +82,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _preferencesError;
   Map<String, dynamic> _notificationPreferences = const {};
   bool _notificationPreferencesFallbackToWeb = false;
-  List<Map<String, dynamic>> _customerRequestsTabItems = const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _customerRequestsTabItems =
+      const <Map<String, dynamic>>[];
   int _customerRequestsTabCount = 0;
   String _customerRequestsTabFilter = 'active';
+  bool _customerRequestsTabLoaded = false;
 
   @override
   void initState() {
@@ -175,9 +177,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get _customerRequestsHasMore =>
       _customerRequests.length < _customerRequestCount;
 
-  bool get _customerRequestsTabHasMore =>
-      _customerRequestsTabItems.length < _customerRequestsTabCount;
-
   bool get _providerAgreementsHasMore =>
       _providerAgreements.length < _providerAgreementCount;
 
@@ -205,8 +204,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_customerRequestFilter == 'history') {
       return _customerAgreements;
     }
-    return _customerRequestsTabItems;
+    return _customerRequestsTabItems
+        .where(
+          (item) => _matchesCustomerRequestFilter(item, _customerRequestFilter),
+        )
+        .toList();
   }
+
+  int get _customerRequestsTabActiveCount => _customerRequestsTabItems
+      .where((item) => _matchesCustomerRequestFilter(item, 'active'))
+      .length;
+
+  int get _customerRequestsTabDecisionCount => _customerRequestsTabItems
+      .where((item) => _matchesCustomerRequestFilter(item, 'decision'))
+      .length;
+
+  int get _customerRequestsTabInProgressCount => _customerRequestsTabItems
+      .where((item) => _matchesCustomerRequestFilter(item, 'in_progress'))
+      .length;
+
+  bool get _useCustomerRequestsTabMetrics => _customerRequestsTabLoaded;
+
+  List<Map<String, dynamic>> get _customerDashboardRequests =>
+      _useCustomerRequestsTabMetrics
+          ? _customerRequestsTabItems
+          : _customerRequests;
+
+  int get _customerDashboardRequestCount => _useCustomerRequestsTabMetrics
+      ? _customerRequestsTabActiveCount
+      : _customerRequests
+          .where((item) => _matchesCustomerRequestFilter(item, 'active'))
+          .length;
+
+  int get _customerDashboardActiveCount => _useCustomerRequestsTabMetrics
+      ? _customerRequestsTabActiveCount
+      : _customerActiveCount;
+
+  int get _customerDashboardDecisionCount => _useCustomerRequestsTabMetrics
+      ? _customerRequestsTabDecisionCount
+      : _customerDecisionCount;
+
+  int get _customerDashboardInProgressCount => _useCustomerRequestsTabMetrics
+      ? _customerRequestsTabInProgressCount
+      : _customerInProgressCount;
 
   int get _notificationsTabIndex => 3;
 
@@ -315,18 +355,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String? _customerRequestBucketForFilter(String filter) {
-    switch (filter) {
-      case 'active':
-      case 'waiting':
-      case 'decision':
-      case 'in_progress':
-        return filter;
-      default:
-        return null;
-    }
-  }
-
   Future<void> _loadCustomerRequestsTab({
     String? filter,
     bool reset = false,
@@ -339,17 +367,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_customerRequestsTabLoadingMore) {
       return;
     }
-    final currentItems =
-        reset || _customerRequestsTabFilter != targetFilter
-            ? const <Map<String, dynamic>>[]
-            : _customerRequestsTabItems;
-    final currentCount =
-        reset || _customerRequestsTabFilter != targetFilter
-            ? 0
-            : _customerRequestsTabCount;
     if (!reset &&
-        currentCount > 0 &&
-        currentItems.length >= currentCount) {
+        _customerRequestsTabFilter == targetFilter &&
+        _customerRequestsTabItems.isNotEmpty &&
+        _customerRequestsTabItems.length >= _customerRequestsTabCount) {
       return;
     }
 
@@ -365,24 +386,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     try {
       final accessToken = await widget.sessionController.ensureAccessToken();
-      final response = await widget.dataService.fetchCustomerRequests(
-        accessToken: accessToken,
-        scope: 'open',
-        bucket: _customerRequestBucketForFilter(targetFilter),
-        limit: _requestsPageSize,
-        offset: reset ? 0 : currentItems.length,
-      );
-      final nextItems = _mapList(response['results']);
+      final filteredItems = <Map<String, dynamic>>[];
+      var nextOffset = 0;
+      var totalCount = 0;
+      do {
+        final response = await widget.dataService.fetchCustomerRequests(
+          accessToken: accessToken,
+          scope: 'open',
+          limit: _requestsPageSize,
+          offset: nextOffset,
+        );
+        final responseItems = _mapList(response['results']);
+        totalCount =
+            (response['count'] as num?)?.toInt() ?? responseItems.length;
+        filteredItems.addAll(responseItems);
+        nextOffset += responseItems.length;
+        if (responseItems.isEmpty) {
+          break;
+        }
+      } while (nextOffset < totalCount);
       if (!mounted) {
         return;
       }
       setState(() {
         _customerRequestsTabFilter = targetFilter;
-        _customerRequestsTabItems = reset
-            ? nextItems
-            : _mergePagedItems(currentItems, nextItems);
-        _customerRequestsTabCount = (response['count'] as num?)?.toInt() ??
-            _customerRequestsTabItems.length;
+        _customerRequestsTabItems = filteredItems;
+        _customerRequestsTabCount = filteredItems.length;
+        _customerRequestsTabLoaded = true;
       });
     } catch (_) {
       if (!silent) {
@@ -879,9 +909,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _customerRequestsVersion = nextRequestsVersion;
           _customerAgreementsVersion = nextAgreementsVersion;
         });
-        if (_currentIndex == 1 && _customerRequestFilter != 'history') {
+        final requestsTabFilter =
+            _currentIndex == 1 ? _customerRequestFilter : 'active';
+        if (requestsTabFilter != 'history') {
           await _loadCustomerRequestsTab(
-            filter: _customerRequestFilter,
+            filter: requestsTabFilter,
             reset: true,
             silent: silent,
           );
@@ -1788,11 +1820,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       error: _dashboardError,
                       sessionSnapshot: _sessionSnapshot,
                       dashboardPayload: _dashboardPayload,
-                      customerRequests: _customerRequests,
-                      customerRequestCount: _customerRequestCount,
-                      customerActiveCount: _customerActiveCount,
-                      customerDecisionCount: _customerDecisionCount,
-                      customerInProgressCount: _customerInProgressCount,
+                      customerRequests: _customerDashboardRequests,
+                      customerRequestCount: _customerDashboardRequestCount,
+                      customerActiveCount: _customerDashboardActiveCount,
+                      customerDecisionCount: _customerDashboardDecisionCount,
+                      customerInProgressCount:
+                          _customerDashboardInProgressCount,
                       customerWaitingCount: _customerWaitingCount,
                       customerAgreementCount: _customerAgreementCount,
                       providerPendingOffers: _providerPendingOffers,
@@ -1862,16 +1895,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           error: _dashboardError,
                           selectedFilter: _customerRequestFilter,
                           customerRequests: _customerVisibleRequests,
-                          customerRequestCount: _customerRequestFilter == 'history'
-                              ? _customerAgreementCount
-                              : _customerRequestsTabCount,
-                          customerActiveCount: _customerActiveCount,
-                          customerDecisionCount: _customerDecisionCount,
-                          customerInProgressCount: _customerInProgressCount,
+                          customerRequestCount:
+                              _customerRequestFilter == 'history'
+                                  ? _customerAgreementCount
+                                  : _customerVisibleRequests.length,
+                          customerActiveCount: _customerRequestsTabActiveCount,
+                          customerDecisionCount:
+                              _customerRequestsTabDecisionCount,
+                          customerInProgressCount:
+                              _customerRequestsTabInProgressCount,
                           customerAgreementCount: _customerAgreementCount,
                           visibleRequests: _customerVisibleRequests,
                           requestsLoadingMore: _customerRequestsTabLoadingMore,
-                          hasMoreRequests: _customerRequestsTabHasMore,
+                          hasMoreRequests: false,
                           agreementsLoadingMore: _customerAgreementsLoadingMore,
                           hasMoreAgreements: _customerAgreementsHasMore,
                           onRefresh: _loadDashboard,
@@ -2224,7 +2260,8 @@ class _DashboardTab extends StatelessWidget {
           subtitle:
               'Son aktif talepleriniz burada özetlenir; anlaşma kayıtları ise ayrı görünümde tutulur.',
         ),
-        if (totalActiveCount > recentRequests.length && recentRequests.isNotEmpty)
+        if (totalActiveCount > recentRequests.length &&
+            recentRequests.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
@@ -3237,9 +3274,7 @@ class _RequestsTab extends StatelessWidget {
     }
 
     final inProgressCount = customerInProgressCount;
-    final activeCount = customerActiveCount > inProgressCount
-        ? customerActiveCount - inProgressCount
-        : 0;
+    final activeCount = customerActiveCount;
     final decisionCount = customerDecisionCount;
     final historyCount = customerAgreementCount;
 

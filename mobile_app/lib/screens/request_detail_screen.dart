@@ -90,6 +90,23 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
           ? _payload['rating_state'] as Map<String, dynamic>
           : const <String, dynamic>{};
 
+  String get _requestStatus => (_request['status'] ?? '').toString();
+
+  String get _appointmentStatus => (_appointment?['status'] ?? '').toString();
+
+  bool get _canCancelRequest {
+    if (_isProviderViewer) {
+      return false;
+    }
+    if (_actions['can_cancel_request'] == true) {
+      return true;
+    }
+    return _requestStatus == 'matched' &&
+        (_appointment == null ||
+            _appointmentStatus == 'rejected' ||
+            _appointmentStatus == 'cancelled');
+  }
+
   List<Map<String, dynamic>> get _acceptedOffers {
     final raw = _payload['accepted_offers'];
     if (raw is! List) {
@@ -429,6 +446,23 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
         });
       }
     }
+  }
+
+  Future<Map<String, dynamic>> _runCancelRequest(String accessToken) {
+    final matchedWithoutActiveAppointment = _requestStatus == 'matched' &&
+        (_appointment == null ||
+            _appointmentStatus == 'rejected' ||
+            _appointmentStatus == 'cancelled');
+    if (matchedWithoutActiveAppointment) {
+      return widget.dataService.completeRequest(
+        accessToken: accessToken,
+        requestId: widget.requestId,
+      );
+    }
+    return widget.dataService.cancelRequest(
+      accessToken: accessToken,
+      requestId: widget.requestId,
+    );
   }
 
   // ignore: unused_element
@@ -1498,8 +1532,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
                     onTap: _openThread,
                     primary: false,
                   ),
-                if (!_isProviderViewer &&
-                    _actions['can_cancel_request'] == true)
+                if (_canCancelRequest)
                   _ActionSpec(
                     label: 'Talebi iptal et',
                     icon: Icons.cancel_outlined,
@@ -1515,10 +1548,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen>
                       final accessToken =
                           await widget.sessionController.ensureAccessToken();
                       await _performAndPop(
-                        () => widget.dataService.cancelRequest(
-                          accessToken: accessToken,
-                          requestId: widget.requestId,
-                        ),
+                        () => _runCancelRequest(accessToken),
                       );
                     },
                     primary: false,

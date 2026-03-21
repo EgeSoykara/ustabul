@@ -26,6 +26,8 @@ class RequestCreateScreen extends StatefulWidget {
 }
 
 class _RequestCreateScreenState extends State<RequestCreateScreen> {
+  static const String _anyDistrictValue = 'Herhangi';
+
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _detailsController = TextEditingController();
@@ -97,7 +99,11 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
     if (_selectedCity.isEmpty) {
       return const <String>[];
     }
-    return _cityDistrictMap[_selectedCity] ?? const <String>[];
+    final districts = _cityDistrictMap[_selectedCity] ?? const <String>[];
+    return <String>[
+      _anyDistrictValue,
+      ...districts.where((item) => item != _anyDistrictValue),
+    ];
   }
 
   Future<void> _openWebFallback() async {
@@ -188,6 +194,9 @@ class _RequestCreateScreenState extends State<RequestCreateScreen> {
 
   void _ensureDistrictConsistency() {
     final districts = _cityDistrictMap[_selectedCity] ?? const <String>[];
+    if (_selectedDistrict == _anyDistrictValue) {
+      return;
+    }
     if (!districts.contains(_selectedDistrict)) {
       _selectedDistrict = '';
     }

@@ -39,8 +39,6 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
   String _selectedCity = '';
   String _selectedDistrict = '';
   String _selectedSortBy = 'relevance';
-  String _selectedMinRating = '';
-  String _selectedMinReviews = '';
 
   @override
   void initState() {
@@ -64,12 +62,6 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
 
   List<Map<String, dynamic>> get _sortChoices =>
       _mapList(_searchPayload['sort_choices']);
-
-  List<Map<String, dynamic>> get _minRatingChoices =>
-      _mapList(_searchPayload['min_rating_choices']);
-
-  List<Map<String, dynamic>> get _minReviewChoices =>
-      _mapList(_searchPayload['min_review_choices']);
 
   Map<String, List<String>> get _cityDistrictMap {
     final raw = _searchPayload['city_district_map'];
@@ -176,12 +168,6 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
         city: _selectedCity,
         district: _selectedDistrict,
         sortBy: _selectedSortBy,
-        minRating: _selectedMinRating.isEmpty
-            ? null
-            : double.tryParse(_selectedMinRating),
-        minReviews: _selectedMinReviews.isEmpty
-            ? null
-            : int.tryParse(_selectedMinReviews),
         limit: 20,
         offset: reset ? 0 : _providers.length,
       );
@@ -252,8 +238,6 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
       _selectedCity = '';
       _selectedDistrict = '';
       _selectedSortBy = 'relevance';
-      _selectedMinRating = '';
-      _selectedMinReviews = '';
     });
     await _loadProviders(reset: true);
   }
@@ -397,7 +381,7 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
                                   items: [
                                     const DropdownMenuItem<String>(
                                       value: null,
-                                      child: Text('İlçe seçin'),
+                                      child: Text('Herhangi'),
                                     ),
                                     ..._districtOptions.map(
                                       (item) => DropdownMenuItem<String>(
@@ -418,104 +402,28 @@ class _ProviderCatalogScreenState extends State<ProviderCatalogScreen> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            Column(
-                              children: [
-                                DropdownButtonFormField<String>(
-                                  key: ValueKey<String>(_selectedSortBy),
-                                  initialValue: _selectedSortBy,
-                                  isExpanded: true,
-                                  items: _sortChoices
-                                      .map(
-                                        (item) => DropdownMenuItem<String>(
-                                          value:
-                                              (item['value'] ?? '').toString(),
-                                          child: Text(
-                                            (item['label'] ?? '').toString(),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedSortBy = value ?? 'relevance';
-                                    });
-                                  },
-                                  decoration: const InputDecoration(
-                                    labelText: 'Sıralama',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                DropdownButtonFormField<String>(
-                                  key: ValueKey<String>(_selectedMinRating),
-                                  initialValue: _selectedMinRating.isEmpty
-                                      ? null
-                                      : _selectedMinRating,
-                                  isExpanded: true,
-                                  items: [
-                                    const DropdownMenuItem<String>(
-                                      value: null,
-                                      child: Text('Puan fark etmez'),
-                                    ),
-                                    ..._minRatingChoices
-                                        .where(
-                                          (item) => (item['value'] ?? '')
-                                              .toString()
-                                              .isNotEmpty,
-                                        )
-                                        .map(
-                                          (item) => DropdownMenuItem<String>(
-                                            value: (item['value'] ?? '')
-                                                .toString(),
-                                            child: Text(
-                                              (item['label'] ?? '').toString(),
-                                            ),
-                                          ),
-                                        ),
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedMinRating = value ?? '';
-                                    });
-                                  },
-                                  decoration: const InputDecoration(
-                                    labelText: 'Minimum puan',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
                             DropdownButtonFormField<String>(
-                              key: ValueKey<String>(_selectedMinReviews),
-                              initialValue: _selectedMinReviews.isEmpty
-                                  ? null
-                                  : _selectedMinReviews,
+                              key: ValueKey<String>(_selectedSortBy),
+                              initialValue: _selectedSortBy,
                               isExpanded: true,
-                              items: [
-                                const DropdownMenuItem<String>(
-                                  value: null,
-                                  child: Text('Yorum sayısı fark etmez'),
-                                ),
-                                ..._minReviewChoices
-                                    .where(
-                                      (item) => (item['value'] ?? '')
-                                          .toString()
-                                          .isNotEmpty,
-                                    )
-                                    .map(
-                                      (item) => DropdownMenuItem<String>(
-                                        value: (item['value'] ?? '').toString(),
-                                        child: Text(
-                                            (item['label'] ?? '').toString()),
+                              items: _sortChoices
+                                  .map(
+                                    (item) => DropdownMenuItem<String>(
+                                      value: (item['value'] ?? '').toString(),
+                                      child: Text(
+                                        (item['label'] ?? '').toString(),
                                       ),
                                     ),
-                              ],
+                                  )
+                                  .toList(),
                               onChanged: (value) {
                                 setState(() {
-                                  _selectedMinReviews = value ?? '';
+                                  _selectedSortBy = value ?? 'relevance';
                                 });
                               },
                               decoration: const InputDecoration(
-                                  labelText: 'Minimum yorum'),
+                                labelText: 'Sıralama',
+                              ),
                             ),
                             const SizedBox(height: 16),
                             Column(

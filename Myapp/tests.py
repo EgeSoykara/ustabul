@@ -6227,6 +6227,50 @@ class MobileApiTests(TestCase):
             "Talebi onaylayın veya reddedin.",
         )
 
+    def test_mobile_customer_can_cancel_matched_request_without_appointment(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Randevusuz Mobil Iptal",
+            customer_phone="05001239999",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Mobilde randevu olmadan iptal edilebilmeli",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILECANCEL001",
+            sequence=1,
+            status="accepted",
+            responded_at=timezone.now(),
+        )
+        service_request.matched_offer = matched_offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+        ServiceMessage.objects.create(
+            service_request=service_request,
+            sender_user=self.customer_user,
+            sender_role="customer",
+            body="İptal öncesi mesaj",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.post(
+            f"/mobile/api/v1/customer/requests/{service_request.id}/cancel/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        service_request.refresh_from_db()
+        self.assertEqual(service_request.status, "cancelled")
+        self.assertIsNone(service_request.matched_provider_id)
+        self.assertIsNone(service_request.matched_offer_id)
+        self.assertFalse(ServiceMessage.objects.filter(service_request=service_request).exists())
+
     def test_mobile_request_detail_summary_only_returns_version(self):
         service_request = ServiceRequest.objects.create(
             customer_name="Detay Ozet Musteri",

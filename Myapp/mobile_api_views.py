@@ -1452,7 +1452,19 @@ class MobileCustomerCancelRequestView(APIView):
 
         actor_role = infer_actor_role(request.user)
         service_request = get_mobile_request_for_customer(request.user, request_id)
-        if service_request.status not in {"new", "pending_provider", "pending_customer"} or service_request.matched_provider_id:
+        appointment = ServiceAppointment.objects.filter(service_request=service_request).first()
+        can_cancel_directly = (
+            service_request.status in {"new", "pending_provider", "pending_customer"}
+            and service_request.matched_provider_id is None
+        )
+        can_cancel_matched_without_active_appointment = (
+            service_request.status == "matched"
+            and (
+                appointment is None
+                or appointment.status in {"rejected", "cancelled"}
+            )
+        )
+        if not can_cancel_directly and not can_cancel_matched_without_active_appointment:
             return Response(
                 {"detail": "Bu talep artik iptal edilemez."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1473,12 +1485,23 @@ class MobileCustomerCancelRequestView(APIView):
             actor_user=request.user,
             actor_role=actor_role,
             source="user",
-            note="Musteri talebi iptal etti",
+            note=(
+                "Musteri talebi iptal etti"
+                if can_cancel_directly
+                else (
+                    "Musteri randevu secmeden eslesmeyi iptal etti"
+                    if appointment is None
+                    else "Musteri aktif olmayan randevu sonrasi talebi iptal etti"
+                )
+            ),
         ):
             return Response(
                 {"detail": "Talep durumu guncellenemedi."},
                 status=status.HTTP_409_CONFLICT,
             )
+
+        if can_cancel_matched_without_active_appointment:
+            purge_request_messages(service_request.id)
 
         return Response(
             {
