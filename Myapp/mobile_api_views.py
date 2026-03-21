@@ -1294,6 +1294,7 @@ class MobileCustomerRequestsView(APIView):
             return Response({"detail": "forbidden-provider"}, status=status.HTTP_403_FORBIDDEN)
 
         scope = (request.GET.get("scope") or "").strip()
+        bucket = (request.GET.get("bucket") or "").strip()
         status_filter = (request.GET.get("status") or "").strip()
         summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
         limit_raw = (request.GET.get("limit") or "20").strip()
@@ -1313,6 +1314,19 @@ class MobileCustomerRequestsView(APIView):
             )
         else:
             qs = qs.order_by("-created_at")
+
+        if bucket == "active":
+            qs = qs.filter(status__in=["new", "pending_provider", "pending_customer"]).order_by("-created_at")
+        elif bucket == "waiting":
+            qs = qs.filter(status__in=["new", "pending_provider"]).order_by("-created_at")
+        elif bucket == "decision":
+            qs = qs.filter(status="pending_customer").order_by("-created_at")
+        elif bucket == "in_progress":
+            qs = qs.filter(status="matched").order_by(
+                F("matched_at").desc(nulls_last=True),
+                "-created_at",
+            )
+
         if status_filter:
             qs = qs.filter(status=status_filter)
 

@@ -121,6 +121,7 @@ class MobileDataService {
     int limit = 30,
     int offset = 0,
     String? scope,
+    String? bucket,
   }) async {
     final queryParameters = <String, dynamic>{
       'limit': limit,
@@ -128,6 +129,9 @@ class MobileDataService {
     };
     if ((scope ?? '').trim().isNotEmpty) {
       queryParameters['scope'] = scope!.trim();
+    }
+    if ((bucket ?? '').trim().isNotEmpty) {
+      queryParameters['bucket'] = bucket!.trim();
     }
     final response = await _apiClient.get(
       '/mobile/api/v1/customer/requests/',

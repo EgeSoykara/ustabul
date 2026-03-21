@@ -5442,6 +5442,82 @@ class MobileApiTests(TestCase):
         self.assertEqual(body["summary"]["pending_customer_count"], 6)
         self.assertEqual(body["summary"]["matched_count"], 6)
 
+    def test_mobile_customer_requests_bucket_filters_results_and_count(self):
+        ServiceRequest.objects.create(
+            customer_name="Aktif Talep",
+            customer_phone="05001112233",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Aktif bucket icin",
+            customer=self.customer_user,
+            status="new",
+        )
+        pending_customer_request = ServiceRequest.objects.create(
+            customer_name="Karar Bekleyen",
+            customer_phone="05001112234",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Karar bucket icin",
+            customer=self.customer_user,
+            status="pending_customer",
+        )
+        matched_request = ServiceRequest.objects.create(
+            customer_name="Devam Eden",
+            customer_phone="05001112235",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="In progress bucket icin",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=matched_request,
+            provider=self.provider,
+            token="BUCKETMATCH001",
+            sequence=1,
+            status="accepted",
+        )
+        matched_request.matched_offer = matched_offer
+        matched_request.matched_at = timezone.now()
+        matched_request.save(update_fields=["matched_offer", "matched_at"])
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+
+        active_response = self.client.get(
+            "/mobile/api/v1/customer/requests/?scope=open&bucket=active&limit=20&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(active_response.status_code, 200)
+        active_body = active_response.json()
+        self.assertEqual(active_body["count"], 2)
+        self.assertEqual(
+            {item["status"] for item in active_body["results"]},
+            {"new", "pending_customer"},
+        )
+
+        in_progress_response = self.client.get(
+            "/mobile/api/v1/customer/requests/?scope=open&bucket=in_progress&limit=20&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(in_progress_response.status_code, 200)
+        in_progress_body = in_progress_response.json()
+        self.assertEqual(in_progress_body["count"], 1)
+        self.assertEqual(in_progress_body["results"][0]["status"], "matched")
+
+        decision_response = self.client.get(
+            "/mobile/api/v1/customer/requests/?scope=open&bucket=decision&limit=20&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(decision_response.status_code, 200)
+        decision_body = decision_response.json()
+        self.assertEqual(decision_body["count"], 1)
+        self.assertEqual(decision_body["results"][0]["id"], pending_customer_request.id)
+
     def test_mobile_customer_requests_summary_only_returns_version(self):
         ServiceRequest.objects.create(
             customer_name="Ozet Musteri",

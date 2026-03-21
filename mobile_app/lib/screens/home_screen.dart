@@ -72,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _notificationCategory = 'all';
   bool _notificationsFallbackToWeb = false;
   bool _customerRequestsLoadingMore = false;
+  bool _customerRequestsTabLoadingMore = false;
   bool _customerAgreementsLoadingMore = false;
   bool _providerAgreementsLoadingMore = false;
   bool _notificationsLoadingMore = false;
@@ -81,6 +82,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _preferencesError;
   Map<String, dynamic> _notificationPreferences = const {};
   bool _notificationPreferencesFallbackToWeb = false;
+  List<Map<String, dynamic>> _customerRequestsTabItems = const <Map<String, dynamic>>[];
+  int _customerRequestsTabCount = 0;
+  String _customerRequestsTabFilter = 'active';
 
   @override
   void initState() {
@@ -171,6 +175,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get _customerRequestsHasMore =>
       _customerRequests.length < _customerRequestCount;
 
+  bool get _customerRequestsTabHasMore =>
+      _customerRequestsTabItems.length < _customerRequestsTabCount;
+
   bool get _providerAgreementsHasMore =>
       _providerAgreements.length < _providerAgreementCount;
 
@@ -198,11 +205,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_customerRequestFilter == 'history') {
       return _customerAgreements;
     }
-    return _customerRequests
-        .where(
-          (item) => _matchesCustomerRequestFilter(item, _customerRequestFilter),
-        )
-        .toList();
+    return _customerRequestsTabItems;
   }
 
   int get _notificationsTabIndex => 3;
@@ -219,6 +222,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _customerAgreements.isEmpty &&
         !_customerAgreementsLoadingMore) {
       await _loadMoreCustomerAgreements(reset: true);
+      return;
+    }
+    if (filter != 'history') {
+      await _loadCustomerRequestsTab(filter: filter, reset: true);
     }
   }
 
@@ -234,6 +241,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _customerAgreements.isEmpty &&
         !_customerAgreementsLoadingMore) {
       await _loadMoreCustomerAgreements(reset: true);
+      return;
+    }
+    if (filter != 'history') {
+      await _loadCustomerRequestsTab(filter: filter, reset: true);
     }
   }
 
@@ -304,7 +315,95 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String? _customerRequestBucketForFilter(String filter) {
+    switch (filter) {
+      case 'active':
+      case 'waiting':
+      case 'decision':
+      case 'in_progress':
+        return filter;
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _loadCustomerRequestsTab({
+    String? filter,
+    bool reset = false,
+    bool silent = false,
+  }) async {
+    final targetFilter = filter ?? _customerRequestFilter;
+    if (targetFilter == 'history') {
+      return;
+    }
+    if (_customerRequestsTabLoadingMore) {
+      return;
+    }
+    final currentItems =
+        reset || _customerRequestsTabFilter != targetFilter
+            ? const <Map<String, dynamic>>[]
+            : _customerRequestsTabItems;
+    final currentCount =
+        reset || _customerRequestsTabFilter != targetFilter
+            ? 0
+            : _customerRequestsTabCount;
+    if (!reset &&
+        currentCount > 0 &&
+        currentItems.length >= currentCount) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _customerRequestsTabLoadingMore = true;
+        if (reset || _customerRequestsTabFilter != targetFilter) {
+          _customerRequestsTabFilter = targetFilter;
+          _customerRequestsTabItems = const <Map<String, dynamic>>[];
+          _customerRequestsTabCount = 0;
+        }
+      });
+    }
+    try {
+      final accessToken = await widget.sessionController.ensureAccessToken();
+      final response = await widget.dataService.fetchCustomerRequests(
+        accessToken: accessToken,
+        scope: 'open',
+        bucket: _customerRequestBucketForFilter(targetFilter),
+        limit: _requestsPageSize,
+        offset: reset ? 0 : currentItems.length,
+      );
+      final nextItems = _mapList(response['results']);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _customerRequestsTabFilter = targetFilter;
+        _customerRequestsTabItems = reset
+            ? nextItems
+            : _mergePagedItems(currentItems, nextItems);
+        _customerRequestsTabCount = (response['count'] as num?)?.toInt() ??
+            _customerRequestsTabItems.length;
+      });
+    } catch (_) {
+      if (!silent) {
+        _showInlineMessage('Talepler şu an yüklenemedi.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _customerRequestsTabLoadingMore = false;
+        });
+      }
+    }
+  }
+
   Future<void> _loadMoreCustomerRequests({bool reset = false}) async {
+    if (_customerRequestFilter != 'history') {
+      return _loadCustomerRequestsTab(
+        filter: _customerRequestFilter,
+        reset: reset,
+      );
+    }
     if (_customerRequestsLoadingMore) {
       return;
     }
@@ -780,6 +879,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _customerRequestsVersion = nextRequestsVersion;
           _customerAgreementsVersion = nextAgreementsVersion;
         });
+        if (_currentIndex == 1 && _customerRequestFilter != 'history') {
+          await _loadCustomerRequestsTab(
+            filter: _customerRequestFilter,
+            reset: true,
+            silent: silent,
+          );
+        }
         if (silent && changed) {
           _showLiveUpdateCue(
             message: _dashboardRefreshMessage(),
@@ -1220,6 +1326,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _currentIndex = index;
     });
+    if (!_isProvider && index == 1) {
+      if (_customerRequestFilter == 'history') {
+        if (_customerAgreementCount > 0 &&
+            _customerAgreements.isEmpty &&
+            !_customerAgreementsLoadingMore) {
+          _loadMoreCustomerAgreements(reset: true);
+        }
+      } else if (_customerRequestsTabFilter != _customerRequestFilter ||
+          _customerRequestsTabItems.isEmpty) {
+        _loadCustomerRequestsTab(filter: _customerRequestFilter, reset: true);
+      }
+    }
     if (index == _notificationsTabIndex &&
         _notificationsPayload.isEmpty &&
         !_notificationsLoading) {
@@ -1737,18 +1855,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         )
                       : _RequestsTab(
                           key: const ValueKey('requests'),
-                          loading: _dashboardLoading,
+                          loading: _dashboardLoading ||
+                              (_customerRequestFilter != 'history' &&
+                                  _customerRequestsTabLoadingMore &&
+                                  _customerRequestsTabItems.isEmpty),
                           error: _dashboardError,
                           selectedFilter: _customerRequestFilter,
-                          customerRequests: _customerRequests,
-                          customerRequestCount: _customerRequestCount,
+                          customerRequests: _customerVisibleRequests,
+                          customerRequestCount: _customerRequestFilter == 'history'
+                              ? _customerAgreementCount
+                              : _customerRequestsTabCount,
                           customerActiveCount: _customerActiveCount,
                           customerDecisionCount: _customerDecisionCount,
                           customerInProgressCount: _customerInProgressCount,
                           customerAgreementCount: _customerAgreementCount,
                           visibleRequests: _customerVisibleRequests,
-                          requestsLoadingMore: _customerRequestsLoadingMore,
-                          hasMoreRequests: _customerRequestsHasMore,
+                          requestsLoadingMore: _customerRequestsTabLoadingMore,
+                          hasMoreRequests: _customerRequestsTabHasMore,
                           agreementsLoadingMore: _customerAgreementsLoadingMore,
                           hasMoreAgreements: _customerAgreementsHasMore,
                           onRefresh: _loadDashboard,
@@ -1972,7 +2095,7 @@ class _DashboardTab extends StatelessWidget {
   }
 
   List<Widget> _buildCustomerContent(BuildContext context) {
-    final activeCount = customerActiveCount;
+    final totalActiveCount = customerActiveCount;
     final matchedCount = customerInProgressCount;
     final pendingCustomerCount = customerDecisionCount;
     final waitingProviderCount = customerWaitingCount;
@@ -1981,6 +2104,7 @@ class _DashboardTab extends StatelessWidget {
         .where((item) => _matchesCustomerRequestFilter(item, 'active'))
         .take(3)
         .toList();
+    final previewActiveCount = recentRequests.length;
     final useModernLayout = Theme.of(context).useMaterial3;
 
     if (useModernLayout) {
@@ -2017,8 +2141,8 @@ class _DashboardTab extends StatelessWidget {
           children: [
             Expanded(
               child: _MetricCard(
-                label: 'Aktif talepler',
-                value: '$activeCount',
+                label: 'Son aktif talepler',
+                value: '$previewActiveCount',
                 tone: 'primary',
               ),
             ),
@@ -2100,6 +2224,14 @@ class _DashboardTab extends StatelessWidget {
           subtitle:
               'Son aktif talepleriniz burada özetlenir; anlaşma kayıtları ise ayrı görünümde tutulur.',
         ),
+        if (totalActiveCount > recentRequests.length && recentRequests.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Toplam $totalActiveCount açık kaydın var. Ana sayfada yalnızca son ${recentRequests.length} tanesi gösteriliyor.',
+              style: TextStyle(color: BrandConfig.textMutedOf(context)),
+            ),
+          ),
         if (recentRequests.isEmpty)
           const _EmptyStateCard(
             title: 'Henüz kayıtlı talep yok',
@@ -2184,10 +2316,10 @@ class _DashboardTab extends StatelessWidget {
         children: [
           Expanded(
             child: _MetricCard(
-              label: 'Açık talepler',
-               value: '$activeCount',
-               tone: 'primary',
-             ),
+              label: 'Son aktif talepler',
+              value: '$previewActiveCount',
+              tone: 'primary',
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -2225,6 +2357,15 @@ class _DashboardTab extends StatelessWidget {
         subtitle:
             'Mesajlaşma açılan işlerde doğrudan uygulama içi sohbete geçebilirsiniz.',
       ),
+      if (totalActiveCount > customerRequests.length &&
+          customerRequests.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            'Toplam $totalActiveCount açık kaydın var. Ana sayfa yalnızca son ${customerRequests.length} tanesini özetler.',
+            style: TextStyle(color: BrandConfig.textMutedOf(context)),
+          ),
+        ),
       if (customerRequests.isEmpty)
         const _EmptyStateCard(
           title: 'Henüz kayıtlı talep yok',
@@ -3095,9 +3236,11 @@ class _RequestsTab extends StatelessWidget {
       return _ErrorState(message: error!, onRetry: onRefresh);
     }
 
-    final activeCount = customerActiveCount;
-    final decisionCount = customerDecisionCount;
     final inProgressCount = customerInProgressCount;
+    final activeCount = customerActiveCount > inProgressCount
+        ? customerActiveCount - inProgressCount
+        : 0;
+    final decisionCount = customerDecisionCount;
     final historyCount = customerAgreementCount;
 
     return RefreshIndicator(
@@ -3166,6 +3309,11 @@ class _RequestsTab extends StatelessWidget {
                 onTap: () => onFilterChanged('decision'),
               ),
               _CategoryChip(
+                label: 'İş sürüyor • $inProgressCount',
+                selected: selectedFilter == 'in_progress',
+                onTap: () => onFilterChanged('in_progress'),
+              ),
+              _CategoryChip(
                 label: 'Anlaşmalar • $historyCount',
                 selected: selectedFilter == 'history',
                 onTap: () => onFilterChanged('history'),
@@ -3231,7 +3379,10 @@ class _RequestsTab extends StatelessWidget {
               loading: agreementsLoadingMore,
               onPressed: agreementsLoadingMore ? null : onLoadMoreAgreements,
             ),
-          if (customerRequests.isEmpty && customerAgreementCount == 0) ...[
+          if (customerActiveCount == 0 &&
+              customerDecisionCount == 0 &&
+              customerInProgressCount == 0 &&
+              customerAgreementCount == 0) ...[
             const SizedBox(height: 16),
             Row(
               children: [
@@ -3857,12 +4008,13 @@ bool _matchesCustomerRequestFilter(Map<String, dynamic> item, String filter) {
         'new',
         'pending_provider',
         'pending_customer',
-        'matched',
       }.contains(status);
     case 'waiting':
       return status == 'new' || status == 'pending_provider';
     case 'decision':
       return status == 'pending_customer';
+    case 'in_progress':
+      return status == 'matched';
     case 'agreements':
       return _isAgreementRecord(item);
     case 'history':
@@ -4150,6 +4302,8 @@ String _emptyStateTitleForFilter(String filter) {
       return 'Yanıt bekleyen talep yok';
     case 'decision':
       return 'Karar bekleyen teklif yok';
+    case 'in_progress':
+      return 'Devam eden iş yok';
     case 'agreements':
       return 'Henüz anlaşma yok';
     case 'history':
@@ -4162,11 +4316,13 @@ String _emptyStateTitleForFilter(String filter) {
 String _emptyStateBodyForFilter(String filter) {
   switch (filter) {
     case 'active':
-      return 'Aktif talepleriniz burada görünür. Eşleşen kayıtlar ayrıca Anlaşmalar görünümünde de takip edilir.';
+      return 'Yeni açtığınız, ustadan yanıt bekleyen veya sizin kararınızı bekleyen aktif talepler burada görünür.';
     case 'waiting':
       return 'Yeni açtığınız veya ustalardan yanıt bekleyen işler burada listelenir.';
     case 'decision':
       return 'Usta seçimi yapmanız gereken talepler burada toplanır.';
+    case 'in_progress':
+      return 'Eşleşmiş ve şu anda devam eden işler burada listelenir.';
     case 'agreements':
       return 'Web sitesindeki Anlaşmalar ekranı gibi, eşleşen aktif ve kapanan işler burada tutulur.';
     case 'history':
