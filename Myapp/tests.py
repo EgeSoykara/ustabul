@@ -5377,6 +5377,71 @@ class MobileApiTests(TestCase):
         self.assertEqual(body["results"][0]["matched_offer_id"], included_offer.id)
         self.assertNotEqual(body["results"][0]["id"], excluded_request.id)
 
+    def test_mobile_customer_requests_scope_open_paginates_and_returns_summary_counts(self):
+        status_cycle = [
+            "new",
+            "pending_provider",
+            "pending_customer",
+            "matched",
+        ]
+        for index in range(25):
+            status_value = status_cycle[index % len(status_cycle)]
+            service_request = ServiceRequest.objects.create(
+                customer_name=f"Acik Musteri {index}",
+                customer_phone=f"0500666{index:04d}",
+                city="Lefkosa",
+                district="Ortakoy",
+                service_type=self.service,
+                details="Acik mobil talep",
+                customer=self.customer_user,
+                matched_provider=self.provider if status_value == "matched" else None,
+                status=status_value,
+            )
+            if status_value == "matched":
+                offer = ProviderOffer.objects.create(
+                    service_request=service_request,
+                    provider=self.provider,
+                    token=f"MOBILEOPEN{index:03d}",
+                    sequence=1,
+                    status="accepted",
+                )
+                service_request.matched_offer = offer
+                service_request.matched_at = timezone.now() - timedelta(minutes=index)
+                service_request.save(update_fields=["matched_offer", "matched_at"])
+
+        ServiceRequest.objects.create(
+            customer_name="Gecmis Kayit",
+            customer_phone="05007778899",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Gecmise dusmeli",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="completed",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+        response = self.client.get(
+            "/mobile/api/v1/customer/requests/?scope=open&limit=20&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["count"], 25)
+        self.assertEqual(len(body["results"]), 20)
+        self.assertEqual(body["summary"]["count"], 25)
+        self.assertEqual(body["summary"]["active_count"], 25)
+        self.assertEqual(body["summary"]["decision_count"], 6)
+        self.assertEqual(body["summary"]["in_progress_count"], 6)
+        self.assertEqual(body["summary"]["waiting_count"], 13)
+        self.assertEqual(body["summary"]["new_count"], 7)
+        self.assertEqual(body["summary"]["pending_provider_count"], 6)
+        self.assertEqual(body["summary"]["pending_customer_count"], 6)
+        self.assertEqual(body["summary"]["matched_count"], 6)
+
     def test_mobile_customer_requests_summary_only_returns_version(self):
         ServiceRequest.objects.create(
             customer_name="Ozet Musteri",
@@ -5546,6 +5611,65 @@ class MobileApiTests(TestCase):
         self.assertEqual(body["summary"]["unread_count"], 1)
         self.assertTrue(body["summary"]["latest_entry_id"].startswith("msg-"))
         self.assertEqual(len(body["version"]), 16)
+
+    def test_mobile_notifications_support_offset_pagination(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Sayfali Bildirim Musteri",
+            customer_phone="05004443322",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Bildirim sayfalama testi",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILENOTIFPAGE001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+        for index in range(25):
+            ServiceMessage.objects.create(
+                service_request=service_request,
+                sender_user=self.provider_user,
+                sender_role="provider",
+                body=f"Sayfali mobil bildirim {index}",
+            )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+
+        first_page = self.client.get(
+            "/mobile/api/v1/notifications/?category=message&limit=20&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(first_page.status_code, 200)
+        first_body = first_page.json()
+        self.assertEqual(first_body["count"], 25)
+        self.assertEqual(first_body["offset"], 0)
+        self.assertEqual(first_body["limit"], 20)
+        self.assertEqual(len(first_body["results"]), 20)
+
+        second_page = self.client.get(
+            "/mobile/api/v1/notifications/?category=message&limit=20&offset=20",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(second_page.status_code, 200)
+        second_body = second_page.json()
+        self.assertEqual(second_body["count"], 25)
+        self.assertEqual(second_body["offset"], 20)
+        self.assertEqual(second_body["limit"], 20)
+        self.assertEqual(len(second_body["results"]), 5)
+        self.assertNotEqual(
+            first_body["results"][0]["entry_id"],
+            second_body["results"][0]["entry_id"],
+        )
 
     def test_mobile_provider_dashboard_includes_pending_sections(self):
         pending_request = ServiceRequest.objects.create(

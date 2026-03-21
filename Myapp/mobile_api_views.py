@@ -291,6 +291,12 @@ def build_request_collection_summary(queryset):
     summary = {
         "count": queryset.count(),
         **queryset.aggregate(
+            new_count=Count("id", filter=Q(status="new")),
+            pending_provider_count=Count("id", filter=Q(status="pending_provider")),
+            pending_customer_count=Count("id", filter=Q(status="pending_customer")),
+            matched_count=Count("id", filter=Q(status="matched")),
+            completed_count=Count("id", filter=Q(status="completed")),
+            cancelled_count=Count("id", filter=Q(status="cancelled")),
             latest_request_created_at=Max("created_at"),
             latest_match_at=Max("matched_at"),
             latest_message_at=Max("messages__created_at"),
@@ -300,6 +306,17 @@ def build_request_collection_summary(queryset):
             latest_offer_response_at=Max("provider_offers__responded_at"),
         ),
     }
+    summary["waiting_count"] = int(summary["new_count"] or 0) + int(
+        summary["pending_provider_count"] or 0
+    )
+    summary["decision_count"] = int(summary["pending_customer_count"] or 0)
+    summary["in_progress_count"] = int(summary["matched_count"] or 0)
+    summary["active_count"] = (
+        int(summary["new_count"] or 0)
+        + int(summary["pending_provider_count"] or 0)
+        + int(summary["pending_customer_count"] or 0)
+        + int(summary["matched_count"] or 0)
+    )
     return {
         "summary": _normalize_summary_value(summary),
         "version": build_mobile_summary_version(summary),
@@ -1289,6 +1306,10 @@ class MobileCustomerRequestsView(APIView):
             qs = qs.filter(matched_offer__isnull=False).order_by(
                 F("matched_at").desc(nulls_last=True),
                 "-created_at",
+            )
+        elif scope == "open":
+            qs = qs.filter(status__in=["new", "pending_provider", "pending_customer", "matched"]).order_by(
+                "-created_at"
             )
         else:
             qs = qs.order_by("-created_at")
@@ -2746,7 +2767,9 @@ class MobileNotificationsView(APIView):
         selected_category = normalize_notification_category(request.GET.get("category"))
         summary_only = (request.GET.get("summary_only") or "").strip().lower() in {"1", "true", "yes"}
         limit_raw = (request.GET.get("limit") or str(NOTIFICATION_CENTER_LIMIT)).strip()
+        offset_raw = (request.GET.get("offset") or "0").strip()
         limit = min(100, max(1, int(limit_raw) if limit_raw.isdigit() else NOTIFICATION_CENTER_LIMIT))
+        offset = max(0, int(offset_raw) if offset_raw.isdigit() else 0)
         if summary_only:
             summary_limit = 1 if selected_category == "all" else NOTIFICATION_CENTER_LIMIT
             entries = build_notification_entries(request.user, limit=summary_limit, unread_only=True)
@@ -2767,10 +2790,11 @@ class MobileNotificationsView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
-        entries = build_notification_entries(request.user, limit=limit, unread_only=True)
+        all_entries = build_notification_entries(request.user, limit=None, unread_only=True)
         if selected_category != "all":
-            entries = [item for item in entries if item.get("category_key") == selected_category]
-        latest_entry = entries[0] if entries else {}
+            all_entries = [item for item in all_entries if item.get("category_key") == selected_category]
+        paged_entries = all_entries[offset : offset + limit]
+        latest_entry = all_entries[0] if all_entries else {}
         summary = {
             "category": selected_category,
             "unread_count": get_total_unread_notifications_count(request.user),
@@ -2780,11 +2804,13 @@ class MobileNotificationsView(APIView):
         }
         return Response(
             {
-                "count": len(entries),
+                "count": len(all_entries),
+                "offset": offset,
+                "limit": limit,
                 "unread_count": get_total_unread_notifications_count(request.user),
                 "summary": _normalize_summary_value(summary),
                 "version": build_mobile_summary_version(summary),
-                "results": [serialize_mobile_notification_entry(item) for item in entries],
+                "results": [serialize_mobile_notification_entry(item) for item in paged_entries],
             },
             status=status.HTTP_200_OK,
         )

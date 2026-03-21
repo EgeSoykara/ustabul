@@ -493,6 +493,7 @@ class MobileDataService {
     required String accessToken,
     String category = 'all',
     int limit = 30,
+    int offset = 0,
   }) async {
     final response = await _apiClient.get(
       '/mobile/api/v1/notifications/',
@@ -500,6 +501,7 @@ class MobileDataService {
       queryParameters: {
         'category': category,
         'limit': limit,
+        'offset': offset,
       },
     );
     if (response is! Map<String, dynamic>) {

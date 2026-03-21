@@ -515,7 +515,15 @@ def mark_notification_entry_read(user, entry_id):
     return resolved
 
 
-def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=None, include_all=False, unread_only=False):
+def build_notification_entries(
+    user,
+    *,
+    limit=NOTIFICATION_CENTER_LIMIT,
+    offset=0,
+    days=None,
+    include_all=False,
+    unread_only=False,
+):
     if not user or not getattr(user, "is_authenticated", False):
         return []
 
@@ -524,6 +532,12 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
     cursor = get_notification_cursor(user, create=False)
     preferences = get_notification_preferences(cursor=cursor)
     workflow_seen_at = cursor.workflow_seen_at if cursor else None
+    offset = max(0, int(offset or 0))
+    if limit is None:
+        effective_limit = None
+    else:
+        limit = max(1, int(limit))
+        effective_limit = offset + limit
 
     entries = []
 
@@ -542,7 +556,7 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
         )
         if unread_only:
             message_queryset = message_queryset.filter(read_at__isnull=True)
-        messages = list(message_queryset[:limit])
+        messages = list(message_queryset[:effective_limit]) if effective_limit else list(message_queryset)
         for item in messages:
             request_code = item.service_request.display_code if item.service_request_id else "-"
             counterparty = _build_counterparty_meta(
@@ -577,7 +591,7 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
         user,
         provider=provider,
         now=now,
-        limit=None if unread_only else limit,
+        limit=None if unread_only else effective_limit,
         days=days,
         include_all=include_all,
         preferences=preferences,
@@ -627,7 +641,9 @@ def build_notification_entries(user, *, limit=NOTIFICATION_CENTER_LIMIT, days=No
         )
 
     entries.sort(key=lambda item: item["created_at"], reverse=True)
-    return entries[:limit]
+    if effective_limit is None:
+        return entries[offset:]
+    return entries[offset:effective_limit]
 
 
 def build_notification_sections(entries):

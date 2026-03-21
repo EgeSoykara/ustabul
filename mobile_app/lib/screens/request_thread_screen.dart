@@ -143,7 +143,11 @@ class _RequestThreadScreenState extends State<RequestThreadScreen> {
       _composerController.clear();
       if (message is Map<String, dynamic>) {
         setState(() {
-          _messages.add(message);
+          _messages.add(
+            message.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ),
+          );
           _latestId = (message['id'] as num?)?.toInt() ?? _latestId;
         });
         _scrollToBottom();
@@ -247,12 +251,13 @@ class _RequestThreadScreenState extends State<RequestThreadScreen> {
                             itemCount: _messages.length,
                             itemBuilder: (context, index) {
                               final message = _messages[index];
-                              final isMine = message['mine'] == true;
                               return _MessageBubble(
                                 body: (message['body'] ?? '').toString(),
-                                meta:
-                                    '${(message['sender_label'] ?? '').toString()} · ${(message['created_at'] ?? '').toString()}',
-                                isMine: isMine,
+                                senderLabel:
+                                    (message['sender_label'] ?? '').toString(),
+                                createdAt:
+                                    (message['created_at'] ?? '').toString(),
+                                isMine: message['mine'] == true,
                               );
                             },
                           ),
@@ -307,47 +312,107 @@ class _RequestThreadScreenState extends State<RequestThreadScreen> {
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.body,
-    required this.meta,
+    required this.senderLabel,
+    required this.createdAt,
     required this.isMine,
   });
 
   final String body;
-  final String meta;
+  final String senderLabel;
+  final String createdAt;
   final bool isMine;
 
   @override
   Widget build(BuildContext context) {
+    final isLightTheme = BrandConfig.isLight(context);
     final bubbleColor = isMine
-        ? BrandConfig.accentOf(context)
-        : BrandConfig.surfaceAltOf(context);
+        ? const Color(0xFF0F5F73)
+        : BrandConfig.surfaceOf(
+            context,
+          ).withValues(alpha: isLightTheme ? 0.96 : 0.92);
+    final borderColor = isMine
+        ? const Color(0x33000000)
+        : BrandConfig.borderOf(
+            context,
+          ).withValues(alpha: isLightTheme ? 0.55 : 0.42);
+    final bodyColor =
+        isMine ? const Color(0xFFF8FAFC) : BrandConfig.textOf(context);
+    final senderColor =
+        isMine ? const Color(0xFFD7EEF4) : BrandConfig.accentOf(context);
+    final metaColor =
+        isMine ? const Color(0xFFCAE3EA) : BrandConfig.textMutedOf(context);
     final alignment = isMine ? Alignment.centerRight : Alignment.centerLeft;
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(22),
+      topRight: const Radius.circular(22),
+      bottomLeft: Radius.circular(isMine ? 22 : 8),
+      bottomRight: Radius.circular(isMine ? 8 : 22),
+    );
+    final resolvedSender = senderLabel.trim().isEmpty
+        ? (isMine ? 'Siz' : 'Mesaj')
+        : senderLabel.trim();
+    final resolvedTime = createdAt.trim();
 
     return Align(
       alignment: alignment,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 320),
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: bubbleColor,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: radius,
+          border: Border.all(color: borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isMine ? 0.08 : 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              body,
-              style: TextStyle(
-                color: BrandConfig.textOf(context),
-                height: 1.4,
-              ),
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    resolvedSender,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: senderColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ),
+                if (resolvedTime.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      resolvedTime,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        color: metaColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 8),
             Text(
-              meta,
+              body,
               style: TextStyle(
-                color: BrandConfig.textMutedOf(context),
-                fontSize: 12,
+                color: bodyColor,
+                height: 1.4,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

@@ -33,7 +33,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  static const int _requestsPageSize = 20;
   static const int _agreementsPageSize = 20;
+  static const int _notificationsPageSize = 20;
   static const Duration _refreshTickInterval = Duration(seconds: 5);
   static const Duration _providerDashboardRefreshInterval =
       Duration(seconds: 5);
@@ -69,8 +71,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, dynamic> _notificationsPayload = const {};
   String _notificationCategory = 'all';
   bool _notificationsFallbackToWeb = false;
+  bool _customerRequestsLoadingMore = false;
   bool _customerAgreementsLoadingMore = false;
   bool _providerAgreementsLoadingMore = false;
+  bool _notificationsLoadingMore = false;
 
   bool _preferencesLoading = false;
   bool _preferencesSaving = false;
@@ -112,6 +116,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Map<String, dynamic>> get _customerRequests =>
       _mapList(_dashboardPayload['results']);
 
+  Map<String, dynamic> get _customerSummary =>
+      _dashboardPayload['summary'] is Map<String, dynamic>
+          ? _dashboardPayload['summary'] as Map<String, dynamic>
+          : const <String, dynamic>{};
+
+  int get _customerRequestCount =>
+      _summaryCount(_customerSummary, 'count', _customerRequests.length);
+
+  int get _customerActiveCount =>
+      _summaryCount(_customerSummary, 'active_count', _customerRequests.length);
+
+  int get _customerDecisionCount =>
+      _summaryCount(_customerSummary, 'decision_count', 0);
+
+  int get _customerInProgressCount =>
+      _summaryCount(_customerSummary, 'in_progress_count', 0);
+
+  int get _customerWaitingCount =>
+      _summaryCount(_customerSummary, 'waiting_count', 0);
+
   List<Map<String, dynamic>> get _customerAgreements =>
       _mapList(_dashboardPayload['agreements']);
 
@@ -144,8 +168,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get _customerAgreementsHasMore =>
       _customerAgreements.length < _customerAgreementCount;
 
+  bool get _customerRequestsHasMore =>
+      _customerRequests.length < _customerRequestCount;
+
   bool get _providerAgreementsHasMore =>
       _providerAgreements.length < _providerAgreementCount;
+
+  bool get _notificationsHasMore {
+    final count = (_notificationsPayload['count'] as num?)?.toInt() ?? 0;
+    final loaded = _mapList(_notificationsPayload['results']).length;
+    return loaded < count;
+  }
 
   Map<String, dynamic> get _providerSummary =>
       _dashboardPayload['summary'] is Map<String, dynamic>
@@ -219,56 +252,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<Map<String, dynamic>> _fetchAllCustomerRequests({
-    required String accessToken,
-    String? scope,
-  }) async {
-    const pageSize = 100;
-    final firstPage = await widget.dataService.fetchCustomerRequests(
-      accessToken: accessToken,
-      limit: pageSize,
-      offset: 0,
-      scope: scope,
-    );
-
-    final totalCount = (firstPage['count'] as num?)?.toInt() ?? 0;
-    final combinedResults = <Map<String, dynamic>>[
-      ..._mapList(firstPage['results']),
-    ];
-
-    var offset = combinedResults.length;
-    while (offset < totalCount) {
-      final nextPage = await widget.dataService.fetchCustomerRequests(
-        accessToken: accessToken,
-        limit: pageSize,
-        offset: offset,
-        scope: scope,
-      );
-      final nextResults = _mapList(nextPage['results']);
-      if (nextResults.isEmpty) {
-        break;
-      }
-      combinedResults.addAll(nextResults);
-      offset = combinedResults.length;
+  int _prefetchLimit({
+    required int loadedCount,
+    required bool extendedVisible,
+    required int pageSize,
+  }) {
+    if (!extendedVisible) {
+      return pageSize;
     }
-
-    return <String, dynamic>{
-      ...firstPage,
-      'count': totalCount,
-      'results': combinedResults,
-    };
+    return loadedCount > pageSize ? loadedCount : pageSize;
   }
 
   int _agreementsPrefetchLimit({
     required int loadedCount,
     required bool historyVisible,
   }) {
-    if (!historyVisible) {
-      return _agreementsPageSize;
-    }
-    return loadedCount > _agreementsPageSize
-        ? loadedCount
-        : _agreementsPageSize;
+    return _prefetchLimit(
+      loadedCount: loadedCount,
+      extendedVisible: historyVisible,
+      pageSize: _agreementsPageSize,
+    );
   }
 
   List<Map<String, dynamic>> _mergePagedItems(
@@ -299,6 +302,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _loadMoreCustomerRequests({bool reset = false}) async {
+    if (_customerRequestsLoadingMore) {
+      return;
+    }
+    final currentItems = _customerRequests;
+    if (!reset &&
+        (!_customerRequestsHasMore ||
+            (currentItems.isEmpty && _customerRequestCount == 0))) {
+      return;
+    }
+    setState(() {
+      _customerRequestsLoadingMore = true;
+    });
+    try {
+      final accessToken = await widget.sessionController.ensureAccessToken();
+      final response = await widget.dataService.fetchCustomerRequests(
+        accessToken: accessToken,
+        scope: 'open',
+        limit: _requestsPageSize,
+        offset: reset ? 0 : currentItems.length,
+      );
+      final nextItems = _mapList(response['results']);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        final updatedItems =
+            reset ? nextItems : _mergePagedItems(currentItems, nextItems);
+        _dashboardPayload = <String, dynamic>{
+          ..._dashboardPayload,
+          'results': updatedItems,
+          'count': response['count'] ?? _customerRequestCount,
+          'summary': response['summary'] ?? _customerSummary,
+        };
+        _customerRequestsVersion =
+            (response['version'] ?? _customerRequestsVersion).toString();
+      });
+    } catch (error) {
+      _showInlineMessage('Talepler şu an yüklenemedi.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _customerRequestsLoadingMore = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadMoreCustomerAgreements({bool reset = false}) async {
@@ -387,6 +438,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _providerAgreementsLoadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMoreNotifications() async {
+    if (_notificationsLoadingMore || !_notificationsHasMore) {
+      return;
+    }
+    setState(() {
+      _notificationsLoadingMore = true;
+    });
+    try {
+      final accessToken = await widget.sessionController.ensureAccessToken();
+      final currentResults = _mapList(_notificationsPayload['results']);
+      final response = await widget.dataService.fetchNotifications(
+        accessToken: accessToken,
+        category: _notificationCategory,
+        limit: _notificationsPageSize,
+        offset: currentResults.length,
+      );
+      final nextResults = _mapList(response['results']);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _notificationsPayload = <String, dynamic>{
+          ..._notificationsPayload,
+          ...response,
+          'results': _mergePagedItems(currentResults, nextResults),
+        };
+        _notificationsVersion =
+            (response['version'] ?? _notificationsVersion).toString();
+      });
+    } catch (error) {
+      _showInlineMessage('Bildirimler şu an yüklenemedi.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _notificationsLoadingMore = false;
         });
       }
     }
@@ -617,6 +708,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final summaries = await Future.wait<Map<String, dynamic>>([
             widget.dataService.fetchCustomerRequestsSummary(
               accessToken: accessToken,
+              scope: 'open',
             ),
             widget.dataService.fetchCustomerRequestsSummary(
               accessToken: accessToken,
@@ -638,9 +730,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             return;
           }
         }
+        final requestsVisible = _currentIndex == 1 &&
+            !_isProvider &&
+            _customerRequestFilter != 'history';
+        final requestLimit = _prefetchLimit(
+          loadedCount: _customerRequests.length,
+          extendedVisible: requestsVisible,
+          pageSize: _requestsPageSize,
+        );
         final responses = await Future.wait<Map<String, dynamic>>([
-          _fetchAllCustomerRequests(
+          widget.dataService.fetchCustomerRequests(
             accessToken: accessToken,
+            limit: requestLimit,
+            offset: 0,
+            scope: 'open',
           ),
           widget.dataService.fetchCustomerRequests(
             accessToken: accessToken,
@@ -714,6 +817,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _clearLiveUpdateCue();
     }
     final nextCategory = category ?? _notificationCategory;
+    final categoryChanged = nextCategory != _notificationCategory;
     if (!silent) {
       setState(() {
         _notificationsLoading = true;
@@ -727,6 +831,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     try {
       final accessToken = await widget.sessionController.ensureAccessToken();
+      final preserveVisibleNotifications =
+          !categoryChanged && _currentIndex == _notificationsTabIndex;
+      final notificationLimit = _prefetchLimit(
+        loadedCount: _mapList(_notificationsPayload['results']).length,
+        extendedVisible: preserveVisibleNotifications,
+        pageSize: _notificationsPageSize,
+      );
       if (silent) {
         final summary = await widget.dataService.fetchNotificationsSummary(
           accessToken: accessToken,
@@ -744,6 +855,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final payload = await widget.dataService.fetchNotifications(
         accessToken: accessToken,
         category: nextCategory,
+        limit: notificationLimit,
+        offset: 0,
       );
       final nextVersion = (payload['version'] ?? '').toString();
       final changed = _notificationsVersion.isNotEmpty &&
@@ -893,10 +1006,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
       setState(() {
+        final previousCount =
+            (_notificationsPayload['count'] as num?)?.toInt() ?? results.length;
         _notificationsPayload = {
           ..._notificationsPayload,
           'results': results,
-          'count': results.length,
+          'count': previousCount > 0 ? previousCount - 1 : 0,
           'unread_count':
               payload['unread_notifications_count'] ?? results.length,
         };
@@ -1556,6 +1671,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       sessionSnapshot: _sessionSnapshot,
                       dashboardPayload: _dashboardPayload,
                       customerRequests: _customerRequests,
+                      customerRequestCount: _customerRequestCount,
+                      customerActiveCount: _customerActiveCount,
+                      customerDecisionCount: _customerDecisionCount,
+                      customerInProgressCount: _customerInProgressCount,
+                      customerWaitingCount: _customerWaitingCount,
                       customerAgreementCount: _customerAgreementCount,
                       providerPendingOffers: _providerPendingOffers,
                       providerWaitingSelection: _providerWaitingSelection,
@@ -1621,12 +1741,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           error: _dashboardError,
                           selectedFilter: _customerRequestFilter,
                           customerRequests: _customerRequests,
+                          customerRequestCount: _customerRequestCount,
+                          customerActiveCount: _customerActiveCount,
+                          customerDecisionCount: _customerDecisionCount,
+                          customerInProgressCount: _customerInProgressCount,
                           customerAgreementCount: _customerAgreementCount,
                           visibleRequests: _customerVisibleRequests,
+                          requestsLoadingMore: _customerRequestsLoadingMore,
+                          hasMoreRequests: _customerRequestsHasMore,
                           agreementsLoadingMore: _customerAgreementsLoadingMore,
                           hasMoreAgreements: _customerAgreementsHasMore,
                           onRefresh: _loadDashboard,
                           onFilterChanged: _setCustomerRequestFilter,
+                          onLoadMoreRequests: () => _loadMoreCustomerRequests(),
                           onLoadMoreAgreements: () =>
                               _loadMoreCustomerAgreements(),
                           onOpenRequestDetail: _openRequestDetail,
@@ -1649,9 +1776,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       payload: _notificationsPayload,
                       category: _notificationCategory,
                       fallbackToWeb: _notificationsFallbackToWeb,
+                      loadingMore: _notificationsLoadingMore,
+                      hasMore: _notificationsHasMore,
                       onRefresh: _loadNotifications,
                       onCategoryChanged: (value) =>
                           _loadNotifications(category: value),
+                      onLoadMore: _loadMoreNotifications,
                       onOpenNotification: _openNotification,
                       onMarkAllRead: _markAllNotificationsRead,
                       onOpenWebNotifications: () => _openSiteFallback(
@@ -1753,6 +1883,11 @@ class _DashboardTab extends StatelessWidget {
     required this.sessionSnapshot,
     required this.dashboardPayload,
     required this.customerRequests,
+    required this.customerRequestCount,
+    required this.customerActiveCount,
+    required this.customerDecisionCount,
+    required this.customerInProgressCount,
+    required this.customerWaitingCount,
     required this.customerAgreementCount,
     required this.providerPendingOffers,
     required this.providerWaitingSelection,
@@ -1780,6 +1915,11 @@ class _DashboardTab extends StatelessWidget {
   final Map<String, dynamic> sessionSnapshot;
   final Map<String, dynamic> dashboardPayload;
   final List<Map<String, dynamic>> customerRequests;
+  final int customerRequestCount;
+  final int customerActiveCount;
+  final int customerDecisionCount;
+  final int customerInProgressCount;
+  final int customerWaitingCount;
   final int customerAgreementCount;
   final List<Map<String, dynamic>> providerPendingOffers;
   final List<Map<String, dynamic>> providerWaitingSelection;
@@ -1832,18 +1972,10 @@ class _DashboardTab extends StatelessWidget {
   }
 
   List<Widget> _buildCustomerContent(BuildContext context) {
-    final activeCount = customerRequests
-        .where((item) => _matchesCustomerRequestFilter(item, 'active'))
-        .length;
-    final matchedCount =
-        customerRequests.where((item) => item['status'] == 'matched').length;
-    final pendingCustomerCount = customerRequests
-        .where((item) => item['status'] == 'pending_customer')
-        .length;
-    final waitingProviderCount = customerRequests
-        .where((item) => {'new', 'pending_provider'}
-            .contains((item['status'] ?? '').toString()))
-        .length;
+    final activeCount = customerActiveCount;
+    final matchedCount = customerInProgressCount;
+    final pendingCustomerCount = customerDecisionCount;
+    final waitingProviderCount = customerWaitingCount;
     final historyCount = customerAgreementCount;
     final recentRequests = customerRequests
         .where((item) => _matchesCustomerRequestFilter(item, 'active'))
@@ -1995,7 +2127,7 @@ class _DashboardTab extends StatelessWidget {
               return Future<void>.value();
             },
           ),
-        if (customerRequests.length > recentRequests.length)
+        if (customerRequestCount > recentRequests.length)
           FilledButton.tonalIcon(
             onPressed: () => onOpenRequestsTab(),
             icon: const Icon(Icons.arrow_forward_rounded),
@@ -2053,9 +2185,9 @@ class _DashboardTab extends StatelessWidget {
           Expanded(
             child: _MetricCard(
               label: 'Açık talepler',
-              value: '${customerRequests.length}',
-              tone: 'primary',
-            ),
+               value: '$activeCount',
+               tone: 'primary',
+             ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -2910,12 +3042,19 @@ class _RequestsTab extends StatelessWidget {
     required this.error,
     required this.selectedFilter,
     required this.customerRequests,
+    required this.customerRequestCount,
+    required this.customerActiveCount,
+    required this.customerDecisionCount,
+    required this.customerInProgressCount,
     required this.customerAgreementCount,
     required this.visibleRequests,
+    required this.requestsLoadingMore,
+    required this.hasMoreRequests,
     required this.agreementsLoadingMore,
     required this.hasMoreAgreements,
     required this.onRefresh,
     required this.onFilterChanged,
+    required this.onLoadMoreRequests,
     required this.onLoadMoreAgreements,
     required this.onOpenRequestDetail,
     required this.onOpenProviderCatalog,
@@ -2926,12 +3065,19 @@ class _RequestsTab extends StatelessWidget {
   final String? error;
   final String selectedFilter;
   final List<Map<String, dynamic>> customerRequests;
+  final int customerRequestCount;
+  final int customerActiveCount;
+  final int customerDecisionCount;
+  final int customerInProgressCount;
   final int customerAgreementCount;
   final List<Map<String, dynamic>> visibleRequests;
+  final bool requestsLoadingMore;
+  final bool hasMoreRequests;
   final bool agreementsLoadingMore;
   final bool hasMoreAgreements;
   final Future<void> Function() onRefresh;
   final Future<void> Function(String filter) onFilterChanged;
+  final Future<void> Function() onLoadMoreRequests;
   final Future<void> Function() onLoadMoreAgreements;
   final Future<void> Function(int requestId) onOpenRequestDetail;
   final Future<void> Function() onOpenProviderCatalog;
@@ -2949,15 +3095,9 @@ class _RequestsTab extends StatelessWidget {
       return _ErrorState(message: error!, onRetry: onRefresh);
     }
 
-    final activeCount = customerRequests
-        .where((item) => _matchesCustomerRequestFilter(item, 'active'))
-        .length;
-    final decisionCount = customerRequests
-        .where((item) => _matchesCustomerRequestFilter(item, 'decision'))
-        .length;
-    final inProgressCount = customerRequests
-        .where((item) => (item['status'] ?? '').toString() == 'matched')
-        .length;
+    final activeCount = customerActiveCount;
+    final decisionCount = customerDecisionCount;
+    final inProgressCount = customerInProgressCount;
     final historyCount = customerAgreementCount;
 
     return RefreshIndicator(
@@ -3074,6 +3214,14 @@ class _RequestsTab extends StatelessWidget {
                 }
                 return Future<void>.value();
               },
+            ),
+          if (selectedFilter != 'history' &&
+              (hasMoreRequests || requestsLoadingMore))
+            _PagedLoadMoreCard(
+              loadedCount: customerRequests.length,
+              totalCount: customerRequestCount,
+              loading: requestsLoadingMore,
+              onPressed: requestsLoadingMore ? null : onLoadMoreRequests,
             ),
           if (selectedFilter == 'history' &&
               (hasMoreAgreements || agreementsLoadingMore))
@@ -3196,8 +3344,11 @@ class _NotificationsTab extends StatelessWidget {
     required this.payload,
     required this.category,
     required this.fallbackToWeb,
+    required this.loadingMore,
+    required this.hasMore,
     required this.onRefresh,
     required this.onCategoryChanged,
+    required this.onLoadMore,
     required this.onOpenNotification,
     required this.onMarkAllRead,
     required this.onOpenWebNotifications,
@@ -3208,8 +3359,11 @@ class _NotificationsTab extends StatelessWidget {
   final Map<String, dynamic> payload;
   final String category;
   final bool fallbackToWeb;
+  final bool loadingMore;
+  final bool hasMore;
   final Future<void> Function({String? category}) onRefresh;
   final Future<void> Function(String value) onCategoryChanged;
+  final Future<void> Function() onLoadMore;
   final Future<void> Function(Map<String, dynamic> item) onOpenNotification;
   final Future<void> Function() onMarkAllRead;
   final Future<void> Function() onOpenWebNotifications;
@@ -3322,6 +3476,13 @@ class _NotificationsTab extends StatelessWidget {
               body: (item['body'] ?? '').toString(),
               actionLabel: 'Aç',
               onPressed: () => onOpenNotification(item),
+            ),
+          if (hasMore || loadingMore)
+            _PagedLoadMoreCard(
+              loadedCount: results.length,
+              totalCount: (payload['count'] as num?)?.toInt() ?? results.length,
+              loading: loadingMore,
+              onPressed: loadingMore ? null : onLoadMore,
             ),
           if (error != null && payload.isNotEmpty)
             Padding(
