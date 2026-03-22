@@ -9,6 +9,7 @@ from django.conf import settings
 from django.db import transaction
 
 from .models import ActivityLog, MobileDevice, NotificationCursor, ProviderOffer, ServiceAppointment
+from .services.flow import get_service_request_status_label
 
 
 logger = logging.getLogger(__name__)
@@ -263,7 +264,11 @@ def _build_push_content(activity_log):
         }
 
     request_status = getattr(service_request, "status", "") or ""
-    status_label = REQUEST_STATUS_LABELS.get(request_status, request_status or "Güncellendi")
+    status_label = (
+        get_service_request_status_label(service_request)
+        if service_request is not None
+        else REQUEST_STATUS_LABELS.get(request_status, request_status or "Güncellendi")
+    )
     return {
         "category": "request",
         "title": "Talep güncellendi",

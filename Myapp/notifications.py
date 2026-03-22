@@ -17,6 +17,7 @@ from .models import (
     WorkflowEvent,
     WorkflowEventRead,
 )
+from .services.flow import get_service_request_status_label
 
 
 REQUEST_STATUS_LABELS = dict(ServiceRequest.STATUS_CHOICES)
@@ -365,6 +366,14 @@ def _event_status_label(event, raw_status):
         return APPOINTMENT_STATUS_LABELS.get(raw_status, raw_status or "-")
     if raw_status == "cancelled":
         return "Müşteri İptal Etti"
+    if raw_status == "new":
+        service_request = getattr(event, "service_request", None) or getattr(
+            getattr(event, "appointment", None),
+            "service_request",
+            None,
+        )
+        if service_request is not None:
+            return get_service_request_status_label(service_request)
     return REQUEST_STATUS_LABELS.get(raw_status, raw_status or "-")
 
 

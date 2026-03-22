@@ -7,6 +7,7 @@ class AuthSession {
     required this.role,
     required this.user,
     required this.snapshot,
+    required this.realtimeEnabled,
     required this.accessTokenExpiresAt,
   });
 
@@ -15,6 +16,7 @@ class AuthSession {
   final String role;
   final Map<String, dynamic> user;
   final Map<String, dynamic> snapshot;
+  final bool realtimeEnabled;
   final DateTime? accessTokenExpiresAt;
 
   bool get isProvider => role == 'provider';
@@ -35,6 +37,7 @@ class AuthSession {
     String? role,
     Map<String, dynamic>? user,
     Map<String, dynamic>? snapshot,
+    bool? realtimeEnabled,
     DateTime? accessTokenExpiresAt,
   }) {
     return AuthSession(
@@ -43,6 +46,7 @@ class AuthSession {
       role: role ?? this.role,
       user: user ?? this.user,
       snapshot: snapshot ?? this.snapshot,
+      realtimeEnabled: realtimeEnabled ?? this.realtimeEnabled,
       accessTokenExpiresAt: accessTokenExpiresAt ?? this.accessTokenExpiresAt,
     );
   }
@@ -54,6 +58,7 @@ class AuthSession {
       'role': role,
       'user': user,
       'snapshot': snapshot,
+      'realtime_enabled': realtimeEnabled,
       'access_token_expires_at': accessTokenExpiresAt?.toIso8601String(),
     };
   }
@@ -73,6 +78,7 @@ class AuthSession {
       snapshot: snapshotData is Map<String, dynamic>
           ? snapshotData
           : <String, dynamic>{},
+      realtimeEnabled: data['realtime_enabled'] == true,
       accessTokenExpiresAt: rawExpiry.isNotEmpty
           ? DateTime.tryParse(rawExpiry)?.toLocal()
           : _extractJwtExpiry(accessToken),

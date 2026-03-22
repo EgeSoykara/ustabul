@@ -99,7 +99,7 @@ if IS_PRODUCTION:
             "Production icin guclu bir DJANGO_SECRET_KEY gerekli (en az 32 karakter, 'django-insecure-' olmamali)."
         )
 
-default_allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
+default_allowed_hosts = ["127.0.0.1", "localhost", "testserver", "10.0.2.2"]
 if DEBUG:
     default_allowed_hosts.append("0.0.0.0")
 ALLOWED_HOSTS = env_csv("DJANGO_ALLOWED_HOSTS", ",".join(default_allowed_hosts))
@@ -109,14 +109,18 @@ if DEBUG:
     default_csrf_origins = [
         "http://127.0.0.1",
         "http://localhost",
+        "http://10.0.2.2",
         "http://0.0.0.0",
         "https://127.0.0.1",
         "https://localhost",
+        "https://10.0.2.2",
         "https://0.0.0.0",
         "http://127.0.0.1:8000",
         "http://localhost:8000",
+        "http://10.0.2.2:8000",
         "https://127.0.0.1:8000",
         "https://localhost:8000",
+        "https://10.0.2.2:8000",
     ]
 CSRF_TRUSTED_ORIGINS = env_csv("DJANGO_CSRF_TRUSTED_ORIGINS", ",".join(default_csrf_origins))
 

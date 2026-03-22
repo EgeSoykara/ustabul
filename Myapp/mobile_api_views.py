@@ -106,6 +106,7 @@ from .notifications import (
     normalize_notification_category,
 )
 from .realtime import publish_mobile_refresh_for_user_ids
+from .services.runtime import realtime_channels_enabled
 
 
 def build_identity_payload(user):
@@ -649,7 +650,8 @@ def build_mobile_flow_state_payload(
     appointment,
     provider=None,
     provider_offer=None,
-    has_accepted_offers=False,
+    has_accepted_offers=None,
+    has_pending_offers=None,
 ):
     calendar_enabled = bool(is_calendar_enabled())
 
@@ -657,7 +659,8 @@ def build_mobile_flow_state_payload(
         return build_customer_flow_state(
             service_request,
             appointment,
-            has_accepted_offers=bool(has_accepted_offers),
+            has_accepted_offers=has_accepted_offers,
+            has_pending_offers=has_pending_offers,
             now=timezone.now(),
             calendar_enabled=calendar_enabled,
             last_minute_cancel_hours=get_last_minute_cancel_hours(),
@@ -745,13 +748,13 @@ def build_mobile_request_detail_payload(service_request, *, viewer_role, request
     }
 
     if viewer_role == "customer":
-        verified_accepted_offers = [
+        verified_offers = [
             offer
-            for offer in service_request.provider_offers.select_related("provider")
-            .filter(status="accepted")
+            for offer in service_request.provider_offers.all()
             if offer.provider_id and getattr(offer.provider, "is_verified", False)
         ]
-        accepted_offers = score_accepted_offers(list(verified_accepted_offers))
+        accepted_offers = score_accepted_offers([offer for offer in verified_offers if offer.status == "accepted"])
+        has_pending_offers = any(offer.status == "pending" for offer in verified_offers)
         recommended_offer_id = accepted_offers[0].id if accepted_offers else None
         payload["accepted_offers"] = [
             serialize_customer_offer_option(item, recommended_offer_id=recommended_offer_id)
@@ -777,6 +780,7 @@ def build_mobile_request_detail_payload(service_request, *, viewer_role, request
             service_request=service_request,
             appointment=appointment,
             has_accepted_offers=bool(accepted_offers),
+            has_pending_offers=has_pending_offers,
         )
         payload["snapshot"] = build_customer_snapshot_payload(request_user)
         return payload
@@ -1001,6 +1005,7 @@ class MobileLoginView(APIView):
             "access": str(refresh.access_token),
             "refresh": str(refresh),
             "user": build_identity_payload(user),
+            "realtime_enabled": realtime_channels_enabled(),
         }
         if provider:
             payload["snapshot"] = build_provider_snapshot_payload(provider)
@@ -1018,7 +1023,10 @@ class MobileMeView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        payload = {"user": build_identity_payload(request.user)}
+        payload = {
+            "user": build_identity_payload(request.user),
+            "realtime_enabled": realtime_channels_enabled(),
+        }
         if provider:
             payload["snapshot"] = build_provider_snapshot_payload(provider)
         else:
@@ -1362,16 +1370,21 @@ class MobileCustomerRequestsView(APIView):
         now = timezone.now()
         for service_request, item in zip(page_items, serialized):
             appointment = appointment_map.get(service_request.id)
+            verified_offers = [
+                offer
+                for offer in service_request.provider_offers.all()
+                if offer.provider_id and getattr(offer.provider, "is_verified", False)
+            ]
+            has_pending_offers = any(offer.status == "pending" for offer in verified_offers)
             has_accepted_offers = any(
                 offer.status == "accepted"
-                and offer.provider_id
-                and getattr(offer.provider, "is_verified", False)
-                for offer in service_request.provider_offers.all()
+                for offer in verified_offers
             )
             flow_state = build_customer_flow_state(
                 service_request,
                 appointment,
                 has_accepted_offers=has_accepted_offers,
+                has_pending_offers=has_pending_offers,
                 now=now,
                 calendar_enabled=calendar_enabled,
                 last_minute_cancel_hours=get_last_minute_cancel_hours(),
@@ -1381,6 +1394,8 @@ class MobileCustomerRequestsView(APIView):
                 service_request,
                 appointment,
                 calendar_enabled=calendar_enabled,
+                has_pending_offers=has_pending_offers,
+                has_accepted_offers=has_accepted_offers,
             )
             item.update(serialize_flow_state_fields(flow_state))
             item["matched_offer_id"] = service_request.matched_offer_id

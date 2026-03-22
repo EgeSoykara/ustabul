@@ -3355,7 +3355,9 @@ class _RequestsTab extends StatelessWidget {
               ),
             ],
           ),
-          if (historyCount > 0 && selectedFilter != 'history') ...[
+          if (historyCount > 0 &&
+              selectedFilter != 'history' &&
+              visibleRequests.isEmpty) ...[
             const SizedBox(height: 16),
             _EmphasisBanner(
               title: 'Anlaşma görünümü hazır',

@@ -78,10 +78,15 @@ class SessionController extends ChangeNotifier {
         snapshot: snapshotData is Map<String, dynamic>
             ? snapshotData
             : <String, dynamic>{},
+        realtimeEnabled: mePayload['realtime_enabled'] == true,
       );
       await _authStorage.saveSession(_session!);
       await _pushService.initializeAndRegister(_session!);
-      await _realtimeUpdatesService.start(tokenProvider: ensureAccessToken);
+      if (_session!.realtimeEnabled) {
+        await _realtimeUpdatesService.start(tokenProvider: ensureAccessToken);
+      } else {
+        await _realtimeUpdatesService.stop();
+      }
     } catch (_) {
       _session = null;
       await _authStorage.clear();
@@ -115,7 +120,11 @@ class SessionController extends ChangeNotifier {
         // Native mobile endpoints can still work even if the web session
         // handoff is temporarily unavailable.
       }
-      await _realtimeUpdatesService.start(tokenProvider: ensureAccessToken);
+      if (nextSession.realtimeEnabled) {
+        await _realtimeUpdatesService.start(tokenProvider: ensureAccessToken);
+      } else {
+        await _realtimeUpdatesService.stop();
+      }
       return true;
     } catch (error) {
       _error = error.toString();
@@ -181,8 +190,14 @@ class SessionController extends ChangeNotifier {
       snapshot: snapshotData is Map<String, dynamic>
           ? snapshotData
           : <String, dynamic>{},
+      realtimeEnabled: payload['realtime_enabled'] == true,
     );
     await _authStorage.saveSession(_session!);
+    if (_session!.realtimeEnabled) {
+      await _realtimeUpdatesService.start(tokenProvider: ensureAccessToken);
+    } else {
+      await _realtimeUpdatesService.stop();
+    }
     notifyListeners();
     return _session!;
   }

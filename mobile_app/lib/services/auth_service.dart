@@ -29,6 +29,7 @@ class AuthService {
       'refresh_token': response['refresh'],
       'role': userData['role'],
       'user': userData,
+      'realtime_enabled': response['realtime_enabled'] == true,
       'snapshot': response['snapshot'] is Map<String, dynamic>
           ? response['snapshot'] as Map<String, dynamic>
           : <String, dynamic>{},

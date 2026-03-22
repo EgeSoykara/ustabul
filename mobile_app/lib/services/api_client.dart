@@ -111,6 +111,16 @@ class ApiClient {
           return ApiException(messages.join('\n'), statusCode: statusCode);
         }
       }
+      final nonFieldErrors = raw['non_field_errors'];
+      if (nonFieldErrors is List) {
+        final messages = nonFieldErrors
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
+        if (messages.isNotEmpty) {
+          return ApiException(messages.join('\n'), statusCode: statusCode);
+        }
+      }
       final detail = (raw['message'] ?? raw['detail'] ?? '').toString();
       if (detail.isNotEmpty) {
         return ApiException(detail, statusCode: statusCode);

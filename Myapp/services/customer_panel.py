@@ -87,10 +87,19 @@ def build_customer_panel_context(request):
     for item in requests + pending_selection_items:
         item.rating_entry = rating_map.get(item.id)
         item.appointment_entry = appointment_map.get(item.id)
+        verified_offers = [
+            offer for offer in item.provider_offers.all() if offer.provider_id and getattr(offer.provider, "is_verified", False)
+        ]
+        item.pending_offer = next((offer for offer in verified_offers if offer.status == "pending"), None)
+        accepted_offers = [offer for offer in verified_offers if offer.status == "accepted"]
+        item.accepted_offers = core.score_accepted_offers(accepted_offers)
+        item.recommended_offer_id = item.accepted_offers[0].id if item.accepted_offers else None
         status_ui = core.get_service_request_status_ui(
             item,
             item.appointment_entry,
             calendar_enabled=calendar_enabled,
+            has_pending_offers=item.pending_offer is not None,
+            has_accepted_offers=bool(item.accepted_offers),
         )
         item.status_ui_label = status_ui["label"]
         item.status_ui_class = status_ui["css_status"]
@@ -120,13 +129,6 @@ def build_customer_panel_context(request):
                 item.rate_block_reason = "Randevu müşteri onayı olmadan kapatıldığı için puanlama kapalıdır."
             elif item.appointment_entry.status != "completed":
                 item.rate_block_reason = "Puanlama için randevunun tamamlanması gerekir."
-        verified_offers = [
-            offer for offer in item.provider_offers.all() if offer.provider_id and getattr(offer.provider, "is_verified", False)
-        ]
-        item.pending_offer = next((offer for offer in verified_offers if offer.status == "pending"), None)
-        accepted_offers = [offer for offer in verified_offers if offer.status == "accepted"]
-        item.accepted_offers = core.score_accepted_offers(accepted_offers)
-        item.recommended_offer_id = item.accepted_offers[0].id if item.accepted_offers else None
         item.unread_messages = unread_message_map.get(item.id, 0)
         item.can_complete_now = False
         item.can_cancel_now = False
@@ -157,6 +159,7 @@ def build_customer_panel_context(request):
             item,
             item.appointment_entry,
             has_accepted_offers=bool(item.accepted_offers),
+            has_pending_offers=item.pending_offer is not None,
             now=now,
             calendar_enabled=calendar_enabled,
             last_minute_cancel_hours=core.get_last_minute_cancel_hours(),

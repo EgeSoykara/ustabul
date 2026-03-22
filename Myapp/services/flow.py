@@ -45,11 +45,64 @@ def assign_recent_change_state(target, latest_message=None, latest_event=None):
     target.recent_change_tone = "muted"
 
 
+def _get_verified_offer_flags(service_request):
+    prefetched_offers = getattr(service_request, "_prefetched_objects_cache", {}).get("provider_offers")
+    if prefetched_offers is not None:
+        provider_is_prefetched = all(
+            not offer.provider_id or "provider" in getattr(offer._state, "fields_cache", {})
+            for offer in prefetched_offers
+        )
+        if provider_is_prefetched:
+            has_pending_offers = False
+            has_accepted_offers = False
+            for offer in prefetched_offers:
+                if not offer.provider_id:
+                    continue
+                provider = offer._state.fields_cache.get("provider")
+                if provider is None or not getattr(provider, "is_verified", False):
+                    continue
+                if offer.status == "pending":
+                    has_pending_offers = True
+                elif offer.status == "accepted":
+                    has_accepted_offers = True
+                if has_pending_offers and has_accepted_offers:
+                    break
+            return has_pending_offers, has_accepted_offers
+
+    verified_offers = service_request.provider_offers.filter(provider__is_verified=True)
+    return (
+        verified_offers.filter(status="pending").exists(),
+        verified_offers.filter(status="accepted").exists(),
+    )
+
+
+def get_service_request_status_label(
+    service_request,
+    *,
+    has_pending_offers=None,
+    has_accepted_offers=None,
+):
+    if service_request.status != "new":
+        return service_request.get_status_display()
+
+    if has_pending_offers is None or has_accepted_offers is None:
+        resolved_pending_offers, resolved_accepted_offers = _get_verified_offer_flags(service_request)
+        if has_pending_offers is None:
+            has_pending_offers = resolved_pending_offers
+        if has_accepted_offers is None:
+            has_accepted_offers = resolved_accepted_offers
+
+    if not has_pending_offers and not has_accepted_offers and service_request.matched_provider_id is None:
+        return "Açık"
+    return service_request.get_status_display()
+
+
 def build_customer_flow_state(
     service_request,
     appointment,
     *,
-    has_accepted_offers=False,
+    has_accepted_offers=None,
+    has_pending_offers=None,
     now=None,
     calendar_enabled,
     last_minute_cancel_hours=0,
@@ -64,6 +117,27 @@ def build_customer_flow_state(
         "tone": "waiting",
     }
     status = service_request.status
+
+    if has_accepted_offers is None or (status == "new" and has_pending_offers is None):
+        resolved_pending_offers, resolved_accepted_offers = _get_verified_offer_flags(service_request)
+        if has_pending_offers is None:
+            has_pending_offers = resolved_pending_offers
+        if has_accepted_offers is None:
+            has_accepted_offers = resolved_accepted_offers
+
+    if (
+        status == "new"
+        and not has_pending_offers
+        and not has_accepted_offers
+        and service_request.matched_provider_id is None
+    ):
+        return {
+            "step": "Açık",
+            "title": "Şu an uygun usta bulunamadı",
+            "hint": "Talep açık kaldı fakat şu anda aktif bekleyen teklif görünmüyor.",
+            "next_action": "İsterseniz talebi iptal edip daha sonra yeniden oluşturabilirsiniz.",
+            "tone": "muted",
+        }
 
     if status in {"new", "pending_provider"} and service_request.preferred_provider_id:
         flow.update(
@@ -217,14 +291,28 @@ def build_customer_flow_state(
     return flow
 
 
-def get_service_request_status_ui(service_request, appointment=None, *, calendar_enabled):
+def get_service_request_status_ui(
+    service_request,
+    appointment=None,
+    *,
+    calendar_enabled,
+    has_pending_offers=None,
+    has_accepted_offers=None,
+):
     if service_request.status == "cancelled":
         return {"label": "Müşteri İptal Etti", "css_status": "cancelled"}
     if calendar_enabled and service_request.status == "completed" and not (
         appointment and appointment.status == "completed"
     ):
         return {"label": "Müşteri İptal Etti", "css_status": "cancelled"}
-    return {"label": service_request.get_status_display(), "css_status": service_request.status}
+    return {
+        "label": get_service_request_status_label(
+            service_request,
+            has_pending_offers=has_pending_offers,
+            has_accepted_offers=has_accepted_offers,
+        ),
+        "css_status": service_request.status,
+    }
 
 
 def build_provider_pending_offer_flow_state():

@@ -5544,6 +5544,97 @@ class MobileApiTests(TestCase):
         self.assertEqual(len(body["version"]), 16)
         self.assertNotIn("results", body)
 
+    def test_mobile_customer_requests_show_open_status_when_no_active_offers_remain(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Acik Talep Musteri",
+            customer_phone="05001119988",
+            city="Girne",
+            district="Karakum",
+            service_type=self.service,
+            details="Acik kalmis talep",
+            customer=self.customer_user,
+            status="new",
+        )
+        ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILEOPENSTATE001",
+            sequence=1,
+            status="expired",
+        )
+
+        payload = self._login_mobile("mobile_customer", "GucluSifre123!")
+        access = payload["access"]
+
+        list_response = self.client.get(
+            "/mobile/api/v1/customer/requests/?scope=open&limit=10&offset=0",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(list_response.status_code, 200)
+        list_body = list_response.json()
+        self.assertEqual(list_body["results"][0]["id"], service_request.id)
+        self.assertEqual(list_body["results"][0]["status_ui_label"], "Açık")
+        self.assertEqual(list_body["results"][0]["flow_title"], "Şu an uygun usta bulunamadı")
+        self.assertEqual(
+            list_body["results"][0]["flow_next_action"],
+            "İsterseniz talebi iptal edip daha sonra yeniden oluşturabilirsiniz.",
+        )
+
+        detail_response = self.client.get(
+            f"/mobile/api/v1/requests/{service_request.id}/detail/",
+            HTTP_AUTHORIZATION=f"Bearer {access}",
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        detail_body = detail_response.json()
+        self.assertEqual(detail_body["flow_state"]["title"], "Şu an uygun usta bulunamadı")
+        self.assertEqual(
+            detail_body["flow_state"]["hint"],
+            "Talep açık kaldı fakat şu anda aktif bekleyen teklif görünmüyor.",
+        )
+
+    def test_mobile_notifications_use_open_label_for_new_request_without_active_offers(self):
+        service_request = ServiceRequest.objects.create(
+            customer_name="Bildirim Acik Musteri",
+            customer_phone="05002224455",
+            city="Lefkosa",
+            district="Ortakoy",
+            service_type=self.service,
+            details="Bildirim etiket testi",
+            customer=self.customer_user,
+            matched_provider=self.provider,
+            status="matched",
+        )
+        matched_offer = ProviderOffer.objects.create(
+            service_request=service_request,
+            provider=self.provider,
+            token="MOBILENOTIFOPEN001",
+            sequence=1,
+            status="accepted",
+        )
+        service_request.matched_offer = matched_offer
+        service_request.matched_at = timezone.now()
+        service_request.save(update_fields=["matched_offer", "matched_at"])
+
+        matched_offer.status = "expired"
+        matched_offer.responded_at = timezone.now()
+        matched_offer.save(update_fields=["status", "responded_at"])
+        service_request.matched_provider = None
+        service_request.matched_offer = None
+        service_request.matched_at = None
+        transition_service_request_status(
+            service_request,
+            "new",
+            extra_update_fields=["matched_provider", "matched_offer", "matched_at"],
+            actor_user=self.provider_user,
+            actor_role="provider",
+            source="user",
+            note="Usta eşleşmeden ayrıldı",
+        )
+
+        entries = build_notification_entries(self.customer_user, limit=10, unread_only=True)
+        request_entry = next(item for item in entries if item["kind"] == "workflow")
+        self.assertEqual(request_entry["title"], "Talep durumu güncellendi: Açık")
+
     def test_mobile_register_device_creates_record(self):
         payload = self._login_mobile("mobile_customer", "GucluSifre123!")
         access = payload["access"]
